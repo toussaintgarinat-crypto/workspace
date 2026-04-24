@@ -1,0 +1,48 @@
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.db
+*.sqlite3
+
+# Node / Bun
+node_modules/
+.next/
+.nuxt/
+dist/
+.cache/
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/
+.playwright-mcp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.override.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
