@@ -28,7 +28,7 @@
         "Password": ""
     },
     "Datadir": "/var/lib/netbird/",
-    "DataStoreEncryptionKey": "CT6e5q50BvcZgnNVBDfRxkynLINTjKMNSP6iHh6Kdz8=",
+    "DataStoreEncryptionKey": "${NETBIRD_DATASTORE_ENCRYPTION_KEY}",
     "HttpConfig": {
         "LetsEncryptDomain": "",
         "CertFile": "",

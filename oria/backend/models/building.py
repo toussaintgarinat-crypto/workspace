@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, ForeignKey, Text, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -44,7 +44,7 @@ class Message(Base):
     author_emoji = Column(String, default="👤")
     author_id    = Column(String, default="")
     contenu      = Column(Text, nullable=False)
-    created_at   = Column(String, nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow)
     room         = relationship("Room", back_populates="messages")
     reactions    = relationship("Reaction", back_populates="message", cascade="all, delete")
 
@@ -69,6 +69,6 @@ class File(Base):
     taille       = Column(Integer, default=0)
     type_mime    = Column(String, default="application/octet-stream")
     path         = Column(String, nullable=False)
-    created_at   = Column(String, nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow)
     room         = relationship("Room", back_populates="files")
     building     = relationship("Building", back_populates="files")

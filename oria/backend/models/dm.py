@@ -12,7 +12,7 @@ class DirectMessage(Base):
     from_emoji   = Column(String, default="👤")
     to_user_id   = Column(String, nullable=False)
     contenu      = Column(Text, nullable=False)
-    created_at   = Column(String, nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow)
 
 class DirectMessageRoom(Base):
     """Lien entre deux utilisateurs Oria et leur room Matrix DM."""

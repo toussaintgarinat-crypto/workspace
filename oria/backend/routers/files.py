@@ -19,6 +19,13 @@ for _candidate in ["/app/uploads", "/tmp/uploads",
 else:
     UPLOAD_DIR = "/tmp/uploads"
 
+def _file_dict(f):
+    return {
+        "id": f.id, "nom": f.nom, "taille": f.taille, "type_mime": f.type_mime,
+        "uploader_nom": f.uploader_nom, "uploaded_by": f.uploaded_by,
+        "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
+
 @router.post("/upload/{room_id}")
 async def upload_file(room_id: str, file: UploadFile = FastAPIFile(...),
                       db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -33,20 +40,16 @@ async def upload_file(room_id: str, file: UploadFile = FastAPIFile(...),
                    uploaded_by=user["id"], uploader_nom=user["nom"],
                    nom=file.filename or filename, taille=size,
                    type_mime=file.content_type or "application/octet-stream",
-                   path=filename, created_at=datetime.utcnow().isoformat())
+                   path=filename)
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
-    return {"id": db_file.id, "nom": db_file.nom, "taille": db_file.taille,
-            "type_mime": db_file.type_mime, "room_id": room_id,
-            "uploader_nom": db_file.uploader_nom, "created_at": db_file.created_at}
+    return {**_file_dict(db_file), "room_id": room_id}
 
 @router.get("/room/{room_id}")
 def lister_fichiers(room_id: str, db: Session = Depends(get_db)):
     files = db.query(File).filter(File.room_id == room_id).order_by(File.created_at.desc()).all()
-    return [{"id": f.id, "nom": f.nom, "taille": f.taille, "type_mime": f.type_mime,
-             "uploader_nom": f.uploader_nom, "uploaded_by": f.uploaded_by,
-             "created_at": f.created_at} for f in files]
+    return [_file_dict(f) for f in files]
 
 @router.get("/download/{file_id}")
 def telecharger(file_id: str, db: Session = Depends(get_db)):
@@ -71,19 +74,14 @@ async def upload_building(building_id: str, file: UploadFile = FastAPIFile(...),
                    uploaded_by=user["id"], uploader_nom=user["nom"],
                    nom=file.filename or f"{file_id}{ext}", taille=size,
                    type_mime=file.content_type or "application/octet-stream",
-                   path=f"{file_id}{ext}", created_at=datetime.utcnow().isoformat())
+                   path=f"{file_id}{ext}")
     db.add(db_file); db.commit(); db.refresh(db_file)
-    return {"id": db_file.id, "nom": db_file.nom, "taille": db_file.taille,
-            "type_mime": db_file.type_mime, "building_id": building_id,
-            "uploader_nom": db_file.uploader_nom, "uploaded_by": db_file.uploaded_by,
-            "created_at": db_file.created_at}
+    return {**_file_dict(db_file), "building_id": building_id}
 
 @router.get("/building/{building_id}")
 def lister_building(building_id: str, db: Session = Depends(get_db)):
     files = db.query(File).filter(File.building_id == building_id).order_by(File.created_at.desc()).all()
-    return [{"id": f.id, "nom": f.nom, "taille": f.taille, "type_mime": f.type_mime,
-             "uploader_nom": f.uploader_nom, "uploaded_by": f.uploaded_by,
-             "created_at": f.created_at} for f in files]
+    return [_file_dict(f) for f in files]
 
 @router.post("/upload/world/{world_id}")
 async def upload_world(world_id: str, file: UploadFile = FastAPIFile(...),
@@ -98,19 +96,14 @@ async def upload_world(world_id: str, file: UploadFile = FastAPIFile(...),
                    uploaded_by=user["id"], uploader_nom=user["nom"],
                    nom=file.filename or f"{file_id}{ext}", taille=size,
                    type_mime=file.content_type or "application/octet-stream",
-                   path=f"{file_id}{ext}", created_at=datetime.utcnow().isoformat())
+                   path=f"{file_id}{ext}")
     db.add(db_file); db.commit(); db.refresh(db_file)
-    return {"id": db_file.id, "nom": db_file.nom, "taille": db_file.taille,
-            "type_mime": db_file.type_mime, "world_id": world_id,
-            "uploader_nom": db_file.uploader_nom, "uploaded_by": db_file.uploaded_by,
-            "created_at": db_file.created_at}
+    return {**_file_dict(db_file), "world_id": world_id}
 
 @router.get("/world/{world_id}")
 def lister_world(world_id: str, db: Session = Depends(get_db)):
     files = db.query(File).filter(File.world_id == world_id).order_by(File.created_at.desc()).all()
-    return [{"id": f.id, "nom": f.nom, "taille": f.taille, "type_mime": f.type_mime,
-             "uploader_nom": f.uploader_nom, "uploaded_by": f.uploaded_by,
-             "created_at": f.created_at} for f in files]
+    return [_file_dict(f) for f in files]
 
 @router.delete("/{file_id}")
 def supprimer_fichier(file_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):

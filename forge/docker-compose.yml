@@ -9,7 +9,6 @@ services:
       POSTGRES_USER: forge
       POSTGRES_PASSWORD: forge
       POSTGRES_DB: forge
-      POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -118,10 +117,14 @@ services:
     image: netbirdio/management:latest
     ports:
       - "33073:33073"
+    entrypoint: ["/bin/sh", "/etc/netbird/entrypoint.sh"]
+    command: ["--port", "33073", "--log-level", "info", "--disable-anonymous-metrics"]
+    environment:
+      - NETBIRD_DATASTORE_ENCRYPTION_KEY=${NETBIRD_DATASTORE_ENCRYPTION_KEY}
     volumes:
       - netbird_mgmt_data:/var/lib/netbird
-      - ./netbird/management.json:/etc/netbird/management.json
-    command: ["--config", "/etc/netbird/management.json", "--port", "33073", "--log-level", "info", "--disable-anonymous-metrics"]
+      - ./netbird/management.json:/etc/netbird/management.json.template:ro
+      - ./netbird/entrypoint.sh:/etc/netbird/entrypoint.sh:ro
     depends_on:
       - keycloak
       - netbird-signal
