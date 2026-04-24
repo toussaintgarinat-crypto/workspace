@@ -538,7 +538,8 @@ class TestFluxCompletE2E:
         app.dependency_overrides[gcu] = lambda: {
             "id": "user-test-abc-123",
             "email": "test@oria-test.com",
-            "username": "testuser",
+            "nom": "Test User",
+            "avatar_emoji": "👤",
         }
 
         assert r.status_code == 404

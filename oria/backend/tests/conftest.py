@@ -38,7 +38,8 @@ from routers.auth import get_current_user
 TEST_USER = {
     "id": "user-test-abc-123",
     "email": "test@oria-test.com",
-    "username": "testuser",
+    "nom": "Test User",
+    "avatar_emoji": "👤",
 }
 
 # Patches MemPalace actifs globalement pour tous les tests
