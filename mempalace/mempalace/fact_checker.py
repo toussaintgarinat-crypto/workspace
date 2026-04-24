@@ -1,22 +1,22 @@
 """
-fact_checker.py — Détection de contradictions entre faits du Knowledge Graph.
-Câble l'Issue #27 : compare les triples d'une branche vs le trunk pour détecter les conflits.
+fact_checker.py — Contradiction detection between Knowledge Graph facts.
+Implements Issue #27: compares triples from a branch vs trunk to detect conflicts.
 
-Contradiction = même (sujet, prédicat) mais objet différent entre la branche et le trunk.
+Contradiction = same (subject, predicate) but different object between branch and trunk.
 """
 
 
 def check_contradictions(branch_triples: list, trunk_triples: list) -> list:
     """
-    Compare deux listes de triples et retourne les contradictions.
+    Compare two triple lists and return contradictions.
 
-    Une contradiction : même sujet + même prédicat, mais objet différent.
-    Seuls les triples actifs (current=True / valid_to=None) sont comparés.
+    A contradiction: same subject + same predicate, but different object.
+    Only active triples (current=True / valid_to=None) are compared.
 
-    Retourne une liste de dicts :
+    Returns a list of dicts:
         {subject, predicate, branch_value, trunk_value, severity}
     """
-    # Index trunk : (subject.lower(), predicate.lower()) → object
+    # Index trunk by (subject.lower(), predicate.lower()) → object
     trunk_map: dict[tuple, str] = {}
     for t in trunk_triples:
         if t.get("current", True):

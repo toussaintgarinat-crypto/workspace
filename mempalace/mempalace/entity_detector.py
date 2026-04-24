@@ -10,7 +10,7 @@ Used by mempalace init before mining begins.
 The confirmed entity map feeds the miner as the taxonomy.
 
 Usage:
-    from entity_detector import detect_entities, confirm_entities
+    from mempalace.entity_detector import detect_entities, confirm_entities
     candidates = detect_entities(file_paths)
     confirmed = confirm_entities(candidates)  # interactive review
 """

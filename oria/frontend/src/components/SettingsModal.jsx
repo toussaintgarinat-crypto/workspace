@@ -24,14 +24,14 @@ export default function SettingsModal({ moi, onSauvegarde, onDeconnexion, onFerm
   }
 
   async function enable2fa() {
-    const d = await api.post(`/auth/2fa/enable?code=${totpCode}`, {})
+    const d = await api.post('/auth/2fa/enable', { code: totpCode })
     if (d?.ok) { setTotpEnabled(true); setTotpUri(null); setTotpCode(''); setTotpMsg('2FA activé ✅') }
     else setTotpMsg(d?.detail || 'Code incorrect')
   }
 
   async function disable2fa() {
     if (!desactivePass) return
-    const d = await api.post(`/auth/2fa/disable?password=${encodeURIComponent(desactivePass)}`, {})
+    const d = await api.post('/auth/2fa/disable', { password: desactivePass })
     if (d?.ok) { setTotpEnabled(false); setDesactivePass(''); setTotpMsg('2FA désactivé') }
     else setTotpMsg(d?.detail || 'Mot de passe incorrect')
   }

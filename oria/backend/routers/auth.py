@@ -180,14 +180,20 @@ def setup_2fa(user=Depends(get_current_user), db: Session = Depends(get_db)):
     return {"secret": secret, "uri": uri}
 
 
+class Enable2FABody(BaseModel):
+    code: str
+
+class Disable2FABody(BaseModel):
+    password: str
+
 @router.post("/2fa/enable")
-def enable_2fa(code: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
+def enable_2fa(body: Enable2FABody, user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Vérifie le code TOTP et active le 2FA."""
     db_user = db.query(User).filter(User.id == user["id"]).first()
     if not db_user or not db_user.totp_secret:
         raise HTTPException(400, "Setup 2FA requis avant l'activation")
     totp = pyotp.TOTP(db_user.totp_secret)
-    if not totp.verify(code, valid_window=1):
+    if not totp.verify(body.code, valid_window=1):
         raise HTTPException(400, "Code 2FA invalide")
     db_user.totp_enabled = "true"
     db.commit()
@@ -195,12 +201,12 @@ def enable_2fa(code: str, user=Depends(get_current_user), db: Session = Depends(
 
 
 @router.post("/2fa/disable")
-def disable_2fa(password: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
+def disable_2fa(body: Disable2FABody, user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Désactive le 2FA après vérification du mot de passe."""
     db_user = db.query(User).filter(User.id == user["id"]).first()
     if not db_user:
         raise HTTPException(404)
-    if not pwd_context.verify(password, db_user.hashed_password):
+    if not pwd_context.verify(body.password, db_user.hashed_password):
         raise HTTPException(401, "Mot de passe incorrect")
     db_user.totp_enabled = "false"
     db_user.totp_secret = None

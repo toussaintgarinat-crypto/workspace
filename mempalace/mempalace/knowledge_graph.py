@@ -222,7 +222,7 @@ class KnowledgeGraph:
                         "direction": "outgoing",
                         "subject": name,
                         "predicate": row[2],
-                        "object": row[11],  # obj_name (branch est à l'index 10)
+                        "object": row[11],  # obj_name (index 11 = e.name appended by JOIN)
                         "valid_from": row[4],
                         "valid_to": row[5],
                         "confidence": row[6],
@@ -241,7 +241,7 @@ class KnowledgeGraph:
                 results.append(
                     {
                         "direction": "incoming",
-                        "subject": row[11],  # sub_name (branch est à l'index 10)
+                        "subject": row[11],  # sub_name (index 11 = e.name appended by JOIN)
                         "predicate": row[2],
                         "object": name,
                         "valid_from": row[4],

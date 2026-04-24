@@ -3,9 +3,9 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: oria
-      POSTGRES_USER: oria
-      POSTGRES_PASSWORD: oria_secret
+      POSTGRES_DB: ${POSTGRES_DB:-oria}
+      POSTGRES_USER: ${POSTGRES_USER:-oria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oria_secret}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -21,14 +21,16 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://oria:oria_secret@db:5432/oria
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oria}:${POSTGRES_PASSWORD:-oria_secret}@db:5432/${POSTGRES_DB:-oria}
+      JWT_SECRET: ${JWT_SECRET:-oria-secret-dev-change-en-prod}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       LIVEKIT_URL: ws://livekit:7880
-      LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: devsecret_oria_local_dev_key_32chars
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-devsecret_oria_local_dev_key_32chars}
       MATRIX_HOMESERVER_URL: http://synapse:8008
-      MATRIX_SERVER_NAME: oria.local
-      MATRIX_AS_TOKEN: "5c95b040fc487db2901d458463a84b187a521e647e6d2ad14a7fe8d4a4eac097"
-      MATRIX_HS_TOKEN: "216582996e3addbb9eba6327a3fa3a3760c11da3226b6aa3f3cce2b2a87445f1"
+      MATRIX_SERVER_NAME: ${MATRIX_SERVER_NAME:-oria.local}
+      MATRIX_AS_TOKEN: ${MATRIX_AS_TOKEN:-5c95b040fc487db2901d458463a84b187a521e647e6d2ad14a7fe8d4a4eac097}
+      MATRIX_HS_TOKEN: ${MATRIX_HS_TOKEN:-216582996e3addbb9eba6327a3fa3a3760c11da3226b6aa3f3cce2b2b87445f1}
     depends_on:
       db:
         condition: service_healthy
@@ -39,7 +41,7 @@ services:
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
 
   synapse:
     image: matrixdotorg/synapse:latest
@@ -57,7 +59,7 @@ services:
     environment:
       POSTGRES_DB: synapse
       POSTGRES_USER: synapse
-      POSTGRES_PASSWORD: synapse_secret
+      POSTGRES_PASSWORD: ${SYNAPSE_DB_PASSWORD:-synapse_secret}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     volumes:
       - synapse_pg_data:/var/lib/postgresql/data
