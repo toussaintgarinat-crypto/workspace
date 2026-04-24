@@ -1,0 +1,16 @@
+export const metrics = {
+  requests_total:      0,
+  llm_requests_total:  0,
+  llm_tokens_in:       0,
+  llm_tokens_out:      0,
+  ws_connections:      0,
+  ws_messages_total:   0,
+  errors_total:        0,
+  react_runs_total:    0,
+  react_tool_calls:    0,
+  mcp_calls_total:     0,
+  skills_activations:  0,
+  hitl_requests_total: 0,
+  hitl_approved:       0,
+  hitl_rejected:       0,
+}

@@ -1,0 +1,58 @@
+[     631ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8088/$NETBIRD_MGMT_API_ENDPOINT/api/instance:0
+[     632ms] [WARNING] Instance status check failed: {code: 404, message: Not Found} @ http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:0
+[     640ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[     640ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[     643ms] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136)
+[     642ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[     642ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[     642ms] [ERROR] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136) @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[     646ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[     646ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[     651ms] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136)
+[   14423ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[   14423ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[   14424ms] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136)
+[   16419ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[   16419ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[   16420ms] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136)
+[   52393ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[   52393ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[   52394ms] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136)
+[   58436ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8088/$NETBIRD_MGMT_API_ENDPOINT/api/instance:0
+[   58437ms] [WARNING] Instance status check failed: {code: 404, message: Not Found} @ http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:0
+[   58441ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[   58441ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[   58443ms] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136)
+[   58442ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[   58442ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[   58443ms] [ERROR] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136) @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[   58445ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost/.well-known/openid-configuration:0
+[   58445ms] [ERROR] Failed to fetch @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:0
+[   58447ms] TypeError: Failed to fetch
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:15220
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:1917
+    at n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:2136)

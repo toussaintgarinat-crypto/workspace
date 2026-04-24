@@ -1,0 +1,73 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ⚡ Forge
+      - button "🏠 Hikarechi ▾" [ref=e8] [cursor=pointer]:
+        - generic [ref=e9]: 🏠
+        - generic [ref=e10]: Hikarechi
+        - generic [ref=e11]: ▾
+    - generic [ref=e12]:
+      - button "💬 Workspace" [ref=e13] [cursor=pointer]
+      - button "🎯 Command Bridge" [ref=e14] [cursor=pointer]
+      - button "📈 Analytics" [ref=e15] [cursor=pointer]
+      - button "☀️ Morning Brief" [ref=e16] [cursor=pointer]
+      - button "🔍 Recherche" [ref=e17] [cursor=pointer]
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - button "Ventures & Pôles ▾" [ref=e20] [cursor=pointer]:
+          - generic [ref=e21]: Ventures & Pôles
+          - generic [ref=e22]: ▾
+        - button "+" [ref=e23] [cursor=pointer]
+      - generic [ref=e25]:
+        - button "▸" [ref=e26] [cursor=pointer]
+        - button "🚀 ESSAI OWN VENTURE" [ref=e27] [cursor=pointer]:
+          - generic [ref=e28]: 🚀
+          - generic [ref=e29]: ESSAI OWN VENTURE
+        - button "💬" [ref=e30] [cursor=pointer]
+    - button "Gouvernance IA ▸" [ref=e32] [cursor=pointer]:
+      - generic [ref=e33]: Gouvernance IA
+      - generic [ref=e34]: ▸
+    - button "Organisation ▸" [ref=e36] [cursor=pointer]:
+      - generic [ref=e37]: Organisation
+      - generic [ref=e38]: ▸
+    - button "+ New conversation" [ref=e39] [cursor=pointer]:
+      - generic [ref=e40]: +
+      - text: New conversation
+    - navigation [ref=e41]:
+      - generic [ref=e42]:
+        - generic [ref=e43]: Yesterday
+        - generic [ref=e44] [cursor=pointer]:
+          - generic [ref=e45]: Chat · Sales
+          - generic "Sales" [ref=e46]: 📈
+        - generic [ref=e48] [cursor=pointer]: Chat · Projet Alpha
+        - generic [ref=e49] [cursor=pointer]:
+          - generic [ref=e50]: Chat · Sales
+          - generic "Sales" [ref=e51]: 📈
+        - generic [ref=e53] [cursor=pointer]: New conversation
+        - generic [ref=e55] [cursor=pointer]: New conversation
+        - generic [ref=e57] [cursor=pointer]: New conversation
+      - generic [ref=e58]:
+        - generic [ref=e59]: Older
+        - generic [ref=e61] [cursor=pointer]: New conversation
+        - generic [ref=e63] [cursor=pointer]: New conversation
+        - generic [ref=e65] [cursor=pointer]: New conversation
+    - generic [ref=e66]:
+      - generic [ref=e67]:
+        - generic [ref=e68]: 👤
+        - generic [ref=e69]: toussaintgarinat
+      - generic [ref=e70]:
+        - button "⚙" [ref=e71] [cursor=pointer]
+        - button "↪" [ref=e72] [cursor=pointer]
+  - main [ref=e73]:
+    - generic [ref=e74]:
+      - generic [ref=e76]:
+        - generic [ref=e77]:
+          - heading "🌐 Réseau" [level=1] [ref=e78]
+          - paragraph [ref=e79]: Gestion de l'infrastructure NetBird — peers, groupes, politiques d'accès et routes
+        - button "+ Connecter un appareil" [ref=e80] [cursor=pointer]
+      - generic [ref=e81]:
+        - button "🖥 Peers" [ref=e82] [cursor=pointer]
+        - button "📂 Groupes" [ref=e83] [cursor=pointer]
+        - button "🔒 Politiques" [ref=e84] [cursor=pointer]
+        - button "🛣 Routes" [ref=e85] [cursor=pointer]
+      - generic [ref=e88]: "Erreur de connexion à NetBird : Not authenticated"

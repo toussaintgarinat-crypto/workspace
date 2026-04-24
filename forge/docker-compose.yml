@@ -1,0 +1,165 @@
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge
+      POSTGRES_DB: forge
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # ── Keycloak (SSO / OIDC) ───────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    command: start-dev --import-realm
+    ports:
+      - "8080:8080"
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/forge
+      - KC_DB_USERNAME=forge
+      - KC_DB_PASSWORD=forge
+      - KC_HTTP_ENABLED=true
+      - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME_STRICT_HTTPS=false
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # ── Qdrant ──────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # ── Core API (TypeScript / Bun / Hono) ─────────────────────
+  core:
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+    command: ["bun", "run", "src/index.ts"]
+    volumes:
+      - ./core/src:/app/src
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgresql://forge:forge@postgres:5432/forge
+      - QDRANT_URL=http://qdrant:6333
+      - ML_MODULE_URL=http://ml-module:8001
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/api
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-ollama}
+      - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-gemma4:e4b}
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
+      - NETBIRD_API_URL=${NETBIRD_API_URL:-https://api.netbird.io}
+      - NETBIRD_TOKEN=${NETBIRD_TOKEN:-}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    depends_on:
+      - postgres
+      - qdrant
+      - keycloak
+    restart: unless-stopped
+
+  # ── ML Module (Python / FastAPI) ────────────────────────────
+  ml-module:
+    build:
+      context: ./ml-module
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  # ── NetBird Signal ──────────────────────────────────────────
+  netbird-signal:
+    image: netbirdio/signal:latest
+    ports:
+      - "10000:10000"
+    volumes:
+      - netbird_signal_data:/var/lib/netbird
+    restart: unless-stopped
+
+  # ── NetBird Management ──────────────────────────────────────
+  netbird-management:
+    image: netbirdio/management:latest
+    ports:
+      - "33073:33073"
+    volumes:
+      - netbird_mgmt_data:/var/lib/netbird
+      - ./netbird/management.json:/etc/netbird/management.json
+    command: ["--config", "/etc/netbird/management.json", "--port", "33073", "--log-level", "info", "--disable-anonymous-metrics"]
+    depends_on:
+      - keycloak
+      - netbird-signal
+      - coturn
+    restart: unless-stopped
+
+  # ── NetBird Dashboard ───────────────────────────────────────
+  netbird-dashboard:
+    image: netbirdio/dashboard:latest
+    ports:
+      - "8088:80"
+    environment:
+      - AUTH_CLIENT_ID=netbird-client
+      - AUTH_AUDIENCE=netbird-client
+      - AUTH_AUTHORITY=http://localhost:8080/realms/forge
+      - AUTH_SUPPORTED_SCOPES=openid profile email offline_access api
+      - AUTH_REDIRECT_URI=/callback
+      - AUTH_SILENT_REDIRECT_URI=/silent-callback
+      - NETBIRD_MGMT_API_ENDPOINT=http://localhost:33073
+      - NETBIRD_SIGNAL_ENDPOINT=ws://localhost:10000
+      - USE_AUTH0=false
+    depends_on:
+      - netbird-management
+    restart: unless-stopped
+
+  # ── Coturn (STUN / TURN) ────────────────────────────────────
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478/udp"
+    volumes:
+      - ./netbird/turnserver.conf:/etc/coturn/turnserver.conf
+    restart: unless-stopped
+
+  # ── Frontend (React / Vite) ─────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - core
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  netbird_signal_data:
+  netbird_mgmt_data:

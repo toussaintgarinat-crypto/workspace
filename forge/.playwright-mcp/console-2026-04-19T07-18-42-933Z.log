@@ -1,0 +1,15 @@
+[     530ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users:0
+[     531ms] [LOG] {message: token invalid, code: 401} @ http://localhost:8088/_next/static/chunks/61e50b3054b28949.js:0
+[    1037ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users:0
+[    1037ms] [LOG] {message: token invalid, code: 401} @ http://localhost:8088/_next/static/chunks/61e50b3054b28949.js:0
+[    1542ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users:0
+[    1543ms] [LOG] {message: token invalid, code: 401} @ http://localhost:8088/_next/static/chunks/61e50b3054b28949.js:0
+[    2049ms] undefined
+[    2056ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users/current:0
+[    2056ms] [LOG] {message: token invalid, code: 401} @ http://localhost:8088/_next/static/chunks/61e50b3054b28949.js:0
+[    2059ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users?service_user=false:0
+[    2059ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users?service_user=true:0
+[    7066ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users?service_user=true:0
+[   12064ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users/current:0
+[   12065ms] [LOG] {message: token invalid, code: 401} @ http://localhost:8088/_next/static/chunks/61e50b3054b28949.js:0
+[   12068ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:33073/api/users?service_user=false:0

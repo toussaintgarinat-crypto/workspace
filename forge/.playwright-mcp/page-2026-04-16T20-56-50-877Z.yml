@@ -1,0 +1,85 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ⚡ Forge
+      - button "🏠 Hikarechi ▾" [ref=e8] [cursor=pointer]:
+        - generic [ref=e9]: 🏠
+        - generic [ref=e10]: Hikarechi
+        - generic [ref=e11]: ▾
+    - generic [ref=e12]:
+      - button "💬 Workspace" [ref=e13] [cursor=pointer]
+      - button "🎯 Command Bridge" [ref=e14] [cursor=pointer]
+      - button "📦 GitPack" [ref=e15] [cursor=pointer]
+      - button "🧾 Facturation" [ref=e16] [cursor=pointer]
+      - button "📚 Knowledge Base" [ref=e17] [cursor=pointer]
+      - button "🔭 Veille" [ref=e18] [cursor=pointer]
+      - button "🤖 Agents" [ref=e19] [cursor=pointer]
+      - button "🌐 Réseau" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - button "Pôles ▾" [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: Pôles
+        - generic [ref=e24]: ▾
+      - button "📊 Stratégie & Finance" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 📊
+        - generic [ref=e27]: Stratégie & Finance
+      - button "⚙️ Opérations & Tech" [ref=e28] [cursor=pointer]:
+        - generic [ref=e29]: ⚙️
+        - generic [ref=e30]: Opérations & Tech
+      - button "🚀 Croissance & Marketing" [ref=e31] [cursor=pointer]:
+        - generic [ref=e32]: 🚀
+        - generic [ref=e33]: Croissance & Marketing
+      - button "🤝 Ventes & Clientèle" [ref=e34] [cursor=pointer]:
+        - generic [ref=e35]: 🤝
+        - generic [ref=e36]: Ventes & Clientèle
+      - button "🛡️ Sentinel & Juridique" [ref=e37] [cursor=pointer]:
+        - generic [ref=e38]: 🛡️
+        - generic [ref=e39]: Sentinel & Juridique
+      - button "📊 Stratégie & Finance" [ref=e40] [cursor=pointer]:
+        - generic [ref=e41]: 📊
+        - generic [ref=e42]: Stratégie & Finance
+      - button "🤝 Ventes & Clientèle" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]: 🤝
+        - generic [ref=e45]: Ventes & Clientèle
+      - button "⚙️ Opérations & Tech" [ref=e46] [cursor=pointer]:
+        - generic [ref=e47]: ⚙️
+        - generic [ref=e48]: Opérations & Tech
+      - button "🚀 Croissance & Marketing" [ref=e49] [cursor=pointer]:
+        - generic [ref=e50]: 🚀
+        - generic [ref=e51]: Croissance & Marketing
+      - button "🛡️ Sentinel & Juridique" [ref=e52] [cursor=pointer]:
+        - generic [ref=e53]: 🛡️
+        - generic [ref=e54]: Sentinel & Juridique
+      - button "📊 Stratégie & Finance" [ref=e55] [cursor=pointer]:
+        - generic [ref=e56]: 📊
+        - generic [ref=e57]: Stratégie & Finance
+      - button "🛡️ Sentinel & Juridique" [ref=e58] [cursor=pointer]:
+        - generic [ref=e59]: 🛡️
+        - generic [ref=e60]: Sentinel & Juridique
+      - button "⚙️ Opérations & Tech" [ref=e61] [cursor=pointer]:
+        - generic [ref=e62]: ⚙️
+        - generic [ref=e63]: Opérations & Tech
+      - button "🚀 Croissance & Marketing" [ref=e64] [cursor=pointer]:
+        - generic [ref=e65]: 🚀
+        - generic [ref=e66]: Croissance & Marketing
+      - button "🤝 Ventes & Clientèle" [ref=e67] [cursor=pointer]:
+        - generic [ref=e68]: 🤝
+        - generic [ref=e69]: Ventes & Clientèle
+    - button "+ New conversation" [ref=e70] [cursor=pointer]:
+      - generic [ref=e71]: +
+      - text: New conversation
+    - navigation [ref=e72]:
+      - generic [ref=e73]:
+        - generic [ref=e74]: Older
+        - generic [ref=e76] [cursor=pointer]: New conversation
+    - generic [ref=e77]:
+      - generic [ref=e78]:
+        - generic [ref=e79]: 👤
+        - generic [ref=e80]: toussaintgarinat
+      - generic [ref=e81]:
+        - button "⚙" [ref=e82] [cursor=pointer]
+        - button "↪" [ref=e83] [cursor=pointer]
+  - main [ref=e84]:
+    - generic [ref=e87]:
+      - generic [ref=e88]: ⚡
+      - heading "Forge" [level=2] [ref=e89]
+      - paragraph [ref=e90]: Select a conversation or create a new one.

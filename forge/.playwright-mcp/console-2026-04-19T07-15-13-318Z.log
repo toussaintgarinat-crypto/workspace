@@ -1,0 +1,35 @@
+[     492ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:33071/api/instance:0
+[     492ms] [WARNING] Instance status check failed: TypeError: Failed to fetch
+    at n (http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:1:6377)
+    at r (http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:1:6733)
+    at http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:1:7550
+    at ih (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:101242)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126215)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126460)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126202)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126460)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126202)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126460) @ http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:0
+[     617ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8088/callback?error=invalid_scope&error_description=Invalid+scopes%3A+openid+profile+email+offline_access+api&state=zgvQEjmDhj6K3GmX&iss=http%3A%2F%2Flocalhost%3A8080%2Frealms%2Fforge:0
+[    1006ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:33071/api/instance:0
+[    1006ms] [WARNING] Instance status check failed: TypeError: Failed to fetch
+    at n (http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:1:6377)
+    at r (http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:1:6733)
+    at http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:1:7550
+    at ih (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:101242)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126215)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126460)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126202)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126460)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126202)
+    at e (http://localhost:8088/_next/static/chunks/667cbf944d896edf.js:1:126460) @ http://localhost:8088/_next/static/chunks/bda14900bb28840a.js:0
+[    1010ms] [ERROR] Error: Error from OIDC server: invalid_scope - Invalid+scopes:+openid+profile+email+offline_access+api
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:6970
+    at async n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:6224)
+    at async eu (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:31652)
+    at async http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:17984 @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1
+[    1010ms] [WARNING] Error: Error from OIDC server: invalid_scope - Invalid+scopes:+openid+profile+email+offline_access+api
+    at http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:6970
+    at async n (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:6224)
+    at async eu (http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1:31652)
+    at async http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:2:17984 @ http://localhost:8088/_next/static/chunks/300a3945c9b7c246.js:1

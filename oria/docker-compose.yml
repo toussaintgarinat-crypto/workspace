@@ -1,0 +1,92 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: oria
+      POSTGRES_USER: oria
+      POSTGRES_PASSWORD: oria_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oria -d oria"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://oria:oria_secret@db:5432/oria
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecret_oria_local_dev_key_32chars
+      MATRIX_HOMESERVER_URL: http://synapse:8008
+      MATRIX_SERVER_NAME: oria.local
+      MATRIX_AS_TOKEN: "5c95b040fc487db2901d458463a84b187a521e647e6d2ad14a7fe8d4a4eac097"
+      MATRIX_HS_TOKEN: "216582996e3addbb9eba6327a3fa3a3760c11da3226b6aa3f3cce2b2a87445f1"
+    depends_on:
+      db:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+      synapse:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  synapse:
+    image: matrixdotorg/synapse:latest
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./matrix/synapse_data:/data
+    depends_on:
+      - synapse_db
+    environment:
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+
+  synapse_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: synapse
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse_secret
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - synapse_pg_data:/var/lib/postgresql/data
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+      VITE_LIVEKIT_URL: ws://localhost:7880
+      VITE_MATRIX_URL: http://localhost:8008
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+
+  livekit:
+    image: livekit/livekit-server:latest
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml
+    command: --config /etc/livekit.yaml
+
+volumes:
+  postgres_data:
+  uploads_data:
+  synapse_pg_data:

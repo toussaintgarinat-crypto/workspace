@@ -1,0 +1,16 @@
+{
+  "name": "forge",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "core",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "docker-compose up --build",
+    "dev:core": "cd core && bun run dev",
+    "dev:frontend": "cd frontend && bun run dev",
+    "dev:ml": "cd ml-module && uvicorn api:app --reload --port 8001",
+    "install:all": "bun install && cd ml-module && pip install -r requirements.txt"
+  }
+}

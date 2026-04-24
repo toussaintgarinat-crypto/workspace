@@ -1,0 +1,105 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ⚡ Forge
+      - button "🏠 Hikarechi ▾" [ref=e8] [cursor=pointer]:
+        - generic [ref=e9]: 🏠
+        - generic [ref=e10]: Hikarechi
+        - generic [ref=e11]: ▾
+    - generic [ref=e12]:
+      - button "💬 Workspace" [ref=e13] [cursor=pointer]
+      - button "🎯 Command Bridge" [ref=e14] [cursor=pointer]
+      - button "📈 Analytics" [ref=e15] [cursor=pointer]
+      - button "☀️ Morning Brief" [ref=e16] [cursor=pointer]
+      - button "🔍 Recherche" [ref=e17] [cursor=pointer]
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - button "Ventures & Pôles ▾" [ref=e20] [cursor=pointer]:
+          - generic [ref=e21]: Ventures & Pôles
+          - generic [ref=e22]: ▾
+        - button "+" [ref=e23] [cursor=pointer]
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - button "▾" [ref=e81] [cursor=pointer]
+          - button "🚀 Projet Alpha" [ref=e27] [cursor=pointer]:
+            - generic [ref=e28]: 🚀
+            - generic [ref=e29]: Projet Alpha
+          - button "💬" [ref=e30] [cursor=pointer]
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - button "💰 Finance" [ref=e84] [cursor=pointer]:
+              - generic [ref=e85]: 💰
+              - generic [ref=e86]: Finance
+            - button "💬" [ref=e87] [cursor=pointer]
+          - generic [ref=e88]:
+            - button "💰 Finance" [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]: 💰
+              - generic [ref=e91]: Finance
+            - button "💬" [ref=e92] [cursor=pointer]
+          - generic [ref=e93]:
+            - button "📈 Sales" [ref=e94] [cursor=pointer]:
+              - generic [ref=e95]: 📈
+              - generic [ref=e96]: Sales
+            - button "💬" [active] [ref=e97] [cursor=pointer]
+      - generic [ref=e32]:
+        - button "▸" [ref=e33] [cursor=pointer]
+        - button "🚀 TechCorp" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]: 🚀
+          - generic [ref=e36]: TechCorp
+        - button "💬" [ref=e37] [cursor=pointer]
+    - button "Gouvernance IA ▸" [ref=e39] [cursor=pointer]:
+      - generic [ref=e40]: Gouvernance IA
+      - generic [ref=e41]: ▸
+    - button "Organisation ▸" [ref=e43] [cursor=pointer]:
+      - generic [ref=e44]: Organisation
+      - generic [ref=e45]: ▸
+    - button "+ New conversation" [ref=e46] [cursor=pointer]:
+      - generic [ref=e47]: +
+      - text: New conversation
+    - navigation [ref=e48]:
+      - generic [ref=e49]:
+        - generic [ref=e50]: Today
+        - generic [ref=e98] [cursor=pointer]:
+          - generic [ref=e99]: Chat · Sales
+          - generic "Sales" [ref=e100]: 📈
+        - generic [ref=e52] [cursor=pointer]: New conversation
+        - generic [ref=e54] [cursor=pointer]: New conversation
+        - generic [ref=e56] [cursor=pointer]: New conversation
+      - generic [ref=e57]:
+        - generic [ref=e58]: Yesterday
+        - generic [ref=e60] [cursor=pointer]: New conversation
+      - generic [ref=e61]:
+        - generic [ref=e62]: Older
+        - generic [ref=e64] [cursor=pointer]: New conversation
+        - generic [ref=e66] [cursor=pointer]: New conversation
+    - generic [ref=e67]:
+      - generic [ref=e68]:
+        - generic [ref=e69]: 👤
+        - generic [ref=e70]: toussaintgarinat
+      - generic [ref=e71]:
+        - button "⚙" [ref=e72] [cursor=pointer]
+        - button "↪" [ref=e73] [cursor=pointer]
+  - main [ref=e74]:
+    - generic [ref=e76]:
+      - generic [ref=e101]:
+        - generic [ref=e102]: Chat · Sales
+        - generic "Pôle" [ref=e103]: 📈 Sales
+        - generic [ref=e104]: ● ready
+      - generic [ref=e107]:
+        - textbox "Message Forge… (Entrée pour envoyer)" [ref=e108]
+        - generic [ref=e109]:
+          - button "⚛" [ref=e110] [cursor=pointer]
+          - combobox [ref=e111] [cursor=pointer]:
+            - option "Ollama" [selected]
+            - option "LM Studio"
+            - option "Anthropic"
+            - option "OpenAI"
+            - option "OpenRouter"
+            - option "Groq"
+            - option "Gemini"
+            - option "Mistral"
+            - option "DeepSeek"
+          - button "🔊" [ref=e112] [cursor=pointer]
+          - button "V2V" [ref=e113] [cursor=pointer]
+          - button "🎤" [ref=e114] [cursor=pointer]
+          - button "▶" [disabled] [ref=e115]
