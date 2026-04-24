@@ -1,19 +1,16 @@
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-function getHeaders() {
-  const token = localStorage.getItem('oria_token')
-  const headers = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  return headers
-}
-
 function notifyError(message) {
   window.dispatchEvent(new CustomEvent('oria:error', { detail: message }))
 }
 
 async function request(path, options = {}) {
   try {
-    const r = await fetch(`${BASE}/api${path}`, { headers: getHeaders(), ...options })
+    const r = await fetch(`${BASE}/api${path}`, {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    })
     if (!r.ok) {
       let detail = `Erreur ${r.status}`
       try { const body = await r.json(); detail = body.detail || detail } catch {}
@@ -39,10 +36,11 @@ export const api = {
   patch: (path, body)  => request(path, { method: 'PATCH', body: JSON.stringify(body) }),
   del:   (path)        => request(path, { method: 'DELETE' }),
   upload: (path, formData) => {
-    const token = localStorage.getItem('oria_token')
-    const headers = {}
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    return fetch(`${BASE}/api${path}`, { method: 'POST', headers, body: formData })
+    return fetch(`${BASE}/api${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
       .then(async r => {
         if (!r.ok) { const b = await r.json().catch(() => ({})); notifyError(b.detail || `Erreur ${r.status}`); return null }
         return r.json()

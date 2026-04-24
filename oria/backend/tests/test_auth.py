@@ -32,7 +32,7 @@ class TestRegister:
         r = client.post("/api/auth/register", json=REGISTER_PAYLOAD)
         assert r.status_code == 200
         data = r.json()
-        assert "token" in data
+        assert "oria_token" in r.cookies
         assert data["user"]["nom"] == "Alice"
         assert data["user"]["avatar_emoji"] == "🦄"
 
@@ -56,7 +56,7 @@ class TestLogin:
             "password": "secret123",
         })
         assert r.status_code == 200
-        assert "token" in r.json()
+        assert "oria_token" in r.cookies
 
     def test_login_mauvais_mot_de_passe_retourne_401(self, client):
         client.post("/api/auth/register", json=REGISTER_PAYLOAD)
@@ -73,14 +73,15 @@ class TestLogin:
         })
         assert r.status_code == 401
 
-    def test_login_sans_2fa_retourne_token(self, client):
+    def test_login_sans_2fa_pose_cookie_et_retourne_user(self, client):
         client.post("/api/auth/register", json=REGISTER_PAYLOAD)
         r = client.post("/api/auth/login", json={
             "email": "alice@test.com",
             "password": "secret123",
         })
         data = r.json()
-        assert "token" in data
+        assert "oria_token" in r.cookies
+        assert "user" in data
         assert "requires_2fa" not in data
 
 

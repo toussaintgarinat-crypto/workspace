@@ -5,74 +5,68 @@ import PortailCitoyen from './components/PortailCitoyen.jsx'
 import { initMatrixClient, startMatrixClient, stopMatrixClient } from './services/matrixClient.js'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const REFRESH_SEUIL_JOURS = 7  // renouveler si < 7 jours avant expiration
-
-// Décode le payload JWT (base64) sans vérification côté client
-function decodeToken(token) {
-  try {
-    const payload = token.split('.')[1]
-    const decoded = JSON.parse(atob(payload))
-    return { id: decoded.sub, nom: decoded.nom, avatar_emoji: decoded.avatar_emoji, exp: decoded.exp }
-  } catch {
-    return null
-  }
-}
-
-function joursAvantExpiration(token) {
-  const decoded = decodeToken(token)
-  if (!decoded?.exp) return null
-  const msRestants = decoded.exp * 1000 - Date.now()
-  return msRestants / (1000 * 60 * 60 * 24)
-}
+const REFRESH_SEUIL_JOURS = 7
 
 export default function App() {
+  // Optimistic initial state from profile cache — cookie handles actual auth
   const [moi, setMoi] = useState(() => {
-    const token = localStorage.getItem('oria_token')
-    if (!token) return null
+    try { return JSON.parse(localStorage.getItem('oria_user') || 'null') } catch { return null }
+  })
 
-    // Ré-initialiser le client Matrix si les credentials sont en localStorage
-    const matrixUserId    = localStorage.getItem('matrix_user_id')
-    const matrixToken     = localStorage.getItem('matrix_token')
+  useEffect(() => {
+    // Re-initialize Matrix if credentials are cached
+    const matrixUserId = localStorage.getItem('matrix_user_id')
+    const matrixToken  = localStorage.getItem('matrix_token')
     if (matrixUserId && matrixToken) {
       const client = initMatrixClient({ userId: matrixUserId, accessToken: matrixToken })
       startMatrixClient().catch(console.error)
-      void client // évite le warning lint unused
+      void client
     }
 
-    const user = decodeToken(token)
-    return user ? { id: user.id, nom: user.nom, avatar_emoji: user.avatar_emoji } : null
-  })
-
-  // Refresh silencieux si le token expire dans moins de REFRESH_SEUIL_JOURS jours
-  useEffect(() => {
-    const token = localStorage.getItem('oria_token')
-    if (!token || !moi) return
-    const jours = joursAvantExpiration(token)
-    if (jours === null || jours > REFRESH_SEUIL_JOURS) return
-
-    fetch(`${BASE}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    // Verify cookie session on mount (raw fetch — 401 is expected when not logged in)
+    fetch(`${BASE}/api/auth/me`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.token) {
-          localStorage.setItem('oria_token', data.token)
+        if (data?.user) {
           setMoi(data.user)
+          localStorage.setItem('oria_user', JSON.stringify(data.user))
+          _maybeRefresh()
+        } else {
+          // Cookie expired or absent — clear cached profile
+          setMoi(null)
+          localStorage.removeItem('oria_user')
+          localStorage.removeItem('oria_session_exp')
         }
       })
-      .catch(() => {}) // silencieux — pas de déconnexion si le refresh échoue
-  }, []) // une seule fois au montage
+      .catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function connecter({ token, user, matrix_user_id, matrix_access_token }) {
-    localStorage.setItem('oria_token', token)
+  function _maybeRefresh() {
+    const expStr = localStorage.getItem('oria_session_exp')
+    if (!expStr) return
+    const joursRestants = (parseInt(expStr) - Date.now()) / (1000 * 60 * 60 * 24)
+    if (joursRestants > REFRESH_SEUIL_JOURS) return
 
-    // Stocker et initialiser Matrix si le backend a retourné les credentials
+    fetch(`${BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.user) {
+          setMoi(data.user)
+          localStorage.setItem('oria_user', JSON.stringify(data.user))
+          localStorage.setItem('oria_session_exp', String(Date.now() + 30 * 24 * 60 * 60 * 1000))
+        }
+      })
+      .catch(() => {})
+  }
+
+  async function connecter({ user, matrix_user_id, matrix_access_token }) {
+    localStorage.setItem('oria_user', JSON.stringify(user))
+    localStorage.setItem('oria_session_exp', String(Date.now() + 30 * 24 * 60 * 60 * 1000))
+
     if (matrix_user_id && matrix_access_token) {
       localStorage.setItem('matrix_user_id', matrix_user_id)
       localStorage.setItem('matrix_token',   matrix_access_token)
       initMatrixClient({ userId: matrix_user_id, accessToken: matrix_access_token })
-      // Démarrage non-bloquant — la synchro se fait en arrière-plan
       startMatrixClient().catch(console.error)
     }
 
@@ -80,10 +74,12 @@ export default function App() {
   }
 
   function deconnecter() {
-    localStorage.removeItem('oria_token')
+    localStorage.removeItem('oria_user')
+    localStorage.removeItem('oria_session_exp')
     localStorage.removeItem('matrix_user_id')
     localStorage.removeItem('matrix_token')
     stopMatrixClient()
+    fetch(`${BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {})
     setMoi(null)
   }
 

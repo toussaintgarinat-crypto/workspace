@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from typing import Optional
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -6,7 +6,7 @@ from database import get_db
 from models.user import User
 from passlib.context import CryptContext
 from jose import jwt, JWTError
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import os
 import pyotp
 import services.matrix_service as matrix
@@ -16,6 +16,7 @@ router = APIRouter()
 SECRET_KEY   = os.getenv("JWT_SECRET", "oria-secret-dev-change-en-prod")
 ALGORITHM    = "HS256"
 EXPIRE_JOURS = 30
+SECURE_COOKIE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -48,11 +49,22 @@ def creer_token(user: User) -> str:
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
-    """Dépendance FastAPI — lit le token Bearer et retourne l'utilisateur."""
-    if not authorization or not authorization.startswith("Bearer "):
+def _set_auth_cookie(response: Response, token: str):
+    response.set_cookie(
+        key="oria_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=SECURE_COOKIE,
+        max_age=EXPIRE_JOURS * 24 * 3600,
+        path="/",
+    )
+
+def get_current_user(request: Request, db: Session = Depends(get_db)):
+    """Dépendance FastAPI — lit le token depuis le cookie httpOnly et retourne l'utilisateur."""
+    token = request.cookies.get("oria_token")
+    if not token:
         raise HTTPException(status_code=401, detail="Token manquant")
-    token = authorization[7:]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id      = payload.get("sub")
@@ -67,8 +79,8 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @router.post("/register")
-def register(data: Inscription, db: Session = Depends(get_db)):
-    """Créer un compte. Retourne un token JWT."""
+def register(data: Inscription, response: Response, db: Session = Depends(get_db)):
+    """Créer un compte. Pose un cookie httpOnly."""
     existant = db.query(User).filter(User.email == data.email).first()
     if existant:
         raise HTTPException(status_code=400, detail="Email déjà utilisé")
@@ -92,28 +104,28 @@ def register(data: Inscription, db: Session = Depends(get_db)):
         db.commit()
 
     token = creer_token(user)
+    _set_auth_cookie(response, token)
     return {
-        "token": token,
         "user": {"id": user.id, "nom": user.nom, "avatar_emoji": user.avatar_emoji},
         "matrix_user_id":      user.matrix_user_id,
         "matrix_access_token": user.matrix_access_token,
     }
 
 @router.post("/refresh")
-def refresh_token(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    """Renouvelle le token JWT pour 30 jours supplémentaires."""
+def refresh_token(response: Response, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Renouvelle le cookie pour 30 jours supplémentaires."""
     db_user = db.query(User).filter(User.id == user["id"]).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     token = creer_token(db_user)
+    _set_auth_cookie(response, token)
     return {
-        "token": token,
         "user": {"id": db_user.id, "nom": db_user.nom, "avatar_emoji": db_user.avatar_emoji},
     }
 
 @router.patch("/me")
-def update_profil(data: MiseAJourProfil, user=Depends(get_current_user), db: Session = Depends(get_db)):
-    """Modifier nom et/ou avatar_emoji. Retourne un nouveau token JWT."""
+def update_profil(data: MiseAJourProfil, response: Response, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Modifier nom et/ou avatar_emoji. Repose un cookie JWT à jour."""
     db_user = db.query(User).filter(User.id == user["id"]).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -124,14 +136,14 @@ def update_profil(data: MiseAJourProfil, user=Depends(get_current_user), db: Ses
     db.commit()
     db.refresh(db_user)
     token = creer_token(db_user)
+    _set_auth_cookie(response, token)
     return {
-        "token": token,
         "user": {"id": db_user.id, "nom": db_user.nom, "avatar_emoji": db_user.avatar_emoji},
     }
 
 @router.post("/login")
-def login(data: Connexion, db: Session = Depends(get_db)):
-    """Se connecter. Retourne un token JWT."""
+def login(data: Connexion, response: Response, db: Session = Depends(get_db)):
+    """Se connecter. Pose un cookie httpOnly."""
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not pwd_context.verify(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
@@ -154,12 +166,23 @@ def login(data: Connexion, db: Session = Depends(get_db)):
             raise HTTPException(status_code=401, detail="Code 2FA incorrect")
 
     token = creer_token(user)
+    _set_auth_cookie(response, token)
     return {
-        "token": token,
         "user": {"id": user.id, "nom": user.nom, "avatar_emoji": user.avatar_emoji},
         "matrix_user_id":      user.matrix_user_id,
         "matrix_access_token": user.matrix_access_token,
     }
+
+@router.get("/me")
+def get_me(user=Depends(get_current_user)):
+    """Vérifie la session et retourne l'utilisateur courant."""
+    return {"user": user}
+
+@router.post("/logout")
+def logout(response: Response):
+    """Détruit le cookie de session."""
+    response.delete_cookie(key="oria_token", path="/")
+    return {"ok": True}
 
 
 # ─── 2FA ─────────────────────────────────────────────────────────────────────
