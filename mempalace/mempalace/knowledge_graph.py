@@ -90,6 +90,9 @@ class KnowledgeGraph:
             CREATE INDEX IF NOT EXISTS idx_triples_object ON triples(object);
             CREATE INDEX IF NOT EXISTS idx_triples_predicate ON triples(predicate);
             CREATE INDEX IF NOT EXISTS idx_triples_valid ON triples(valid_from, valid_to);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_triples_unique_active
+                ON triples(subject, predicate, object, branch)
+                WHERE valid_to IS NULL;
         """)
         # Migration : ajoute la colonne branch si la DB existante ne l'a pas
         cols = [r[1] for r in conn.execute("PRAGMA table_info(triples)").fetchall()]
@@ -149,20 +152,14 @@ class KnowledgeGraph:
         conn.execute("INSERT OR IGNORE INTO entities (id, name) VALUES (?, ?)", (sub_id, subject))
         conn.execute("INSERT OR IGNORE INTO entities (id, name) VALUES (?, ?)", (obj_id, obj))
 
-        # Check for existing identical triple
-        existing = conn.execute(
-            "SELECT id FROM triples WHERE subject=? AND predicate=? AND object=? AND branch=? AND valid_to IS NULL",
-            (sub_id, pred, obj_id, branch),
-        ).fetchone()
-
-        if existing:
-            conn.close()
-            return existing[0]  # Already exists and still valid
-
+        # Use INSERT OR IGNORE to avoid the SELECT+INSERT race condition.
+        # The UNIQUE index on (subject, predicate, object, branch) WHERE valid_to IS NULL
+        # guarantees atomicity: a concurrent insert will be silently dropped.
         triple_id = f"t_{sub_id}_{pred}_{obj_id}_{hashlib.md5(f'{valid_from}{datetime.now().isoformat()}'.encode()).hexdigest()[:8]}"
 
         conn.execute(
-            """INSERT INTO triples (id, subject, predicate, object, valid_from, valid_to, confidence, source_closet, source_file, branch)
+            """INSERT OR IGNORE INTO triples
+               (id, subject, predicate, object, valid_from, valid_to, confidence, source_closet, source_file, branch)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 triple_id,
@@ -178,8 +175,14 @@ class KnowledgeGraph:
             ),
         )
         conn.commit()
+
+        # If the insert was ignored (duplicate), return the existing triple's id.
+        existing = conn.execute(
+            "SELECT id FROM triples WHERE subject=? AND predicate=? AND object=? AND branch=? AND valid_to IS NULL",
+            (sub_id, pred, obj_id, branch),
+        ).fetchone()
         conn.close()
-        return triple_id
+        return existing[0] if existing else triple_id
 
     def invalidate(self, subject: str, predicate: str, obj: str, ended: str = None):
         """Mark a relationship as no longer valid (set valid_to date)."""
@@ -210,6 +213,10 @@ class KnowledgeGraph:
 
         results = []
 
+        # Column layout for triples JOIN entities:
+        #   0:id  1:subject  2:predicate  3:object  4:valid_from  5:valid_to
+        #   6:confidence  7:source_closet  8:source_file  9:extracted_at
+        #   10:branch  11:e.name (the JOINed entity name alias)
         if direction in ("outgoing", "both"):
             query = "SELECT t.*, e.name as obj_name FROM triples t JOIN entities e ON t.object = e.id WHERE t.subject = ?"
             params = [eid]
@@ -222,7 +229,7 @@ class KnowledgeGraph:
                         "direction": "outgoing",
                         "subject": name,
                         "predicate": row[2],
-                        "object": row[11],  # obj_name (index 11 = e.name appended by JOIN)
+                        "object": row[11],  # obj_name — e.name aliased by JOIN (see column layout above)
                         "valid_from": row[4],
                         "valid_to": row[5],
                         "confidence": row[6],
@@ -241,7 +248,7 @@ class KnowledgeGraph:
                 results.append(
                     {
                         "direction": "incoming",
-                        "subject": row[11],  # sub_name (index 11 = e.name appended by JOIN)
+                        "subject": row[11],  # sub_name — e.name aliased by JOIN (see column layout above)
                         "predicate": row[2],
                         "object": name,
                         "valid_from": row[4],

@@ -1,4 +1,5 @@
 import { embed } from 'ai'
+import type { EmbeddingModel } from 'ai'
 import { openai }   from '@ai-sdk/openai'
 import { google }   from '@ai-sdk/google'
 import { mistral }  from '@ai-sdk/mistral'
@@ -21,17 +22,17 @@ async function embedLocal(texts: string[]): Promise<number[][]> {
 }
 
 async function embedOpenAI(text: string): Promise<number[]> {
-  const { embedding } = await embed({ model: openai.embedding('text-embedding-3-small'), value: text })
+  const { embedding } = await embed({ model: openai.embedding('text-embedding-3-small') as EmbeddingModel<string>, value: text })
   return embedding
 }
 
 async function embedGemini(text: string): Promise<number[]> {
-  const { embedding } = await embed({ model: google.textEmbeddingModel('text-embedding-004'), value: text })
+  const { embedding } = await embed({ model: google.textEmbeddingModel('text-embedding-004') as unknown as EmbeddingModel<string>, value: text })
   return embedding
 }
 
 async function embedMistral(text: string): Promise<number[]> {
-  const { embedding } = await embed({ model: mistral.textEmbeddingModel('mistral-embed'), value: text })
+  const { embedding } = await embed({ model: mistral.textEmbeddingModel('mistral-embed') as unknown as EmbeddingModel<string>, value: text })
   return embedding
 }
 

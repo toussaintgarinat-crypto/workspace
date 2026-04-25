@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from database import Base
 
@@ -12,7 +12,7 @@ class Vote(Base):
     question    = Column(Text, nullable=False)
     statut      = Column(String, default="ouvert")  # ouvert / ferme
     created_by  = Column(String, nullable=False)
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     ferme_at    = Column(DateTime, nullable=True)
     bulletins   = relationship("Bulletin", back_populates="vote", cascade="all, delete")
 
@@ -23,5 +23,5 @@ class Bulletin(Base):
     user_id    = Column(String, nullable=False)
     user_nom   = Column(String, nullable=False)
     choix      = Column(String, nullable=False)  # pour / contre / abstention
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     vote       = relationship("Vote", back_populates="bulletins")

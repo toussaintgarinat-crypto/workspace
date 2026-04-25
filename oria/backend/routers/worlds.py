@@ -113,6 +113,7 @@ def lister_worlds(db: Session = Depends(get_db), user=Depends(get_current_user))
     worlds = db.query(World).filter(World.id.in_(world_ids)).all() if world_ids else []
     return [{"id": w.id, "nom": w.nom, "description": w.description,
              "emoji": w.emoji, "couleur": w.couleur, "owner_id": w.owner_id,
+             "is_garden": bool(w.is_garden),
              "nb_membres": len(w.members), "nb_buildings": len(w.buildings)} for w in worlds]
 
 @router.post("/")
@@ -165,7 +166,7 @@ def get_world(world_id: str, db: Session = Depends(get_db),
               user=Depends(get_current_user_optional)):
     world = db.query(World).filter(World.id == world_id).first()
     if not world:
-        return {"erreur": "Monde introuvable"}
+        raise HTTPException(status_code=404, detail="Monde introuvable")
 
     is_owner = user and world.owner_id == user["id"]
     user_abonnement_ids = (
@@ -195,6 +196,8 @@ def modifier_world(world_id: str, data: UpdateWorld, db: Session = Depends(get_d
     w = db.query(World).filter(World.id == world_id).first()
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
+    if w.is_garden:
+        raise HTTPException(status_code=403, detail="Le jardin secret ne peut pas être modifié")
     if data.nom:                     w.nom         = data.nom
     if data.description is not None: w.description = data.description
     if data.emoji:                   w.emoji       = data.emoji
@@ -207,6 +210,8 @@ def supprimer_world(world_id: str, db: Session = Depends(get_db), user=Depends(g
     w = db.query(World).filter(World.id == world_id).first()
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
+    if w.is_garden:
+        raise HTTPException(status_code=403, detail="Le jardin secret ne peut pas être supprimé")
     db.delete(w)
     db.commit()
     return {"status": "ok"}

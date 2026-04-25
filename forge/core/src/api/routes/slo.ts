@@ -15,7 +15,7 @@ app.get('/slo', async (c) => {
   const rows = await db.select().from(sloEntries)
     .where(orgId ? eq(sloEntries.orgId, orgId) : sql`1=1`)
   const healthScore = rows.length
-    ? Math.round(rows.reduce((a, r) => a + r.healthScore, 0) / rows.length)
+    ? Math.round(rows.reduce((a, r) => a + (r.healthScore ?? 100), 0) / rows.length)
     : 100
   return c.json({ modules: rows, healthScore })
 })

@@ -378,7 +378,6 @@ function DocumentSection({ sessionId, sessionTitre, worldId, existingDocs, onAtt
     if (!files.length) return
     setUploading(true)
 
-    const token = localStorage.getItem('oria_token')
     for (const file of files) {
       const form = new FormData()
       form.append('file', file)
@@ -390,7 +389,7 @@ function DocumentSection({ sessionId, sessionTitre, worldId, existingDocs, onAtt
       try {
         const r = await fetch(`${BASE}/api/documents/upload`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
           body: form,
         })
         if (!r.ok) {

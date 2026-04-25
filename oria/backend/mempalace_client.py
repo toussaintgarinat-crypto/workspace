@@ -13,21 +13,30 @@ Dégradation gracieuse : si chromadb n'est pas installé ou si le palace n'exist
 
 import os
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 PALACE_PATH = os.environ.get(
     "MEMPALACE_PALACE_PATH",
     str(Path.home() / ".mempalace" / "palace"),
 )
+PALACE_BASE_PATH = os.environ.get(
+    "PALACE_BASE_PATH",
+    str(Path.home() / ".mempalace" / "palaces"),
+)
 COLLECTION_NAME = "mempalace_drawers"
 SIMILARITY_THRESHOLD = 0.35  # en dessous : trop éloigné, on ignore
 
 
-def _get_collection(create: bool = False):
+def _get_user_palace_path(user_id: str) -> str:
+    return str(Path(PALACE_BASE_PATH) / user_id)
+
+
+def _get_collection(palace_path: str = None, create: bool = False):
+    path = palace_path or PALACE_PATH
     try:
         import chromadb  # noqa: PLC0415
-        client = chromadb.PersistentClient(path=PALACE_PATH)
+        client = chromadb.PersistentClient(path=path)
         if create:
             return client.get_or_create_collection(COLLECTION_NAME)
         return client.get_collection(COLLECTION_NAME)
@@ -35,13 +44,14 @@ def _get_collection(create: bool = False):
         return None
 
 
-def prefetch(query: str, n: int = 5, wing: str = None) -> list:
+def prefetch(query: str, n: int = 5, wing: str = None, user_id: str = None) -> list:
     """
     Cherche dans MemPalace les souvenirs pertinents pour la requête.
     Retourne une liste de dicts {text, wing, room, similarity}.
     Retourne [] si le palace est inaccessible.
     """
-    col = _get_collection()
+    path = _get_user_palace_path(user_id) if user_id else None
+    col = _get_collection(path)
     if not col:
         return []
     try:
@@ -75,7 +85,7 @@ def prefetch(query: str, n: int = 5, wing: str = None) -> list:
         return []
 
 
-def sync(content: str, session_id: str, phase: str, titre: str) -> bool:
+def sync(content: str, session_id: str, phase: str, titre: str, user_id: str = None) -> bool:
     """
     Persiste le contenu d'une phase IPCRA dans MemPalace.
     wing = wing_user / room = ipcra-sessions / hall = hall_events
@@ -83,12 +93,13 @@ def sync(content: str, session_id: str, phase: str, titre: str) -> bool:
     """
     if not content.strip():
         return False
-    col = _get_collection(create=True)
+    path = _get_user_palace_path(user_id) if user_id else None
+    col = _get_collection(path, create=True)
     if not col:
         return False
     try:
         uid = hashlib.md5(
-            (content[:60] + datetime.utcnow().isoformat()).encode()
+            (content[:60] + datetime.now(timezone.utc).isoformat()).encode()
         ).hexdigest()[:14]
         drawer_id = f"ipcra_{session_id}_{phase}_{uid}"
 
@@ -101,7 +112,7 @@ def sync(content: str, session_id: str, phase: str, titre: str) -> bool:
                     "room": "ipcra-sessions",
                     "hall": "hall_events",
                     "source_file": f"ipcra/{session_id}/{phase}",
-                    "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     "added_by": "oria-ipcra",
                     "session_titre": titre,
                     "phase": phase,
@@ -120,6 +131,7 @@ def sync_document(
     owner_id: str,
     session_id: str = None,
     session_titre: str = None,
+    user_id: str = None,
 ) -> int:
     """
     Indexe un document (converti en Markdown) dans MemPalace par chunks.
@@ -127,7 +139,8 @@ def sync_document(
     """
     if not content.strip():
         return 0
-    col = _get_collection(create=True)
+    path = _get_user_palace_path(user_id) if user_id else None
+    col = _get_collection(path, create=True)
     if not col:
         return 0
 
@@ -144,7 +157,7 @@ def sync_document(
         chunks.append("\n\n".join(current))
 
     added = 0
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for i, chunk in enumerate(chunks[:30]):  # max 30 chunks par document
         uid = hashlib.md5(f"{doc_id}_{i}_{chunk[:30]}".encode()).hexdigest()[:12]
         drawer_id = f"doc_{doc_id}_chunk{i}_{uid}"
@@ -231,6 +244,35 @@ def merge_branch(session_id: str) -> dict:
         return {"merged": merged_count, "conflicts": conflicts}
     except Exception:
         return {"merged": 0, "conflicts": []}
+
+
+def sync_conversation_turn(user_message: str, assistant_response: str, user_id: str) -> bool:
+    """Persiste un échange (Q/R) dans le palace personnel de l'utilisateur."""
+    content = f"Utilisateur : {user_message}"
+    if assistant_response:
+        content += f"\n\nAssistant : {assistant_response}"
+    path = _get_user_palace_path(user_id)
+    col = _get_collection(path, create=True)
+    if not col:
+        return False
+    try:
+        uid = hashlib.md5(
+            (content[:60] + datetime.now(timezone.utc).isoformat()).encode()
+        ).hexdigest()[:14]
+        col.add(
+            ids=[f"conv_{user_id}_{uid}"],
+            documents=[content],
+            metadatas=[{
+                "wing": "wing_user",
+                "room": "jardin-conversations",
+                "hall": "hall_events",
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "added_by": "oria-jardin",
+            }],
+        )
+        return True
+    except Exception:
+        return False
 
 
 def check_contradictions(session_id: str) -> list:

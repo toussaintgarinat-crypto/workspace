@@ -49,7 +49,7 @@ def list_public_worlds(
     offset: int = Query(0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(World).filter(World.is_public == True)
+    query = db.query(World).filter(World.is_public == True, World.is_garden == False)
 
     if q:
         query = query.filter(
@@ -83,6 +83,8 @@ def toggle_world_visibility(
     w = db.query(World).filter_by(id=world_id, owner_id=user["id"]).first()
     if not w:
         raise HTTPException(404)
+    if w.is_garden:
+        raise HTTPException(403, "Le jardin secret est toujours privé")
     w.is_public = is_public
     db.commit()
     return {"id": w.id, "is_public": w.is_public}

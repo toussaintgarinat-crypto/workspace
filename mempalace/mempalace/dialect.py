@@ -930,8 +930,22 @@ class Dialect:
 
     @staticmethod
     def count_tokens(text: str) -> int:
-        """Rough token count (1 token ~ 3 chars for structured text)."""
-        return len(text) // 3
+        """Rough token count estimate.
+
+        Heuristic: count whitespace-separated words and add a penalty for
+        long words (sub-word tokenisation splits them further).
+        Empirically closer to real BPE counts than a pure char-division.
+        """
+        words = text.split()
+        if not words:
+            return 0
+        # Base: one token per word
+        count = len(words)
+        # Extra tokens for long words (each 6-char chunk above the first adds ~1 token)
+        for w in words:
+            extra = (len(w) - 1) // 6
+            count += extra
+        return count
 
     def compression_stats(self, original_text: str, compressed: str) -> dict:
         """Get compression statistics for a text->AAAK conversion."""

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, DateTime
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from database import Base
 
@@ -17,5 +17,5 @@ class LLMConfig(Base):
     base_url   = Column(String, default="")                    # URL de base de l'API
     api_key    = Column(String, default="")                    # clé API (peut être vide)
     model      = Column(String, default="claude-haiku-4-5-20251001")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     updated_by = Column(String, nullable=True)

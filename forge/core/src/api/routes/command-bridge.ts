@@ -4,8 +4,9 @@ import { z } from 'zod'
 import { db } from '@/db'
 import { poles, poleMembers, decisionsN0, killSwitches, blackboardEvents, ventures } from '@/db/schema'
 import { eq, and, count, desc, inArray } from 'drizzle-orm'
+import type { JWTPayload } from '@/api/middleware/auth'
 
-export const commandBridgeRouter = new Hono()
+export const commandBridgeRouter = new Hono<{ Variables: { user: JWTPayload } }>()
 
 // ── Overview — état de tous les pôles ───────────────────────
 commandBridgeRouter.get('/overview', async (c) => {
@@ -40,7 +41,7 @@ commandBridgeRouter.get('/overview', async (c) => {
   const switches = await db.select().from(killSwitches)
     .where(inArray(killSwitches.poleId, poleIds))
 
-  const decMap    = Object.fromEntries(decisionCounts.map(d => [d.poleId, Number(d.nb)]))
+  const decMap: Record<string, number> = Object.fromEntries(decisionCounts.map(d => [d.poleId, Number(d.nb)]))
   const memberMap = Object.fromEntries(memberCounts.map(m => [m.poleId, Number(m.nb)]))
   const switchMap = Object.fromEntries(switches.map(s => [s.poleId, s.enPause]))
 
@@ -62,7 +63,7 @@ commandBridgeRouter.get('/overview', async (c) => {
   return c.json({
     poles:          polesData,
     ventures:       userVentures.map(v => ({ id: v.id, nom: v.nom, emoji: v.emoji, couleur: v.couleur, type: v.type })),
-    totalDecisions: Object.values(decMap).reduce((a, b) => a + b, 0),
+    totalDecisions: Object.values(decMap).reduce((a: number, b: number) => a + b, 0),
     totalPoles:     userPoles.length,
   })
 })
@@ -186,16 +187,14 @@ commandBridgeRouter.get('/blackboard', async (c) => {
   const niveau = c.req.query('niveau')
   const limit  = Math.min(Number(c.req.query('limit') || 30), 100)
 
-  let query = db.select().from(blackboardEvents)
-    .orderBy(desc(blackboardEvents.createdAt))
-    .limit(limit)
+  const rows = niveau
+    ? await db.select().from(blackboardEvents)
+        .where(eq(blackboardEvents.niveau, niveau as 'N0' | 'N1' | 'N2' | 'N3'))
+        .orderBy(desc(blackboardEvents.createdAt))
+        .limit(limit)
+    : await db.select().from(blackboardEvents)
+        .orderBy(desc(blackboardEvents.createdAt))
+        .limit(limit)
 
-  if (niveau) {
-    query = db.select().from(blackboardEvents)
-      .where(eq(blackboardEvents.niveau, niveau as 'N0' | 'N1' | 'N2' | 'N3'))
-      .orderBy(desc(blackboardEvents.createdAt))
-      .limit(limit)
-  }
-
-  return c.json(await query)
+  return c.json(rows)
 })

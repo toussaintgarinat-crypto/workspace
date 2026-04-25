@@ -36,11 +36,10 @@ export default function DocumentsManager({ moi, worldId }) {
       if (worldId) form.append('world_id', worldId)
       form.append('index_memory', 'true')
 
-      const token = localStorage.getItem('oria_token')
       try {
         const r = await fetch(`${BASE}/api/documents/upload`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
           body: form,
         })
         if (!r.ok) {

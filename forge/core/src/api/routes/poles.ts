@@ -4,8 +4,9 @@ import { z } from 'zod'
 import { db } from '@/db'
 import { poles, poleMembers, llmPresets } from '@/db/schema'
 import { eq, and, or } from 'drizzle-orm'
+import type { JWTPayload } from '@/api/middleware/auth'
 
-export const polesRouter = new Hono()
+export const polesRouter = new Hono<{ Variables: { user: JWTPayload } }>()
 
 // ── Les 5 pôles par défaut à l'onboarding ───────────────────
 export const DEFAULT_POLES = [
@@ -71,7 +72,7 @@ polesRouter.post(
     ventureId:   z.string().uuid('ventureId est obligatoire'),
   })),
   async (c) => {
-    const user = c.get('user') as { sub: string; nom: string; avatarEmoji: string }
+    const user = c.get('user') as { sub: string; nom: string; avatarEmoji: string; orgId?: string | null }
     const data = c.req.valid('json')
 
     const [pole] = await db.insert(poles).values({

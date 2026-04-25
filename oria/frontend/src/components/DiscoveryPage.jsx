@@ -4,14 +4,17 @@ import { api } from '../services/api.js'
 const TAGS_SUGGESTIONS = ['IA', 'créatif', 'éducation', 'travail', 'art', 'tech', 'communauté', 'jeux', 'musique', 'science']
 
 export default function DiscoveryPage({ moi, onJoinWorld }) {
-  const [worlds, setWorlds]         = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [search, setSearch]         = useState('')
-  const [activeTag, setActiveTag]   = useState(null)
+  const [worlds, setWorlds]           = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [search, setSearch]           = useState('')
+  const [activeTag, setActiveTag]     = useState(null)
   const [joinLoading, setJoinLoading] = useState(null)
-  const [toast, setToast]           = useState(null)
+  const [followLoading, setFollowLoading] = useState(null)
+  const [followingSet, setFollowingSet]   = useState(new Set())
+  const [toast, setToast]             = useState(null)
 
   useEffect(() => { fetchWorlds() }, [search, activeTag])
+  useEffect(() => { fetchFollowing() }, [])
 
   async function fetchWorlds() {
     setLoading(true)
@@ -23,6 +26,11 @@ export default function DiscoveryPage({ moi, onJoinWorld }) {
     setLoading(false)
   }
 
+  async function fetchFollowing() {
+    const data = await api.get('/social/following')
+    if (Array.isArray(data)) setFollowingSet(new Set(data.map(u => u.id)))
+  }
+
   async function joinWorld(worldId) {
     setJoinLoading(worldId)
     const data = await api.post(`/worlds/${worldId}/rejoindre`, { user_id: moi.id })
@@ -31,6 +39,20 @@ export default function DiscoveryPage({ moi, onJoinWorld }) {
       showToast('✅ Monde rejoint !')
       onJoinWorld?.()
     }
+  }
+
+  async function toggleFollow(ownerId) {
+    setFollowLoading(ownerId)
+    const isFollowing = followingSet.has(ownerId)
+    if (isFollowing) {
+      await api.del(`/social/follow/${ownerId}`)
+      setFollowingSet(prev => { const s = new Set(prev); s.delete(ownerId); return s })
+    } else {
+      await api.post(`/social/follow/${ownerId}`)
+      setFollowingSet(prev => new Set([...prev, ownerId]))
+      showToast('✅ Suivi !')
+    }
+    setFollowLoading(null)
   }
 
   function showToast(msg) {
@@ -93,6 +115,9 @@ export default function DiscoveryPage({ moi, onJoinWorld }) {
               moi={moi}
               onJoin={() => joinWorld(w.id)}
               loading={joinLoading === w.id}
+              isFollowing={followingSet.has(w.owner_id)}
+              onToggleFollow={() => toggleFollow(w.owner_id)}
+              followLoading={followLoading === w.owner_id}
             />
           ))}
         </div>
@@ -101,7 +126,7 @@ export default function DiscoveryPage({ moi, onJoinWorld }) {
   )
 }
 
-function WorldCard({ world, moi, onJoin, loading }) {
+function WorldCard({ world, moi, onJoin, loading, isFollowing, onToggleFollow, followLoading }) {
   const isOwner = moi?.id === world.owner_id
 
   return (
@@ -134,13 +159,23 @@ function WorldCard({ world, moi, onJoin, loading }) {
           <span>🤖 {world.agent_count}</span>
         </div>
 
-        {/* Auteur */}
+        {/* Auteur + Follow */}
         <div className="wc-owner">
           <span className="wc-owner-avatar">{world.owner_avatar}</span>
           <span>{world.owner_nom}</span>
+          {!isOwner && (
+            <button
+              className={`btn-follow-owner ${isFollowing ? 'following' : ''}`}
+              onClick={e => { e.stopPropagation(); onToggleFollow() }}
+              disabled={followLoading}
+              title={isFollowing ? 'Ne plus suivre' : 'Suivre'}
+            >
+              {followLoading ? '⏳' : isFollowing ? '✓ Suivi' : '＋ Suivre'}
+            </button>
+          )}
         </div>
 
-        {/* Action */}
+        {/* Action rejoindre */}
         {!isOwner && (
           <button
             className="btn-join-world"

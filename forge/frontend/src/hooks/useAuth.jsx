@@ -9,35 +9,19 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // Guard against React StrictMode double-invoke (keycloak-js can only be initialized once).
-    // keycloak.authenticated is undefined until init() resolves — we must wait if still pending.
-    if (keycloak.didInitialize) {
-      if (typeof keycloak.authenticated !== 'undefined') {
-        // init() already resolved
-        if (keycloak.authenticated) {
-          const p = keycloak.tokenParsed
-          setUser({
-            id:          p.sub,
-            nom:         p.nom || p.preferred_username || p.name || 'Utilisateur',
-            avatarEmoji: p.avatarEmoji || '👤',
-            email:       p.email || '',
-          })
-        }
-        setLoading(false)
-      } else {
-        // init() still in progress — wire callbacks so we respond when it finishes
-        keycloak.onAuthSuccess = () => {
-          const p = keycloak.tokenParsed
-          setUser({
-            id:          p.sub,
-            nom:         p.nom || p.preferred_username || p.name || 'Utilisateur',
-            avatarEmoji: p.avatarEmoji || '👤',
-            email:       p.email || '',
-          })
-          setLoading(false)
-        }
-        keycloak.onAuthError = () => setLoading(false)
-        keycloak.onReady     = () => { if (!keycloak.authenticated) setLoading(false) }
+    // keycloak.authenticated is undefined until init() resolves.
+    if (typeof keycloak.authenticated !== 'undefined') {
+      // init() already resolved
+      if (keycloak.authenticated) {
+        const p = keycloak.tokenParsed
+        setUser({
+          id:          p.sub,
+          nom:         p.nom || p.preferred_username || p.name || 'Utilisateur',
+          avatarEmoji: p.avatarEmoji || '👤',
+          email:       p.email || '',
+        })
       }
+      setLoading(false)
       return
     }
 

@@ -6,6 +6,7 @@ const DEFAULT_AGENT = {
   map_x: 5, map_y: 5, forge_url: 'http://localhost:3001',
   forge_provider: 'ollama', forge_model: '',
   can_read_docs: true, use_memory: true, use_ipcra: false,
+  wake_word: '',
 }
 
 const PROVIDERS = ['ollama', 'anthropic', 'openai', 'groq', 'gemini', 'mistral', 'deepseek', 'lmstudio', 'openrouter']
@@ -120,6 +121,18 @@ export default function AgentManager({ world, moi, onAgentsChange }) {
             <label>Modèle (optionnel)</label>
             <input type="text" value={form.forge_model} onChange={e => f('forge_model', e.target.value)} placeholder="Laisse vide = défaut Forge"/>
           </div>
+        </div>
+
+        <div className="form-section-title">Activation vocale</div>
+        <div className="form-row">
+          <label>Mot d'activation (wake word)</label>
+          <input
+            type="text"
+            value={form.wake_word || ''}
+            onChange={e => f('wake_word', e.target.value)}
+            placeholder={`Par défaut : "${form.nom || 'prénom de l\'agent'}"`}
+          />
+          <span className="form-hint">👂 L'assistant s'active quand il entend ce mot. Laisse vide pour utiliser le prénom.</span>
         </div>
 
         <div className="form-section-title">Capacités</div>

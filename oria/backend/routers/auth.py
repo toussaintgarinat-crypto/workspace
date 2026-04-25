@@ -6,7 +6,7 @@ from database import get_db
 from models.user import User
 from passlib.context import CryptContext
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import pyotp
 import services.matrix_service as matrix
@@ -40,7 +40,7 @@ class MiseAJourProfil(BaseModel):
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def creer_token(user: User) -> str:
-    expire = datetime.utcnow() + timedelta(days=EXPIRE_JOURS)
+    expire = datetime.now(timezone.utc) + timedelta(days=EXPIRE_JOURS)
     payload = {
         "sub": user.id,
         "nom": user.nom,
@@ -101,7 +101,63 @@ def register(data: Inscription, response: Response, db: Session = Depends(get_db
         user.matrix_user_id      = matrix_data["user_id"]
         user.matrix_access_token = matrix_data["access_token"]
         user.matrix_provisioned  = "true"
-        db.commit()
+
+    # ── Jardin secret : espace privé auto-créé, inviolable ──────
+    from models.world import World, Member
+    from models.building import Building, Room
+    import uuid as _uuid
+
+    jardin = World(
+        id=str(_uuid.uuid4()),
+        nom="Mon Jardin Secret",
+        description="Mon espace privé, invisible pour tous",
+        emoji="🌿",
+        couleur="#2d5a27",
+        owner_id=user.id,
+        is_public=False,
+        is_garden=True,
+    )
+    db.add(jardin)
+    db.add(Member(world_id=jardin.id, user_id=user.id, nom=user.nom,
+                  avatar_emoji=user.avatar_emoji, role="proprietaire"))
+    db.flush()
+
+    bld = Building(id=str(_uuid.uuid4()), world_id=jardin.id,
+                   nom="Mon espace", type="maison", emoji="🌿", couleur="#2d5a27")
+    db.add(bld)
+    db.flush()
+    for pos, (nom, emoji) in enumerate([("📔 Journal", "📔"), ("💭 Pensées", "💭"), ("🎯 Objectifs", "🎯")]):
+        db.add(Room(id=str(_uuid.uuid4()), building_id=bld.id, nom=nom, type="texte", emoji=emoji, position=pos))
+
+    user.jardin_world_id = jardin.id
+
+    # ── Agent personnel du Jardin — configurable via OpenRouter/Ollama/etc. ──
+    from models.agent import AgentDefinition as _AgentDef
+    _forge_url = os.getenv("FORGE_URL", "http://localhost:3001")
+    _provider  = os.getenv("DEFAULT_AGENT_PROVIDER", "openrouter")
+    _model     = os.getenv("DEFAULT_AGENT_MODEL", "anthropic/claude-sonnet-4-6")
+    _agent = _AgentDef(
+        id=str(_uuid.uuid4()),
+        world_id=jardin.id,
+        owner_id=user.id,
+        nom="Mon Assistant",
+        avatar_emoji="🌿",
+        description="Ton assistant personnel — il se souvient de tout ce que tu partages.",
+        system_prompt=(
+            f"Tu es l'assistant personnel de {user.nom}. "
+            "Tu as accès à sa mémoire longue durée (documents, notes, conversations passées). "
+            "Sois direct, chaleureux et contextuel. Utilise la mémoire pour personnaliser tes réponses."
+        ),
+        forge_url=_forge_url,
+        forge_provider=_provider,
+        forge_model=_model,
+        use_memory=True,
+        is_active=True,
+        is_jardin_agent=True,
+    )
+    db.add(_agent)
+    db.commit()
+    # ────────────────────────────────────────────────────────────
 
     token = creer_token(user)
     _set_auth_cookie(response, token)
@@ -158,7 +214,7 @@ def login(data: Connexion, response: Response, db: Session = Depends(get_db)):
             db.commit()
 
     # Vérification 2FA si activé
-    if user.totp_enabled == "true" and user.totp_secret:
+    if user.totp_enabled and user.totp_secret:
         if not data.totp_code:
             return {"requires_2fa": True}
         totp = pyotp.TOTP(user.totp_secret)
@@ -218,7 +274,7 @@ def enable_2fa(body: Enable2FABody, user=Depends(get_current_user), db: Session 
     totp = pyotp.TOTP(db_user.totp_secret)
     if not totp.verify(body.code, valid_window=1):
         raise HTTPException(400, "Code 2FA invalide")
-    db_user.totp_enabled = "true"
+    db_user.totp_enabled = True
     db.commit()
     return {"ok": True, "message": "2FA activé"}
 
@@ -231,7 +287,7 @@ def disable_2fa(body: Disable2FABody, user=Depends(get_current_user), db: Sessio
         raise HTTPException(404)
     if not pwd_context.verify(body.password, db_user.hashed_password):
         raise HTTPException(401, "Mot de passe incorrect")
-    db_user.totp_enabled = "false"
+    db_user.totp_enabled = False
     db_user.totp_secret = None
     db.commit()
     return {"ok": True, "message": "2FA désactivé"}
@@ -242,7 +298,7 @@ def get_2fa_status(user=Depends(get_current_user), db: Session = Depends(get_db)
     db_user = db.query(User).filter(User.id == user["id"]).first()
     if not db_user:
         raise HTTPException(404)
-    return {"totp_enabled": db_user.totp_enabled == "true"}
+    return {"totp_enabled": bool(db_user.totp_enabled)}
 
 
 @router.get("/me/export")
@@ -267,7 +323,7 @@ def exporter_donnees(user=Depends(get_current_user), db: Session = Depends(get_d
             "created_at": str(db_user.id),  # UUID v4 contient timestamp
         },
         "communes": [{"world_id": m.world_id, "role": m.role} for m in membres],
-        "export_date": __import__('datetime').datetime.utcnow().isoformat(),
+        "export_date": datetime.now(timezone.utc).isoformat(),
         "note": "Export RGPD — Article 20 du RGPD — Droit à la portabilité des données",
     }
 

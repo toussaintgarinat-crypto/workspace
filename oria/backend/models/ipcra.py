@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Text, DateTime, Integer
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from database import Base
 
@@ -15,7 +15,7 @@ class IPCRATrace(Base):
     steps      = Column(Text, default="[]")   # JSON list des steps VoltAgent
     agent_nom  = Column(String, default="")
     duree_ms   = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class IPCRASession(Base):
@@ -34,5 +34,5 @@ class IPCRASession(Base):
     reflechir_notes   = Column(Text, default="")   # retour critique, traces agent
     ajuster_notes     = Column(Text, default="")   # leçons apprises, ajustements MemPalace
     status      = Column(String, default="active") # active|completee|archivee
-    created_at  = Column(DateTime, default=datetime.utcnow)
-    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

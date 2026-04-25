@@ -29,7 +29,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "chromadb>=0.4.0,<0.8.0",
+    "chromadb>=0.6.0,<0.7.0",
     "pyyaml>=6.0",
 ]
 
@@ -42,7 +42,7 @@ Repository = "https://github.com/milla-jovovich/mempalace"
 include = ["mempalace*"]
 
 [project.scripts]
-mempalace = "mempalace:main"
+mempalace = "mempalace.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "build>=1.0", "twine>=4.0"]

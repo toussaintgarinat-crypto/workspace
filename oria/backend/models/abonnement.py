@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from database import Base
 
@@ -17,7 +17,7 @@ class Abonnement(Base):
     stripe_price_id   = Column(String, nullable=True)
     stripe_product_id = Column(String, nullable=True)
     actif             = Column(Boolean, default=True)
-    created_at        = Column(DateTime, default=datetime.utcnow)
+    created_at        = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     world             = relationship("World", back_populates="abonnements")
     membres           = relationship("MembreAbonnement", back_populates="abonnement", cascade="all, delete")
     rooms_requis      = relationship("RoomAbonnement", back_populates="abonnement", cascade="all, delete")
@@ -30,7 +30,7 @@ class MembreAbonnement(Base):
     abonnement_id          = Column(String, ForeignKey("abonnements.id"), nullable=False)
     actif                  = Column(Boolean, default=True)
     stripe_subscription_id = Column(String, nullable=True)
-    date_debut             = Column(DateTime, default=datetime.utcnow)
+    date_debut             = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     date_fin               = Column(DateTime, nullable=True)
     assigne_manuellement   = Column(Boolean, default=False)
     member                 = relationship("Member", back_populates="abonnements")

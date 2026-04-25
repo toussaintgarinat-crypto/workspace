@@ -54,10 +54,8 @@ export default function LLMConfigPanel({ world, moi, onFermer }) {
     // Le plus simple : appeler l'API directement avec un prompt de test
     const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/llm-config/${world.id}/test`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('oria_token')}`,
-        'Content-Type': 'application/json',
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
     })
     const d = await r.json().catch(() => null)
     setTesting(false)

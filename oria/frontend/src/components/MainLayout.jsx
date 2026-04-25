@@ -31,6 +31,8 @@ import DiscoveryPage from './DiscoveryPage.jsx'
 import DocumentsManager from './DocumentsManager.jsx'
 import AgentManager from './AgentManager.jsx'
 import IPCRAPanel from './IPCRAPanel.jsx'
+import ActivityFeed from './ActivityFeed.jsx'
+import JardinPanel from './JardinPanel.jsx'
 
 export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
   const [worlds, setWorlds]                 = useState([])
@@ -51,6 +53,8 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
   const [showMyDocs, setShowMyDocs]         = useState(false)
   const [showAgents, setShowAgents]         = useState(false)
   const [showIPCRA, setShowIPCRA]           = useState(false)
+  const [showFeed, setShowFeed]             = useState(false)
+  const [showJardin, setShowJardin]         = useState(false)
   const [worldAgents, setWorldAgents]       = useState([])
 
   const resizeRef = useRef(null) // { index, startX, startWidths, containerWidth }
@@ -95,7 +99,7 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
     setShowMembers(false); setDmDestinataire(null); setDocsScope(null)
     setOutilActif(null); setVoteConseil(null)
     setShowMap(false); setShowDiscovery(false); setShowMyDocs(false)
-    setShowAgents(false); setShowIPCRA(false); setShowNetwork(false)
+    setShowAgents(false); setShowIPCRA(false); setShowNetwork(false); setShowFeed(false); setShowJardin(false)
   }
 
   function entrerRoom(room, building) {
@@ -209,7 +213,19 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
   const roomIds = new Set(roomsOuvertes.map(r => r.room.id))
 
   let contenuPrincipal
-  if (showDiscovery) {
+  if (showJardin) {
+    contenuPrincipal = <JardinPanel moi={moi} />
+  } else if (showFeed) {
+    contenuPrincipal = (
+      <ActivityFeed
+        moi={moi}
+        onOuvrirWorld={async (worldId) => {
+          clearAllViews()
+          await chargerWorldComplet(worldId)
+        }}
+      />
+    )
+  } else if (showDiscovery) {
     contenuPrincipal = (
       <DiscoveryPage
         moi={moi}
@@ -342,7 +358,11 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
         worlds={worlds}
         worldActifId={worldActif?.id}
         moi={moi}
-        onSelectWorld={id => { clearAllViews(); chargerWorldComplet(id) }}
+        onSelectWorld={id => {
+          const w = worlds.find(w => w.id === id)
+          if (w?.is_garden) { clearAllViews(); setShowJardin(true) }
+          else { clearAllViews(); chargerWorldComplet(id) }
+        }}
         onCreerWorld={() => setCreerWorld(true)}
         onDeconnexion={onDeconnexion}
         onNetwork={() => { clearAllViews(); setShowNetwork(true) }}
@@ -358,6 +378,9 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
         showMyDocs={showMyDocs}
         onIPCRA={() => { clearAllViews(); setShowIPCRA(true) }}
         showIPCRA={showIPCRA}
+        onFeed={() => { clearAllViews(); setShowFeed(true) }}
+        showFeed={showFeed}
+        showJardin={showJardin}
       />
 
       {!showNetwork && (

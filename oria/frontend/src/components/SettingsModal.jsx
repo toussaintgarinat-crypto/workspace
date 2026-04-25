@@ -37,9 +37,8 @@ export default function SettingsModal({ moi, onSauvegarde, onDeconnexion, onFerm
   }
 
   async function exporterDonnees() {
-    const token = localStorage.getItem('oria_token')
     const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/auth/me/export`, {
-      headers: { Authorization: `Bearer ${token}` }
+      credentials: 'include',
     })
     if (r.ok) {
       const data = await r.json()
@@ -52,10 +51,9 @@ export default function SettingsModal({ moi, onSauvegarde, onDeconnexion, onFerm
 
   async function supprimerCompte() {
     if (!confirm('Supprimer définitivement votre compte ? Cette action est irréversible.')) return
-    const token = localStorage.getItem('oria_token')
     const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/auth/me`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
+      credentials: 'include',
     })
     if (r.ok) {
       onDeconnexion()
@@ -68,8 +66,7 @@ export default function SettingsModal({ moi, onSauvegarde, onDeconnexion, onFerm
     setChargement(true)
     const data = await api.patch('/auth/me', { nom: nom.trim(), avatar_emoji: avatar })
     setChargement(false)
-    if (data?.token) {
-      localStorage.setItem('oria_token', data.token)
+    if (data?.user) {
       onSauvegarde(data.user)
     }
   }

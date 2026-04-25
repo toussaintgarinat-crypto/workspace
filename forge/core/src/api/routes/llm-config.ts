@@ -7,8 +7,9 @@ import { llmPresets, poles, poleTools, ventures, agentDefinitions, providerApiKe
 import { and, eq } from 'drizzle-orm'
 import { decrypt } from '@/config/crypto'
 import { AVAILABLE_PROVIDERS, resolveLlmConfig } from '@/llm'
+import type { JWTPayload } from '@/api/middleware/auth'
 
-export const llmConfigRouter = new Hono()
+export const llmConfigRouter = new Hono<{ Variables: { user: JWTPayload } }>()
 
 function ollamaBase() {
   return (process.env.OLLAMA_BASE_URL || 'http://localhost:11434/api').replace(/\/api\/?$/, '')

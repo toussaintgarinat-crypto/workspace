@@ -114,13 +114,12 @@ app.post('/dev/requests/:id/deploy', zValidator('json', z.object({
   if (!req) return c.json({ error: 'Not found' }, 404)
 
   const [rule] = await db.insert(automationRules).values({
-    poleId:     req.sourcePoleId,
     userId:     user.sub,
     nom:        req.title,
     trigger:    body.trigger,
-    action:     body.action,
+    actions:    JSON.stringify([{ type: 'custom', value: body.action }]),
     conditions: body.conditions ?? '{}',
-    enabled:    true,
+    actif:      true,
   }).returning()
 
   const [updated] = await db.update(poleDevRequests)

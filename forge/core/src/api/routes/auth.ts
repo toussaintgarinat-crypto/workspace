@@ -4,8 +4,9 @@ import { z } from 'zod'
 import { db } from '@/db'
 import { users } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import type { JWTPayload } from '@/api/middleware/auth'
 
-export const authRouter = new Hono()
+export const authRouter = new Hono<{ Variables: { user: JWTPayload } }>()
 
 // ── Profil — mise à jour nom / emoji ────────────────────────
 authRouter.patch(

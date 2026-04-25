@@ -21,7 +21,7 @@ agentsRouter.get('/', (c) => {
 agentsRouter.post('/run', async (c) => {
   const { task, poleId } = await c.req.json()
 
-  const result = await orchestrator.run(task, { poleId })
+  const response = await orchestrator.generateText(task)
 
-  return c.json({ result })
+  return c.json({ result: (response as any).text ?? response })
 })

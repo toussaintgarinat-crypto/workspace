@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Integer, Boolean
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid, secrets
 from database import Base
 
@@ -12,9 +12,10 @@ class World(Base):
     emoji       = Column(String, default="🌍")
     couleur     = Column(String, default="#5865F2")
     owner_id    = Column(String, nullable=False)
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     # Réseau social
     is_public   = Column(Boolean, default=False)
+    is_garden   = Column(Boolean, default=False)   # jardin secret — toujours privé
     tags        = Column(Text, default="")         # JSON list ex: '["IA","musique"]'
     view_count  = Column(Integer, default=0)
     # Carte 2D spatiale
@@ -33,7 +34,7 @@ class Member(Base):
     nom          = Column(String, nullable=False)
     avatar_emoji = Column(String, default="👤")
     role         = Column(String, default="membre")  # proprietaire | admin | membre
-    joined_at    = Column(DateTime, default=datetime.utcnow)
+    joined_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     world        = relationship("World", back_populates="members")
     abonnements  = relationship("MembreAbonnement", back_populates="member", cascade="all, delete")
 
@@ -46,5 +47,5 @@ class Invitation(Base):
     max_uses   = Column(Integer, default=0)   # 0 = illimité
     uses       = Column(Integer, default=0)
     expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     world      = relationship("World", back_populates="invitations")

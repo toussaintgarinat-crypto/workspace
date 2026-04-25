@@ -41,6 +41,7 @@ def _agent_dict(a: AgentDefinition) -> dict:
         "forge_model": a.forge_model,
         "can_read_docs": a.can_read_docs, "use_memory": a.use_memory,
         "use_ipcra": a.use_ipcra, "is_active": a.is_active,
+        "wake_word": a.wake_word or "",
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
 
@@ -61,6 +62,7 @@ class CreateAgent(BaseModel):
     can_read_docs:  bool = True
     use_memory:     bool = True
     use_ipcra:      bool = False
+    wake_word:      str = ""
 
 
 class UpdateAgent(BaseModel):
@@ -77,6 +79,7 @@ class UpdateAgent(BaseModel):
     use_memory:     Optional[bool] = None
     use_ipcra:      Optional[bool] = None
     is_active:      Optional[bool] = None
+    wake_word:      Optional[str] = None
 
 
 @router.get("/world/{world_id}")
@@ -97,7 +100,7 @@ def create_agent(body: CreateAgent, db: Session = Depends(get_db), user=Depends(
         forge_url=body.forge_url, forge_provider=body.forge_provider,
         forge_model=body.forge_model,
         can_read_docs=body.can_read_docs, use_memory=body.use_memory,
-        use_ipcra=body.use_ipcra,
+        use_ipcra=body.use_ipcra, wake_word=body.wake_word,
     )
     db.add(agent)
     db.commit()

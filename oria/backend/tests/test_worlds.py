@@ -66,9 +66,7 @@ class TestWorldCRUD:
 
     def test_obtenir_world_inexistant_retourne_erreur(self, client):
         r = client.get("/api/worlds/monde-qui-nexiste-pas")
-        # Le router retourne 200 avec un champ "erreur" plutôt qu'un 404 HTTP
-        assert r.status_code == 200
-        assert "erreur" in r.json()
+        assert r.status_code == 404
 
     def test_modifier_world_nom(self, client):
         w = create_world(client)

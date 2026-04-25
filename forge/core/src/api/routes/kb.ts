@@ -69,7 +69,7 @@ app.patch('/kb/articles/:id', async (c) => {
   // Ré-ingestion si le contenu a changé
   if (body.contenu && a) {
     deleteBySource(id).then(() =>
-      ingest({ text: a.contenu, sourceId: id, sourceType: 'kb_article', userId: user.sub, title: a.titre })
+      ingest({ text: a.contenu ?? '', sourceId: id, sourceType: 'kb_article', userId: user.sub, title: a.titre })
     ).catch(() => {})
   }
 

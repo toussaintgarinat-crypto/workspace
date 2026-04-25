@@ -6,8 +6,9 @@ import { providerApiKeys } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { encrypt, maskKey } from '@/config/crypto'
 import { invalidateCache } from '@/config/keystore'
+import type { JWTPayload } from '@/api/middleware/auth'
 
-export const apiKeysRouter = new Hono()
+export const apiKeysRouter = new Hono<{ Variables: { user: JWTPayload } }>()
 
 const PROVIDERS = [
   { id: 'openai',      label: 'OpenAI',      placeholder: 'sk-...',          url: 'https://platform.openai.com/api-keys' },

@@ -10,6 +10,7 @@ import models.llm_config
 import models.agent
 import models.document
 import models.ipcra
+import models.social
 from routers import worlds, buildings, rooms, tokens, auth, quartiers
 from routers import invitations, files as files_router, network as network_router
 from routers import abonnements as abonnements_router
@@ -86,6 +87,10 @@ app.include_router(agents_router,    prefix="/api/agents",    tags=["Agents IA"]
 app.include_router(documents_router, prefix="/api/documents", tags=["Documents"])
 app.include_router(discovery_router, prefix="/api/discover",  tags=["Découverte"])
 app.include_router(ipcra_router,     prefix="/api/ipcra",     tags=["IPCRA"])
+from routers.social_router import router as social_router
+from routers.jardin_router import router as jardin_router
+app.include_router(social_router,    prefix="/api/social",    tags=["Social"])
+app.include_router(jardin_router,    prefix="/api/jardin",    tags=["Jardin Secret"])
 # Application Service Matrix — montée sans préfixe /api (protocole Matrix)
 app.include_router(matrix_as.router, tags=["Matrix AS"])
 

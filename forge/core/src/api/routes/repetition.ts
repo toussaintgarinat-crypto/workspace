@@ -7,8 +7,9 @@ import {
   hitlRequests, poleDevRequests, poles,
 } from '@/db/schema'
 import { eq, and, gte, count, sql } from 'drizzle-orm'
+import type { JWTPayload } from '@/api/middleware/auth'
 
-const router = new Hono()
+const router = new Hono<{ Variables: { user: JWTPayload } }>()
 
 // GET /api/poles/:poleId/repetition-config
 router.get('/poles/:poleId/repetition-config', async (c) => {

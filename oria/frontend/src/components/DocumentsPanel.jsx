@@ -54,7 +54,7 @@ export default function DocumentsPanel({ scope, scopeId, scopeNom, moi, onFermer
     form.append('file', file)
     const res = await fetch(`${API_URL}/api/files/upload/${scope}/${scopeId}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('oria_token')}` },
+      credentials: 'include',
       body: form,
     })
     setChargement(false)

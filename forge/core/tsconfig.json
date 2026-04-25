@@ -8,7 +8,12 @@
     "outDir": "./dist",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "typeRoots": [
+      "./node_modules/@types",
+      "../node_modules/.bun/bun-types@1.3.13/node_modules"
+    ]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts"]
 }

@@ -1,0 +1,151 @@
+"""
+Réseau social : follow/unfollow, fil d'activité, notifications.
+"""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from database import get_db
+from routers.auth import get_current_user
+from models.social import UserFollow, Notification
+from models.user import User
+from models.world import World
+import json, uuid
+
+router = APIRouter()
+
+
+# ── Follow ───────────────────────────────────────────────────────
+
+@router.post("/follow/{user_id}")
+def follow_user(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if user_id == user["id"]:
+        raise HTTPException(400, "Tu ne peux pas te suivre toi-même")
+    if db.query(UserFollow).filter_by(follower_id=user["id"], followed_id=user_id).first():
+        raise HTTPException(400, "Déjà suivi")
+    target = db.query(User).filter_by(id=user_id).first()
+    if not target:
+        raise HTTPException(404, "Utilisateur introuvable")
+    db.add(UserFollow(follower_id=user["id"], followed_id=user_id))
+    db.add(Notification(
+        user_id=user_id,
+        type="new_follower",
+        data=json.dumps({
+            "follower_id":     user["id"],
+            "follower_nom":    user["nom"],
+            "follower_avatar": user["avatar_emoji"],
+        }),
+    ))
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/follow/{user_id}")
+def unfollow_user(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    follow = db.query(UserFollow).filter_by(follower_id=user["id"], followed_id=user_id).first()
+    if not follow:
+        raise HTTPException(404, "Pas suivi")
+    db.delete(follow)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/check/{user_id}")
+def check_follow(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    existing = db.query(UserFollow).filter_by(follower_id=user["id"], followed_id=user_id).first()
+    return {"following": bool(existing)}
+
+
+@router.get("/following")
+def get_following(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    follows = db.query(UserFollow).filter_by(follower_id=user["id"]).all()
+    ids = [f.followed_id for f in follows]
+    users = db.query(User).filter(User.id.in_(ids)).all() if ids else []
+    return [{"id": u.id, "nom": u.nom, "avatar_emoji": u.avatar_emoji, "bio": u.bio or ""} for u in users]
+
+
+@router.get("/followers")
+def get_followers(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    follows = db.query(UserFollow).filter_by(followed_id=user["id"]).all()
+    ids = [f.follower_id for f in follows]
+    users = db.query(User).filter(User.id.in_(ids)).all() if ids else []
+    return [{"id": u.id, "nom": u.nom, "avatar_emoji": u.avatar_emoji, "bio": u.bio or ""} for u in users]
+
+
+# ── Feed ─────────────────────────────────────────────────────────
+
+@router.get("/feed")
+def get_feed(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Worlds publics récents des utilisateurs suivis."""
+    follows = db.query(UserFollow).filter_by(follower_id=user["id"]).all()
+    followed_ids = [f.followed_id for f in follows]
+    if not followed_ids:
+        return []
+
+    worlds = (db.query(World)
+              .filter(
+                  World.owner_id.in_(followed_ids),
+                  World.is_public == True,
+                  World.is_garden == False,
+              )
+              .order_by(World.created_at.desc())
+              .limit(30).all())
+
+    result = []
+    owners = {u.id: u for u in db.query(User).filter(User.id.in_(followed_ids)).all()}
+    for w in worlds:
+        owner = owners.get(w.owner_id)
+        result.append({
+            "type":          "world",
+            "world_id":      w.id,
+            "world_nom":     w.nom,
+            "world_emoji":   w.emoji,
+            "world_couleur": w.couleur,
+            "world_desc":    w.description or "",
+            "owner_id":      w.owner_id,
+            "owner_nom":     owner.nom if owner else "?",
+            "owner_avatar":  owner.avatar_emoji if owner else "👤",
+            "created_at":    w.created_at.isoformat() if w.created_at else None,
+        })
+    return result
+
+
+# ── Notifications ────────────────────────────────────────────────
+
+@router.get("/notifs")
+def get_notifs(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    notifs = (db.query(Notification)
+              .filter_by(user_id=user["id"])
+              .order_by(Notification.created_at.desc())
+              .limit(50).all())
+    return [
+        {
+            "id":         n.id,
+            "type":       n.type,
+            "data":       json.loads(n.data or "{}"),
+            "read":       n.read,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        }
+        for n in notifs
+    ]
+
+
+@router.get("/notifs/unread-count")
+def unread_count(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    count = db.query(Notification).filter_by(user_id=user["id"], read=False).count()
+    return {"count": count}
+
+
+@router.patch("/notifs/{notif_id}/read")
+def mark_read(notif_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    n = db.query(Notification).filter_by(id=notif_id, user_id=user["id"]).first()
+    if not n:
+        raise HTTPException(404)
+    n.read = True
+    db.commit()
+    return {"ok": True}
+
+
+@router.patch("/notifs/read-all")
+def mark_all_read(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    db.query(Notification).filter_by(user_id=user["id"], read=False).update({"read": True})
+    db.commit()
+    return {"ok": True}

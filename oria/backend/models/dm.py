@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Text, DateTime
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from database import Base
 
@@ -12,7 +12,7 @@ class DirectMessage(Base):
     from_emoji   = Column(String, default="👤")
     to_user_id   = Column(String, nullable=False)
     contenu      = Column(Text, nullable=False)
-    created_at   = Column(DateTime, default=datetime.utcnow)
+    created_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class DirectMessageRoom(Base):
     """Lien entre deux utilisateurs Oria et leur room Matrix DM."""
@@ -21,4 +21,4 @@ class DirectMessageRoom(Base):
     user_a_id      = Column(String, nullable=False)
     user_b_id      = Column(String, nullable=False)
     matrix_room_id = Column(String, nullable=False)
-    created_at     = Column(DateTime, default=datetime.utcnow)
+    created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))

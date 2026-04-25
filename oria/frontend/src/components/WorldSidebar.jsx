@@ -1,20 +1,43 @@
+import NotificationBell from './NotificationBell.jsx'
+
 export default function WorldSidebar({
   worlds, worldActifId, moi,
   onSelectWorld, onCreerWorld, onDeconnexion, onNetwork, showNetwork, onSettings,
-  // Nouvelles actions
   onDiscovery, showDiscovery,
   onMyDocs, showMyDocs,
   onMap, showMap,
   onAgents, showAgents,
   onIPCRA, showIPCRA,
+  onFeed, showFeed,
+  showJardin,
 }) {
+  const jardin       = worlds.find(w => w.is_garden)
+  const autresWorlds = worlds.filter(w => !w.is_garden)
+
   return (
     <div className="sidebar">
       <div className="sidebar-logo">🌐</div>
       <div className="sidebar-divider" />
 
+      {/* Jardin secret en tête, séparé */}
+      {jardin && (
+        <>
+          <button
+            className={`world-btn garden-btn ${showJardin ? 'actif' : ''}`}
+            onClick={() => onSelectWorld(jardin.id)}
+            title="Mon Jardin Secret"
+          >
+            <span className="world-btn-emoji">🌿</span>
+            <span className="world-btn-tooltip">Mon Jardin Secret</span>
+            <span className="garden-lock">🔒</span>
+          </button>
+          <div className="sidebar-divider" />
+        </>
+      )}
+
+      {/* Autres worlds */}
       <div className="sidebar-worlds">
-        {worlds.map(w => (
+        {autresWorlds.map(w => (
           <button
             key={w.id}
             className={`world-btn ${worldActifId === w.id ? 'actif' : ''}`}
@@ -43,6 +66,15 @@ export default function WorldSidebar({
       >
         <span>🔭</span>
         <span className="world-btn-tooltip">Explorer les mondes</span>
+      </button>
+
+      <button
+        className={`world-btn nav-btn ${showFeed ? 'actif' : ''}`}
+        onClick={onFeed}
+        title="Fil d'activité"
+      >
+        <span>🌊</span>
+        <span className="world-btn-tooltip">Fil d'activité</span>
       </button>
 
       <button
@@ -92,6 +124,7 @@ export default function WorldSidebar({
 
       <div className="sidebar-bottom">
         <div className="sidebar-divider" />
+        <NotificationBell />
         <button className="moi-btn" onClick={onSettings} title="Paramètres">
           <span>{moi.avatar_emoji}</span>
         </button>

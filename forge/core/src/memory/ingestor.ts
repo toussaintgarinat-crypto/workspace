@@ -26,12 +26,12 @@ export interface IngestPayload {
 }
 
 // Ingère un document dans Qdrant avec les deux providers disponibles
-export async function ingest(payload: IngestPayload): Promise<{ local: number; openai: number }> {
+export async function ingest(payload: IngestPayload): Promise<Record<string, number>> {
   const chunks   = chunkText(payload.text)
   if (!chunks.length) return { local: 0, openai: 0 }
 
   const vectors  = await embedBoth(chunks)
-  const counts   = { local: 0, openai: 0 }
+  const counts: Record<string, number> = { local: 0, openai: 0, gemini: 0, mistral: 0 }
   const timestamp = new Date().toISOString()
 
   for (const [provider, vecs] of vectors) {

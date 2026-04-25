@@ -4,6 +4,7 @@ import { groq } from '@ai-sdk/groq'
 import { google } from '@ai-sdk/google'
 import { mistral } from '@ai-sdk/mistral'
 import { createOllama } from 'ollama-ai-provider'
+import type { LanguageModelV1 } from 'ai'
 import { db } from '@/db'
 import { llmPresets, poles, agentDefinitions, poleTools } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
@@ -30,21 +31,21 @@ const openrouterProvider = createOpenAI({
 const DEFAULT_PROVIDER = process.env.DEFAULT_LLM_PROVIDER || 'ollama'
 const DEFAULT_MODEL    = process.env.DEFAULT_LLM_MODEL    || 'llama3.2'
 
-export function getModel(provider?: string, model?: string) {
+export function getModel(provider?: string, model?: string): LanguageModelV1 {
   const p = provider || DEFAULT_PROVIDER
   const m = model   || DEFAULT_MODEL
 
   switch (p) {
-    case 'anthropic': return anthropic(m || 'claude-sonnet-4-6')
-    case 'openai':    return openai(m   || 'gpt-4o')
-    case 'groq':      return groq(m     || 'llama-3.3-70b-versatile')
-    case 'gemini':    return google(m   || 'gemini-2.0-flash')
-    case 'mistral':   return mistral(m  || 'mistral-large-latest')
-    case 'deepseek':   return deepseekProvider(m || 'deepseek-chat')
-    case 'lmstudio':   return lmstudioProvider(m || 'local-model')
-    case 'openrouter': return openrouterProvider(m || 'openai/gpt-4o')
+    case 'anthropic': return anthropic(m || 'claude-sonnet-4-6') as LanguageModelV1
+    case 'openai':    return openai(m   || 'gpt-4o') as LanguageModelV1
+    case 'groq':      return groq(m     || 'llama-3.3-70b-versatile') as LanguageModelV1
+    case 'gemini':    return google(m   || 'gemini-2.0-flash') as unknown as LanguageModelV1
+    case 'mistral':   return mistral(m  || 'mistral-large-latest') as unknown as LanguageModelV1
+    case 'deepseek':   return deepseekProvider(m || 'deepseek-chat') as LanguageModelV1
+    case 'lmstudio':   return lmstudioProvider(m || 'local-model') as LanguageModelV1
+    case 'openrouter': return openrouterProvider(m || 'openai/gpt-4o') as LanguageModelV1
     case 'ollama':
-    default:           return ollamaProvider(m)
+    default:           return ollamaProvider(m) as LanguageModelV1
   }
 }
 

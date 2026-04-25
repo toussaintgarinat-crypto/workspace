@@ -1,10 +1,10 @@
 from sqlalchemy import Column, String, DateTime, Text, Boolean, ForeignKey
 from database import Base
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 def _uuid(): return str(uuid.uuid4())
-def _now(): return datetime.utcnow()
+def _now(): return datetime.now(timezone.utc)
 
 
 class Deliberation(Base):

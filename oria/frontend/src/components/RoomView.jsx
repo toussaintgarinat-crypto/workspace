@@ -69,7 +69,7 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
     form.append('uploader_nom', moi.nom)
     const res = await fetch(`${API_URL}/api/files/upload/${room.id}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('oria_token')}` },
+      credentials: 'include',
       body: form,
     })
     if (res.ok) chargerFichiers()

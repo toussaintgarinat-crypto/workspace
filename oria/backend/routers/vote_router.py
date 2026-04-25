@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
 from routers.auth import get_current_user
@@ -63,7 +63,7 @@ def fermer_vote(vote_id: str, db: Session = Depends(get_db), user=Depends(get_cu
     if not v: raise HTTPException(404)
     if not _is_admin(db, v.world_id, user["id"]): raise HTTPException(403)
     v.statut = "ferme"
-    v.ferme_at = datetime.utcnow()
+    v.ferme_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(v)
     return _vote_dict(v, v.bulletins)
 

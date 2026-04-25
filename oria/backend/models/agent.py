@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Text, Boolean, Float, DateTime
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from database import Base
 
@@ -26,4 +26,6 @@ class AgentDefinition(Base):
     use_memory      = Column(Boolean, default=True)   # utilise MemPalace
     use_ipcra       = Column(Boolean, default=False)  # mode IPCRA activé
     is_active       = Column(Boolean, default=True)
-    created_at      = Column(DateTime, default=datetime.utcnow)
+    wake_word       = Column(String, default="")
+    is_jardin_agent = Column(Boolean, default=False)  # agent personnel du Jardin Secret
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))

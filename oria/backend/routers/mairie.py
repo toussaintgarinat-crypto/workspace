@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import os, shutil, uuid
 
 import logging
@@ -515,7 +515,7 @@ def modifier_ticket(id: str, body: TicketPatch, db: Session = Depends(get_db), u
     t = db.query(Ticket).get(id)
     if not t: raise HTTPException(404)
     for k, v in body.dict(exclude_none=True).items(): setattr(t, k, v)
-    t.updated_at = datetime.utcnow()
+    t.updated_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(t)
     # Envoi email si réponse fournie
     if body.reponse and t.email_citoyen:
@@ -598,7 +598,7 @@ tableau_router = APIRouter()
 def tableau_bord(world_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if not _is_admin(db, world_id, user["id"]): raise HTTPException(403)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     annee_str = str(now.year)
 
     nb_agents = db.query(AgentElu).filter_by(world_id=world_id, type_poste="agent", actif=True).count()

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from database import Base
 
@@ -17,5 +17,5 @@ class Document(Base):
     content_md      = Column(Text, default="")            # contenu converti Markitdown
     indexe_memory   = Column(Boolean, default=False)      # indexé dans MemPalace
     memory_chunk_ids = Column(Text, default="")           # JSON list des IDs MemPalace
-    created_at      = Column(DateTime, default=datetime.utcnow)
-    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

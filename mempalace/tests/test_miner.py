@@ -2,7 +2,8 @@ import os
 import tempfile
 import shutil
 import yaml
-import chromadb
+import pytest
+chromadb = pytest.importorskip("chromadb", reason="chromadb not available (requires Python ≤3.12)")
 from mempalace.miner import mine
 
 

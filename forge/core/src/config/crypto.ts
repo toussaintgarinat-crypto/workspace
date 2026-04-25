@@ -19,7 +19,7 @@ export async function encrypt(plaintext: string): Promise<string> {
   const enc = new TextEncoder()
   const cipherBuf = await crypto.subtle.encrypt({ name: ALGO, iv }, key, enc.encode(plaintext))
   // Format: base64(iv):base64(cipher)
-  const toB64 = (buf: ArrayBuffer | Uint8Array) => Buffer.from(buf).toString('base64')
+  const toB64 = (buf: ArrayBuffer | Uint8Array) => Buffer.from(buf as ArrayBufferLike).toString('base64')
   return `${toB64(iv)}:${toB64(cipherBuf)}`
 }
 
