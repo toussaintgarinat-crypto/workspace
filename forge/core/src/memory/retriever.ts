@@ -1,6 +1,7 @@
 import { qdrant } from './index'
 import { embedOne, resolveProvider } from './embedder'
 import type { EmbeddingProvider } from './index'
+import { memPrefetch, memFormatContext } from './mempalace-client'
 
 interface RetrieveOptions {
   limit?:    number
@@ -9,8 +10,19 @@ interface RetrieveOptions {
   provider?: EmbeddingProvider
 }
 
-// Recherche sémantique dans Qdrant, provider résolu automatiquement
+// Recherche sémantique dans Qdrant + enrichissement MemPalace opt-in
 export async function getContext(question: string, _sessionId: string, opts: RetrieveOptions = {}): Promise<string> {
+  const { limit = 5, minScore = 0.65, poleId, provider: preferredProvider } = opts
+
+  const [ragContext, memHits] = await Promise.all([
+    _qdrantSearch(question, { limit, minScore, poleId, provider: preferredProvider }),
+    memPrefetch(question, 3),
+  ])
+
+  return ragContext + memFormatContext(memHits)
+}
+
+async function _qdrantSearch(question: string, opts: RetrieveOptions): Promise<string> {
   try {
     const { limit = 5, minScore = 0.65, poleId, provider: preferredProvider } = opts
     const provider = resolveProvider(preferredProvider)
