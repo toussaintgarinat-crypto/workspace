@@ -1,0 +1,45 @@
+version: '3.9'
+
+# docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Variables requises dans .env :
+#   DOMAIN, POSTGRES_PASSWORD, SYNAPSE_DB_PASSWORD,
+#   LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+#   MATRIX_AS_TOKEN, MATRIX_HS_TOKEN
+
+services:
+
+  backend:
+    environment:
+      KEYCLOAK_URL: "http://10.10.10.10:8080"
+      KEYCLOAK_REALM: "oria"
+      KEYCLOAK_CLIENT_ID: "oria-app"
+      ALLOWED_ORIGINS: "https://oria.${DOMAIN}"
+      MATRIX_SERVER_NAME: "matrix.${DOMAIN}"
+    volumes:
+      - uploads_data:/app/uploads   # garde les uploads, enlève le hot-reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: "https://oria.${DOMAIN}"
+        VITE_WS_URL: "wss://oria.${DOMAIN}"
+        VITE_LIVEKIT_URL: "wss://livekit.${DOMAIN}"
+        VITE_MATRIX_URL: "https://matrix.${DOMAIN}"
+        VITE_KEYCLOAK_URL: "https://auth.${DOMAIN}"
+        VITE_KEYCLOAK_REALM: "oria"
+        VITE_KEYCLOAK_CLIENT_ID: "oria-app"
+    ports:
+      - "3000:80"
+    volumes: []    # pas de hot-reload en prod
+
+  db:
+    ports: []    # interne uniquement
+
+  synapse_db:
+    ports: []
+
+volumes:
+  uploads_data:

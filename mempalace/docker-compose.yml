@@ -1,0 +1,54 @@
+version: '3.9'
+
+# MemPalace standalone
+# Premier lancement : bash setup.sh
+# Commandes : make start / make stop / make logs / make reset
+
+services:
+
+  # ── Qdrant ──────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6334:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── MemPalace API ────────────────────────────────────────────
+  api:
+    build: .
+    ports:
+      - "8100:8100"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - MEMPALACE_QDRANT_URL=http://qdrant:6333
+      - MEMPALACE_PALACE_BASE=/data/palaces
+      - MEMPALACE_DB_PATH=/data/users.db
+      - JWT_SECRET=${JWT_SECRET:-change_this_in_production}
+      - MEMPALACE_ADMIN_TOKEN=${MEMPALACE_ADMIN_TOKEN:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    volumes:
+      - palace_data:/data
+      - fastembed_cache:/root/.cache/fastembed
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8100/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  palace_data:
+  fastembed_cache:

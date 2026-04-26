@@ -186,6 +186,15 @@ class QdrantCollection:
                 points=[_str_id(sid)],
             )
 
+    # ── delete ───────────────────────────────────────────────────
+
+    def delete(self, ids: list[str]) -> None:
+        from qdrant_client.models import PointIdsList
+        self._client.delete(
+            collection_name=self._name,
+            points_selector=PointIdsList(points=[_str_id(i) for i in ids]),
+        )
+
     # ── count ─────────────────────────────────────────────────────
 
     def count(self) -> int:

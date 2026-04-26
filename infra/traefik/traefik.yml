@@ -1,0 +1,47 @@
+api:
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+
+  websecure:
+    address: ":443"
+
+  # Netbird signal (gRPC WebSocket)
+  netbird-signal:
+    address: ":10000"
+
+  # Netbird management (gRPC)
+  netbird-management:
+    address: ":33073"
+
+  # STUN/TURN UDP (coturn)
+  turn-udp:
+    address: ":3478/udp"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: toussaintgarinat@gmail.com
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+      # Alternative sans port 80 ouvert : décommenter et commenter httpChallenge
+      # dnsChallenge:
+      #   provider: cloudflare   # ou ovh, gandi, etc.
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+log:
+  level: INFO
+
+accessLog: {}

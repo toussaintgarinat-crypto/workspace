@@ -1,0 +1,134 @@
+version: '3.9'
+
+# Forge standalone — sans NetBird ni Coturn
+# Premier lancement : bash setup.sh
+# Commandes : make start / make stop / make logs / make reset
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge
+      POSTGRES_DB: forge
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Keycloak (SSO / OIDC) ───────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    command: start-dev --import-realm
+    ports:
+      - "8080:8080"
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/forge
+      - KC_DB_USERNAME=forge
+      - KC_DB_PASSWORD=forge
+      - KC_HTTP_ENABLED=true
+      - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME_STRICT_HTTPS=false
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/master > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
+  # ── Qdrant ──────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Core API (TypeScript / Bun / Hono) ─────────────────────
+  core:
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=postgresql://forge:forge@postgres:5432/forge
+      - QDRANT_URL=http://qdrant:6333
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
+      - ML_MODULE_URL=http://ml-module:8001
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/api
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-ollama}
+      - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-llama3.2}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change_this_32_char_random_key!!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── ML Module (Python / FastAPI) ────────────────────────────
+  ml-module:
+    build:
+      context: ./ml-module
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Frontend (React / Vite) ─────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      core:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:
