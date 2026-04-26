@@ -4,7 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from database import engine, Base
 import models.world, models.building, models.user, models.quartier, models.dm, models.network
 import models.abonnement
-import models.mairie
 import models.vote
 import models.llm_config
 import models.agent
@@ -62,24 +61,12 @@ app.include_router(invitations.router,     prefix="/api/invitations", tags=["Inv
 app.include_router(files_router.router,    prefix="/api/files",       tags=["Files"])
 app.include_router(network_router.router,      prefix="/api/network",     tags=["Network"])
 app.include_router(abonnements_router.router,  prefix="/api",             tags=["Abonnements"])
-from routers.mairie import (deliberations_router, arretes_router, conseils_router,
-    annuaire_router, tickets_router, notifs_router, audit_router, tableau_router)
-app.include_router(deliberations_router, prefix="/api/deliberations", tags=["Délibérations"])
-app.include_router(arretes_router,       prefix="/api/arretes",       tags=["Arrêtés"])
-app.include_router(conseils_router,      prefix="/api/conseils",      tags=["Conseil Municipal"])
-app.include_router(annuaire_router,      prefix="/api/annuaire",      tags=["Annuaire"])
-app.include_router(tickets_router,       prefix="/api/tickets",       tags=["Tickets Citoyens"])
-app.include_router(notifs_router,        prefix="/api/notifs",        tags=["Notifications"])
-app.include_router(audit_router,         prefix="/api/audit",         tags=["Audit"])
-app.include_router(tableau_router,       prefix="/api/tableau-bord",  tags=["Tableau de bord"])
 from routers.vote_router import router as vote_router
 from routers.search_router import router as search_router
-from routers.ai_router import router as ai_router
 from routers.reseau_router import router as reseau_router
 from routers.llm_config_router import router as llm_config_router
 app.include_router(vote_router,       prefix="/api/votes",      tags=["Votes"])
 app.include_router(search_router,     prefix="/api/search",     tags=["Recherche"])
-app.include_router(ai_router,         prefix="/api/ai",         tags=["IA Municipale"])
 app.include_router(reseau_router,     prefix="/api/reseau",     tags=["Intercommunalité"])
 app.include_router(llm_config_router, prefix="/api/llm-config", tags=["Config LLM"])
 # ── Nouvelles fonctionnalités ──────────────────────────────────

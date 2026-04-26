@@ -140,7 +140,7 @@ async def tester_config(world_id: str, db: Session = Depends(get_db), user=Depen
     api_key  = cfg["api_key"]
     model    = cfg["model"]
     base_url = cfg["base_url"]
-    prompt   = "Réponds en une phrase courte en français : tu es l'assistant IA d'une mairie, comment peux-tu aider les agents ?"
+    prompt   = "Réponds en une phrase courte en français : tu es un assistant IA, comment peux-tu aider les utilisateurs ?"
 
     async with httpx.AsyncClient() as client:
         try:

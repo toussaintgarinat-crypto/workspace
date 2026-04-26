@@ -11,13 +11,6 @@ import Toast from './Toast.jsx'
 import SyncStatus from './SyncStatus.jsx'
 import SettingsModal from './SettingsModal.jsx'
 import DocumentsPanel from './DocumentsPanel.jsx'
-import DeliberationsPanel from './DeliberationsPanel.jsx'
-import ArretesPanel from './ArretesPanel.jsx'
-import ConseilPanel from './ConseilPanel.jsx'
-import AnnuairePanel from './AnnuairePanel.jsx'
-import TicketsPanel from './TicketsPanel.jsx'
-import AuditPanel from './AuditPanel.jsx'
-import TableauBordMaire from './TableauBordMaire.jsx'
 import VotePanel from './VotePanel.jsx'
 import SearchPanel from './SearchPanel.jsx'
 import CalendarPanel from './CalendarPanel.jsx'
@@ -278,22 +271,8 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
         onFermer={() => setDocsScope(null)}
       />
     )
-  } else if (outilActif === 'deliberations') {
-    contenuPrincipal = <DeliberationsPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
-  } else if (outilActif === 'arretes') {
-    contenuPrincipal = <ArretesPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
-  } else if (outilActif === 'conseil') {
-    contenuPrincipal = <ConseilPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} onOuvrirVotes={ouvrirVotes} />
-  } else if (outilActif === 'annuaire') {
-    contenuPrincipal = <AnnuairePanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
-  } else if (outilActif === 'tickets') {
-    contenuPrincipal = <TicketsPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
-  } else if (outilActif === 'audit') {
-    contenuPrincipal = <AuditPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
-  } else if (outilActif === 'tableau') {
-    contenuPrincipal = <TableauBordMaire world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
   } else if (outilActif === 'search') {
-    contenuPrincipal = <SearchPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} onNavigate={(section, item) => { setOutilActif(section === 'deliberations' ? 'deliberations' : section === 'arretes' ? 'arretes' : section === 'annuaire' ? 'annuaire' : section === 'tickets' ? 'tickets' : null) }} />
+    contenuPrincipal = <SearchPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} onNavigate={() => {}} />
   } else if (outilActif === 'calendar') {
     contenuPrincipal = <CalendarPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
   } else if (outilActif === 'reseau-docs') {

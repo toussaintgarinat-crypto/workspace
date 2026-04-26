@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import MainLayout from './components/MainLayout.jsx'
-import PortailCitoyen from './components/PortailCitoyen.jsx'
 import { initMatrixClient, startMatrixClient, stopMatrixClient } from './services/matrixClient.js'
 
 function AppInner() {
@@ -28,14 +27,6 @@ function AppInner() {
 }
 
 export default function App() {
-  const isPortail = window.location.pathname === '/portail'
-    || window.location.pathname.startsWith('/portail/')
-
-  if (isPortail) {
-    const params = new URLSearchParams(window.location.search)
-    return <PortailCitoyen communeId={params.get('commune')} />
-  }
-
   return (
     <AuthProvider>
       <AppInner />

@@ -156,37 +156,9 @@ export default function ChannelPanel({
           </div>
         ))}
 
-        {/* Outils municipaux */}
-        <div className="channel-section-title">Outils municipaux</div>
+        {/* Outils */}
+        <div className="channel-section-title">Outils</div>
         <div className="channel-outils">
-          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('tableau')}>
-            <span>📊</span> Tableau de bord
-          </button>
-          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('deliberations')}>
-            <span>📜</span> Délibérations
-          </button>
-          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('arretes')}>
-            <span>📑</span> Arrêtés
-          </button>
-          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('conseil')}>
-            <span>🏛</span> Conseil municipal
-          </button>
-          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('annuaire')}>
-            <span>👥</span> Annuaire
-          </button>
-          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('tickets')}>
-            <span>📮</span> Tickets citoyens
-          </button>
-          {estProprietaire && (
-            <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('audit')}>
-              <span>🔍</span> Journal d'audit
-            </button>
-          )}
-          {estProprietaire && (
-            <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('llm-config')}>
-              <span>🤖</span> Config IA
-            </button>
-          )}
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('search')}>
             <span>🔍</span> Recherche
           </button>
@@ -194,8 +166,13 @@ export default function ChannelPanel({
             <span>📅</span> Calendrier
           </button>
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('reseau-docs')}>
-            <span>🏘</span> Réseau intercommunal
+            <span>🏘</span> Réseau
           </button>
+          {estProprietaire && (
+            <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('llm-config')}>
+              <span>🤖</span> Config IA
+            </button>
+          )}
         </div>
 
         {/* Boutons admin */}

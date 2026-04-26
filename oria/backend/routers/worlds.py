@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Optional
 from database import get_db
 from models.world import World, Member
-from models.building import Building, Room
 from models.abonnement import MembreAbonnement
 from models.user import User
 from routers.auth import get_current_user, _get_jwks
@@ -132,38 +131,6 @@ def creer_world(data: CreerWorld, db: Session = Depends(get_db), user=Depends(ge
     db.add(membre)
     db.commit()
     db.refresh(world)
-
-    # Auto-créer un service "Mairie centrale" avec salle de diffusion officielle
-    bld = Building(
-        id=str(uuid.uuid4()),
-        world_id=world.id,
-        nom="Mairie centrale",
-        type="mairie",
-        emoji="🏛",
-        couleur="#003189",
-    )
-    db.add(bld)
-    db.flush()  # pour avoir bld.id
-
-    broadcast_room = Room(
-        id=str(uuid.uuid4()),
-        building_id=bld.id,
-        nom="📢 Diffusion officielle",
-        type="broadcast",
-        emoji="📢",
-        position=0,
-    )
-    db.add(broadcast_room)
-    db.flush()
-
-    # Provisionner la Matrix room
-    creator_mxid = matrix._mxid(user["id"])
-    matrix_room_id = matrix.create_room(
-        broadcast_room.id, "📢 Diffusion officielle", creator_mxid, []
-    )
-    if matrix_room_id:
-        broadcast_room.matrix_room_id = matrix_room_id
-    db.commit()
 
     return {"id": world.id, "nom": world.nom, "emoji": world.emoji, "couleur": world.couleur}
 

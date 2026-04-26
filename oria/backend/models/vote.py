@@ -7,7 +7,7 @@ from database import Base
 class Vote(Base):
     __tablename__ = "votes"
     id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    conseil_id  = Column(String, ForeignKey("conseils_municipaux.id"), nullable=False)
+    conseil_id  = Column(String, nullable=True)
     world_id    = Column(String, nullable=False)
     question    = Column(Text, nullable=False)
     statut      = Column(String, default="ouvert")  # ouvert / ferme
