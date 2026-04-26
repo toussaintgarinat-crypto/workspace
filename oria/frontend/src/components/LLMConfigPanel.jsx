@@ -75,7 +75,7 @@ export default function LLMConfigPanel({ world, moi, onFermer }) {
           <div className="mairie-panel-title"><span>🤖</span><h2>Configuration IA</h2></div>
           <div className="mairie-panel-actions"><button className="mairie-btn-close" onClick={onFermer}>✕</button></div>
         </div>
-        <div className="mairie-empty">Réservé aux administrateurs de la commune.</div>
+        <div className="mairie-empty">Réservé aux administrateurs.</div>
       </div>
     )
   }

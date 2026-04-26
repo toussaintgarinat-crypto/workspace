@@ -59,7 +59,7 @@ export default function CalendarPanel({ world, moi, onFermer }) {
   return (
     <div className="mairie-panel">
       <div className="mairie-panel-header">
-        <div className="mairie-panel-title"><span>📅</span><h2>Calendrier municipal</h2></div>
+        <div className="mairie-panel-title"><span>📅</span><h2>Calendrier</h2></div>
         <div className="mairie-panel-actions">
           <button className="mairie-btn-close" onClick={onFermer}>✕</button>
         </div>

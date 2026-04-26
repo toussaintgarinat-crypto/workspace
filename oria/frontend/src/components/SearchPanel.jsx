@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react'
 import { api } from '../services/api.js'
 
-const SECTION_ICONS = { deliberations: '📜', arretes: '📑', annuaire: '👥', tickets: '📮' }
-const SECTION_LABELS = { deliberations: 'Délibérations', arretes: 'Arrêtés', annuaire: 'Annuaire', tickets: 'Tickets' }
+const SECTION_ICONS = {}
+const SECTION_LABELS = {}
 
 export default function SearchPanel({ world, moi, onFermer, onNavigate }) {
   const [query, setQuery] = useState('')

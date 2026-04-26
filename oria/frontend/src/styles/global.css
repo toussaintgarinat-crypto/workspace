@@ -1645,7 +1645,7 @@ input  { font-family: inherit; }
 .document-item:hover .btn-suppr-doc { opacity: 1; }
 .btn-suppr-doc:hover { color: #ed4245; }
 
-/* ── Outils municipaux (ChannelPanel) ────────────────────────── */
+/* ── Outils (ChannelPanel) ───────────────────────────────────── */
 .channel-section-title {
   font-size: 11px;
   font-weight: 700;
@@ -2112,7 +2112,7 @@ input  { font-family: inherit; }
 .mairie-delib-label { font-size: 11px; color: #72767d; }
 .mairie-kpi-inline { font-size: 14px; color: #dcddde; }
 
-/* ── Portail citoyen ──────────────────────────────────────────── */
+/* ── Portail public (legacy) ─────────────────────────────────── */
 .portail {
   min-height: 100vh;
   background: #f5f5f5;
