@@ -24,6 +24,7 @@ from collections import defaultdict
 import chromadb
 
 from .config import MempalaceConfig
+from .decay import apply_decay_boost, compute_activation
 
 
 # ---------------------------------------------------------------------------
@@ -112,11 +113,10 @@ class Layer1:
         if not docs:
             return "## L1 — No memories yet."
 
-        # Score each drawer: prefer high importance, recent filing
+        # Score each drawer: blend importance with ACT-R activation
         scored = []
         for doc, meta in zip(docs, metas):
-            importance = 3
-            # Try multiple metadata keys that might carry weight info
+            importance = 0.5
             for key in ("importance", "emotional_weight", "weight"):
                 val = meta.get(key)
                 if val is not None:
@@ -125,9 +125,18 @@ class Layer1:
                     except (ValueError, TypeError):
                         pass
                     break
-            scored.append((importance, meta, doc))
 
-        # Sort by importance descending, take top N
+            activation = compute_activation(
+                access_times_str=meta.get("access_times", ""),
+                memory_type=meta.get("memory_type", "episodic"),
+                created_at_str=meta.get("filed_at", ""),
+            )
+            # Normalise activation to 0-1 and blend: 60% importance, 40% activation
+            norm_activation = min(1.0, max(0.0, (activation + 4) / 7))
+            score = importance * 0.6 + norm_activation * 0.4
+            scored.append((score, meta, doc))
+
+        # Sort by blended score descending, take top N
         scored.sort(key=lambda x: x[0], reverse=True)
         top = scored[: self.MAX_DRAWERS]
 

@@ -147,6 +147,20 @@ def cmd_status(args):
     status(palace_path=palace_path)
 
 
+def cmd_consolidate(args):
+    """Run ACT-R consolidation: promote episodic→semantic, forget stale drawers."""
+    from .consolidation import run_consolidation
+
+    palace_path = os.path.expanduser(args.palace) if args.palace else MempalaceConfig().palace_path
+    print(f"\n  Running consolidation on: {palace_path}\n")
+    report = run_consolidation(palace_path)
+
+    print(f"  Promoted episodic → semantic : {report['promoted_to_semantic']}")
+    print(f"  Promoted semantic → core     : {report['promoted_to_core']}")
+    print(f"  Forgotten (soft-deleted)     : {report['forgotten']}")
+    print()
+
+
 def cmd_compress(args):
     """Compress drawers in a wing using AAAK Dialect."""
     import chromadb
@@ -353,6 +367,13 @@ def main():
     # status
     sub.add_parser("status", help="Show what's been filed")
 
+    # consolidate
+    p_consolidate = sub.add_parser(
+        "consolidate",
+        help="Promote episodic→semantic memories and forget stale ones (ACT-R)",
+    )
+    p_consolidate.add_argument("--palace", default=None, help="Path to palace directory")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -367,6 +388,7 @@ def main():
         "compress": cmd_compress,
         "wake-up": cmd_wakeup,
         "status": cmd_status,
+        "consolidate": cmd_consolidate,
     }
     dispatch[args.command](args)
 

@@ -7,9 +7,17 @@ Returns verbatim text — the actual words, never summaries.
 """
 
 import sys
+import time
 from pathlib import Path
 
 import chromadb
+
+from .decay import (
+    apply_decay_boost,
+    compute_activation,
+    parse_access_times,
+    serialize_access_times,
+)
 
 
 def search(query: str, palace_path: str, wing: str = None, room: str = None, n_results: int = 5):
@@ -84,12 +92,36 @@ def search(query: str, palace_path: str, wing: str = None, room: str = None, n_r
     print()
 
 
+def _update_access(col, drawer_id: str, meta: dict) -> None:
+    """Append current timestamp to access_times and increment access_count."""
+    now_ms = int(time.time() * 1000)
+    existing = parse_access_times(meta.get("access_times", ""))
+    existing.append(now_ms)
+    new_count = int(meta.get("access_count", 0)) + 1
+    col.update(
+        ids=[drawer_id],
+        metadatas=[{
+            "access_times": serialize_access_times(existing),
+            "access_count": new_count,
+        }],
+    )
+
+
 def search_memories(
-    query: str, palace_path: str, wing: str = None, room: str = None, n_results: int = 5
+    query: str,
+    palace_path: str,
+    wing: str = None,
+    room: str = None,
+    n_results: int = 5,
+    track_access: bool = True,
 ) -> dict:
     """
     Programmatic search — returns a dict instead of printing.
     Used by the MCP server and other callers that need data.
+
+    Results are re-ranked by blending vector similarity with ACT-R activation
+    (80% similarity + 20% decay boost). Access times are tracked unless
+    track_access=False.
     """
     try:
         client = chromadb.PersistentClient(path=palace_path)
@@ -119,21 +151,39 @@ def search_memories(
     except Exception as e:
         return {"error": f"Search error: {e}"}
 
+    drawer_ids = results["ids"][0]
     docs = results["documents"][0]
     metas = results["metadatas"][0]
     dists = results["distances"][0]
 
+    now_ms = time.time() * 1000
     hits = []
-    for doc, meta, dist in zip(docs, metas, dists):
-        hits.append(
-            {
-                "text": doc,
-                "wing": meta.get("wing", "unknown"),
-                "room": meta.get("room", "unknown"),
-                "source_file": Path(meta.get("source_file", "?")).name,
-                "similarity": round(1 - dist, 3),
-            }
+    for drawer_id, doc, meta, dist in zip(drawer_ids, docs, metas, dists):
+        similarity = round(1 - dist, 3)
+        activation = compute_activation(
+            access_times_str=meta.get("access_times", ""),
+            memory_type=meta.get("memory_type", "episodic"),
+            created_at_str=meta.get("filed_at", ""),
+            now_ms=now_ms,
         )
+        boosted_score = apply_decay_boost(similarity, activation)
+
+        if track_access:
+            _update_access(col, drawer_id, meta)
+
+        hits.append({
+            "text": doc,
+            "wing": meta.get("wing", "unknown"),
+            "room": meta.get("room", "unknown"),
+            "source_file": Path(meta.get("source_file", "?")).name,
+            "similarity": similarity,
+            "score": round(boosted_score, 3),
+            "activation": round(activation, 2),
+            "memory_type": meta.get("memory_type", "episodic"),
+        })
+
+    # Re-rank by blended score
+    hits.sort(key=lambda h: h["score"], reverse=True)
 
     return {
         "query": query,

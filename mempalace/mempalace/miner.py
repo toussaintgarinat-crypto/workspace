@@ -215,6 +215,12 @@ def add_drawer(
                     "chunk_index": chunk_index,
                     "added_by": agent,
                     "filed_at": datetime.now().isoformat(),
+                    # ACT-R decay fields
+                    "memory_type": "episodic",
+                    "access_count": 0,
+                    "access_times": "",
+                    "importance": 0.5,
+                    "deleted": False,
                 }
             ],
         )
