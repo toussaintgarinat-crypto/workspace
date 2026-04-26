@@ -12,22 +12,20 @@ Designed to run periodically (cron / CLI command). Zero LLM calls.
 
 import time
 
-import chromadb
-
 from .config import MempalaceConfig
 from .decay import compute_activation, get_decay_status
+from .storage import get_palace_storage
 
-PROMOTE_TO_SEMANTIC = 3    # episodic → semantic threshold (accesses)
-PROMOTE_TO_CORE = 10       # semantic → core threshold (accesses)
-FORGET_ACTIVATION = -4.0   # archive memories below this activation
-FORGET_MAX_IMPORTANCE = 0.3  # only archive low-importance drawers
+PROMOTE_TO_SEMANTIC = 3
+PROMOTE_TO_CORE = 10
+FORGET_ACTIVATION = -4.0
+FORGET_MAX_IMPORTANCE = 0.3
 
-BATCH = 100  # ChromaDB update batch size
+BATCH = 100
 
 
 def _get_col(palace_path: str):
-    client = chromadb.PersistentClient(path=palace_path)
-    return client.get_collection("mempalace_drawers")
+    return get_palace_storage(palace_path, create=False)
 
 
 def _batch_update(col, ids: list, metas: list) -> None:

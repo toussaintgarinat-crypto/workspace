@@ -1,13 +1,17 @@
 """
-Client MemPalace pour Oria — pattern prefetch / sync inspiré de Hermes Agent.
+Client MemPalace pour Oria — pattern prefetch / sync.
 
 Prefetch : avant chaque appel LLM, on récupère les souvenirs pertinents dans le palace
            et on les injecte dans le system prompt.
-Sync     : après chaque transition de phase IPCRA, on persiste le contenu de la phase
-           dans le palace comme entrée diary.
+Sync     : lors de chaque sauvegarde IPCRA ou conversation, on persiste le contenu
+           dans le palace comme entrée.
 
-Configuration : variable d'env MEMPALACE_PALACE_PATH (défaut : ~/.mempalace/palace)
-Dégradation gracieuse : si chromadb n'est pas installé ou si le palace n'existe pas,
+Stockage : Qdrant (local fichier ou serveur via MEMPALACE_QDRANT_URL)
+Configuration :
+  MEMPALACE_PALACE_PATH  → chemin du palace par défaut (~/.mempalace/palace)
+  PALACE_BASE_PATH       → base des palaces par utilisateur (~/.mempalace/palaces)
+  MEMPALACE_QDRANT_URL   → URL serveur Qdrant (optionnel, ex: http://qdrant:6333)
+Dégradation gracieuse : si qdrant-client n'est pas installé ou si le palace n'existe pas,
                         toutes les fonctions retournent vide sans erreur.
 """
 
@@ -35,11 +39,8 @@ def _get_user_palace_path(user_id: str) -> str:
 def _get_collection(palace_path: str = None, create: bool = False):
     path = palace_path or PALACE_PATH
     try:
-        import chromadb  # noqa: PLC0415
-        client = chromadb.PersistentClient(path=path)
-        if create:
-            return client.get_or_create_collection(COLLECTION_NAME)
-        return client.get_collection(COLLECTION_NAME)
+        from mempalace.storage import get_palace_storage  # noqa: PLC0415
+        return get_palace_storage(path, create=create)
     except Exception:
         return None
 

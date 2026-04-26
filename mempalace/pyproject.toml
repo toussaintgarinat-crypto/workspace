@@ -13,7 +13,7 @@ authors = [
     {name = "milla-jovovich"},
 ]
 keywords = [
-    "ai", "memory", "llm", "rag", "chromadb", "mcp",
+    "ai", "memory", "llm", "rag", "qdrant", "mcp",
     "vector-database", "claude", "chatgpt", "embeddings",
 ]
 classifiers = [
@@ -29,7 +29,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "chromadb>=0.6.0,<0.7.0",
+    "qdrant-client[fastembed]>=1.9.0",
     "pyyaml>=6.0",
 ]
 

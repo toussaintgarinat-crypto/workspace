@@ -26,8 +26,7 @@ from datetime import datetime
 from .config import MempalaceConfig
 from .searcher import search_memories
 from .palace_graph import traverse, find_tunnels, graph_stats
-import chromadb
-
+from .storage import get_palace_storage
 from .knowledge_graph import KnowledgeGraph
 
 _kg = KnowledgeGraph()
@@ -39,14 +38,8 @@ _config = MempalaceConfig()
 
 
 def _get_collection(create=False):
-    """Return the ChromaDB collection, or None on failure."""
-    try:
-        client = chromadb.PersistentClient(path=_config.palace_path)
-        if create:
-            return client.get_or_create_collection(_config.collection_name)
-        return client.get_collection(_config.collection_name)
-    except Exception:
-        return None
+    """Return the Qdrant collection, or None on failure."""
+    return get_palace_storage(_config.palace_path, create=create)
 
 
 def _no_palace():

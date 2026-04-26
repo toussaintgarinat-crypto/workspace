@@ -1,353 +1,255 @@
 """
-Sessions IPCRA — Identifier, Planifier, Créer, Réfléchir, Ajuster.
-Framework de travail structuré avec support agent IA (Forge) + mémoire MemPalace.
+IPCRA — Input, Projet, Casquette, Ressource, Archive.
+Système PKM d'Eliott Meunier pour organiser la connaissance personnelle.
 
-Pattern prefetch / sync (inspiré de Hermes Agent) :
-  - prefetch : avant chaque appel LLM, on interroge MemPalace pour enrichir le contexte
-  - sync     : lors de chaque avancement de phase, on persiste le contenu dans MemPalace
+Chaque élément appartient à une des 5 catégories :
+  Input      → capture brute non encore traitée (inbox)
+  Projet     → projet actif avec un objectif et une deadline
+  Casquette  → rôle / responsabilité (chapeau porté dans la vie)
+  Ressource  → référence réutilisable, template, connaissance
+  Archive    → terminé ou inactif
+
+Intégration MemPalace : chaque item est syncsé dans le palace de l'utilisateur.
+Intégration Forge : assistance IA via l'agent assigné.
 """
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import httpx
 import json
 import time
 
 from database import get_db
 from routers.auth import get_current_user
-from models.ipcra import IPCRASession, IPCRATrace
+from models.ipcra import IPCRAItem, IPCRATrace, CATEGORIES
 from models.agent import AgentDefinition
-from models.document import Document
 import mempalace_client as mp
 
 router = APIRouter()
 
-PHASES = ["identifier", "planifier", "creer", "reflechir", "ajuster"]
 
-
-def _persist_trace(
-    session_id: str, phase: str, prompt: str,
-    answer: str, steps: list, agent_nom: str, duree_ms: int,
-):
-    """Persiste une trace VoltAgent en base (appelé en BackgroundTask)."""
-    from database import SessionLocal
-    db = SessionLocal()
-    try:
-        trace = IPCRATrace(
-            session_id=session_id,
-            phase=phase,
-            prompt=prompt,
-            answer=answer,
-            steps=json.dumps(steps, ensure_ascii=False),
-            agent_nom=agent_nom,
-            duree_ms=duree_ms,
-        )
-        db.add(trace)
-        db.commit()
-    finally:
-        db.close()
-
-
-def _phase_field(phase: str) -> str:
-    return "creer_output" if phase == "creer" else f"{phase}_notes"
-
-
-def _session_dict(s: IPCRASession) -> dict:
+def _item_dict(item: IPCRAItem) -> dict:
     return {
-        "id": s.id, "titre": s.titre, "phase": s.phase,
-        "owner_id": s.owner_id, "world_id": s.world_id, "agent_id": s.agent_id,
-        "status": s.status,
-        "identifier_notes": s.identifier_notes,
-        "planifier_notes": s.planifier_notes,
-        "creer_output": s.creer_output,
-        "reflechir_notes": s.reflechir_notes,
-        "ajuster_notes": s.ajuster_notes,
-        "created_at": s.created_at.isoformat() if s.created_at else None,
-        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+        "id": item.id,
+        "owner_id": item.owner_id,
+        "world_id": item.world_id,
+        "categorie": item.categorie,
+        "titre": item.titre,
+        "contenu": item.contenu,
+        "tags": json.loads(item.tags or "[]"),
+        "casquette": item.casquette,
+        "source_url": item.source_url,
+        "agent_id": item.agent_id,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
     }
 
 
-# ── CRUD sessions ─────────────────────────────────────────────────
+def _sync_item(item_id: str, titre: str, contenu: str, categorie: str, user_id: str):
+    """Persiste un item dans MemPalace (appelé en BackgroundTask)."""
+    if not contenu.strip() and not titre.strip():
+        return
+    text = f"## {titre}\n\n{contenu}" if contenu.strip() else f"## {titre}"
+    mp.sync(text, item_id, categorie, titre, user_id)
 
-class CreateSession(BaseModel):
-    titre:    str
-    world_id: Optional[str] = None
-    agent_id: Optional[str] = None
+
+# ── CRUD ─────────────────────────────────────────────────────────
+
+class CreateItem(BaseModel):
+    titre:      str
+    contenu:    str = ""
+    categorie:  str = "input"
+    tags:       List[str] = []
+    casquette:  Optional[str] = None
+    source_url: Optional[str] = None
+    world_id:   Optional[str] = None
+    agent_id:   Optional[str] = None
 
 
-class UpdatePhase(BaseModel):
-    content: str
+class UpdateItem(BaseModel):
+    titre:      Optional[str] = None
+    contenu:    Optional[str] = None
+    tags:       Optional[List[str]] = None
+    casquette:  Optional[str] = None
+    source_url: Optional[str] = None
+    agent_id:   Optional[str] = None
 
 
 @router.get("/")
-def list_sessions(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    sessions = db.query(IPCRASession).filter_by(owner_id=user["id"]).order_by(
-        IPCRASession.updated_at.desc()
-    ).all()
-    return [_session_dict(s) for s in sessions]
+def list_items(
+    categorie: Optional[str] = None,
+    world_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    q = db.query(IPCRAItem).filter_by(owner_id=user["id"])
+    if categorie:
+        if categorie not in CATEGORIES:
+            raise HTTPException(400, f"Catégorie invalide. Valeurs: {CATEGORIES}")
+        q = q.filter_by(categorie=categorie)
+    if world_id:
+        q = q.filter_by(world_id=world_id)
+    items = q.order_by(IPCRAItem.updated_at.desc()).all()
+    return [_item_dict(i) for i in items]
 
 
-@router.post("/")
-def create_session(body: CreateSession, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    session = IPCRASession(
+@router.post("/", status_code=201)
+def create_item(
+    body: CreateItem,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if body.categorie not in CATEGORIES:
+        raise HTTPException(400, f"Catégorie invalide. Valeurs: {CATEGORIES}")
+    item = IPCRAItem(
         owner_id=user["id"],
         world_id=body.world_id,
-        agent_id=body.agent_id,
+        categorie=body.categorie,
         titre=body.titre,
+        contenu=body.contenu,
+        tags=json.dumps(body.tags),
+        casquette=body.casquette,
+        source_url=body.source_url,
+        agent_id=body.agent_id,
     )
-    db.add(session)
+    db.add(item)
     db.commit()
-    db.refresh(session)
-    mp.create_branch(session.id)  # branche KG isolée pour cette session
-    return _session_dict(session)
-
-
-@router.get("/{session_id}")
-def get_session(session_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404)
-    return _session_dict(s)
-
-
-@router.patch("/{session_id}/phase/{phase}")
-def update_phase_content(
-    session_id: str, phase: str, body: UpdatePhase,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
-):
-    if phase not in PHASES:
-        raise HTTPException(400, f"Phase invalide. Valeurs: {PHASES}")
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404)
-    setattr(s, _phase_field(phase), body.content)
-    db.commit()
-    db.refresh(s)
-    return _session_dict(s)
-
-
-@router.post("/{session_id}/advance")
-def advance_phase(
-    session_id: str,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404)
-
-    # Capture contenu de la phase terminée avant d'avancer
-    completed_phase = s.phase
-    phase_content = getattr(s, _phase_field(completed_phase), "") or ""
-
-    idx = PHASES.index(s.phase)
-    entering_ajuster = False
-    if idx < len(PHASES) - 1:
-        s.phase = PHASES[idx + 1]
-        entering_ajuster = (s.phase == "ajuster")
-    else:
-        s.status = "completee"
-    db.commit()
-    db.refresh(s)
-
-    # ── SYNC MemPalace ─────────────────────────────────────────────
-    if phase_content.strip():
-        sync_text = f"## IPCRA — {s.titre}\nPhase : {completed_phase}\n\n{phase_content}"
-        background_tasks.add_task(mp.sync, sync_text, session_id, completed_phase, s.titre)
-
-    result = _session_dict(s)
-
-    # ── MERGE branche KG + détection contradictions à l'entrée en "ajuster"
-    if entering_ajuster:
-        result["merge"] = mp.merge_branch(session_id)
-
-    return result
-
-
-@router.patch("/{session_id}/status")
-def update_status(
-    session_id: str, status: str,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
-):
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404)
-    if status not in ("active", "completee", "archivee"):
-        raise HTTPException(400)
-    s.status = status
-    db.commit()
-    return {"id": s.id, "status": s.status}
-
-
-@router.delete("/{session_id}", status_code=204)
-def delete_session(session_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404)
-    db.delete(s)
-    db.commit()
-
-
-# ── Liaison document → session IPCRA ─────────────────────────────
-
-class AttachDocBody(BaseModel):
-    doc_id: str
-
-
-@router.post("/{session_id}/attach-document")
-def attach_document(
-    session_id: str,
-    body: AttachDocBody,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
-    """
-    Attache un document à une session IPCRA et l'indexe dans MemPalace
-    avec le contexte de la session (session_id, session_titre).
-    Utile en phase Identifier pour ingérer des documents clients.
-    """
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404, "Session IPCRA introuvable")
-
-    doc = db.query(Document).filter_by(id=body.doc_id, owner_id=user["id"]).first()
-    if not doc:
-        raise HTTPException(404, "Document introuvable")
-    if not doc.content_md or not doc.content_md.strip():
-        raise HTTPException(400, "Document sans contenu Markdown — uploadez-le d'abord")
-
-    doc.indexe_memory = True
-    db.commit()
-
+    db.refresh(item)
     background_tasks.add_task(
-        mp.sync_document,
-        doc.content_md, doc.id, doc.nom, user["id"], session_id, s.titre,
+        _sync_item, item.id, item.titre, item.contenu, item.categorie, user["id"]
     )
-    return {"ok": True, "doc_id": doc.id, "session_id": session_id}
+    return _item_dict(item)
 
 
-# ── Traces VoltAgent ─────────────────────────────────────────────
-
-@router.get("/{session_id}/traces")
-def list_traces(
-    session_id: str,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
-):
-    """Retourne toutes les traces d'exécution agent pour une session IPCRA."""
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
+@router.get("/{item_id}")
+def get_item(item_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    if not item:
         raise HTTPException(404)
-    traces = (
-        db.query(IPCRATrace)
-        .filter_by(session_id=session_id)
-        .order_by(IPCRATrace.created_at.asc())
-        .all()
-    )
-    return [
-        {
-            "id": t.id,
-            "phase": t.phase,
-            "prompt": t.prompt,
-            "answer": t.answer,
-            "steps": json.loads(t.steps or "[]"),
-            "agent_nom": t.agent_nom,
-            "duree_ms": t.duree_ms,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-        }
-        for t in traces
-    ]
+    return _item_dict(item)
 
 
-# ── Contradictions KG ────────────────────────────────────────────
-
-@router.get("/{session_id}/contradictions")
-def get_contradictions(
-    session_id: str,
+@router.put("/{item_id}")
+def update_item(
+    item_id: str,
+    body: UpdateItem,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """
-    Retourne les contradictions entre la branche KG de la session et le trunk.
-    Utile pour consultation manuelle avant ou après le merge (phase ajuster).
-    """
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
+    from datetime import datetime, timezone
+    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    if not item:
         raise HTTPException(404)
-    conflicts = mp.check_contradictions(session_id)
-    return {"session_id": session_id, "conflicts": conflicts, "count": len(conflicts)}
+    if body.titre is not None:
+        item.titre = body.titre
+    if body.contenu is not None:
+        item.contenu = body.contenu
+    if body.tags is not None:
+        item.tags = json.dumps(body.tags)
+    if body.casquette is not None:
+        item.casquette = body.casquette
+    if body.source_url is not None:
+        item.source_url = body.source_url
+    if body.agent_id is not None:
+        item.agent_id = body.agent_id
+    item.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(item)
+    background_tasks.add_task(
+        _sync_item, item.id, item.titre, item.contenu, item.categorie, user["id"]
+    )
+    return _item_dict(item)
 
 
-# ── Assistance IA sur une phase ───────────────────────────────────
+@router.patch("/{item_id}/categorie")
+def move_categorie(
+    item_id: str,
+    categorie: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Déplace un item vers une autre catégorie (ex: Input → Projet, Projet → Archive)."""
+    from datetime import datetime, timezone
+    if categorie not in CATEGORIES:
+        raise HTTPException(400, f"Catégorie invalide. Valeurs: {CATEGORIES}")
+    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    if not item:
+        raise HTTPException(404)
+    item.categorie = categorie
+    item.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(item)
+    background_tasks.add_task(
+        _sync_item, item.id, item.titre, item.contenu, item.categorie, user["id"]
+    )
+    return _item_dict(item)
+
+
+@router.delete("/{item_id}", status_code=204)
+def delete_item(item_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    if not item:
+        raise HTTPException(404)
+    db.delete(item)
+    db.commit()
+
+
+# ── Assistance IA via Forge ───────────────────────────────────────
 
 class AssistBody(BaseModel):
-    phase:  str
     prompt: str
 
 
-@router.post("/{session_id}/assist")
-async def ipcra_assist(
-    session_id: str, body: AssistBody,
+@router.post("/{item_id}/assist")
+async def assist_item(
+    item_id: str,
+    body: AssistBody,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
 ):
-    """
-    Demande à l'agent assigné d'assister sur la phase en cours.
-    Si l'agent a use_memory=True : prefetch MemPalace et injection dans le system prompt.
-    """
-    if body.phase not in PHASES:
-        raise HTTPException(400)
-
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
+    """Demande à l'agent Forge assigné d'assister sur un élément IPCRA."""
+    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    if not item:
         raise HTTPException(404)
 
     agent = None
-    if s.agent_id:
-        agent = db.query(AgentDefinition).filter_by(id=s.agent_id, is_active=True).first()
+    if item.agent_id:
+        agent = db.query(AgentDefinition).filter_by(id=item.agent_id, is_active=True).first()
 
-    # ── PREFETCH MemPalace ─────────────────────────────────────────
+    # Prefetch mémoires pertinentes
     mem_block = ""
     if agent and agent.use_memory:
-        query = f"{s.titre} {body.prompt}"
-        hits = mp.prefetch(query, n=4)
+        hits = mp.prefetch(f"{item.titre} {body.prompt}", n=4, user_id=user["id"])
         mem_block = mp.format_context_block(hits)
 
-    # Contexte complet de la session
-    session_ctx = f"""## Session IPCRA : {s.titre}
-Phase actuelle : {s.phase}
-
-### Identifier (contexte)
-{s.identifier_notes or '—'}
-
-### Planifier
-{s.planifier_notes or '—'}
-
-### Créer (livrable)
-{s.creer_output or '—'}
-
-### Réfléchir
-{s.reflechir_notes or '—'}
-
-### Ajuster
-{s.ajuster_notes or '—'}
-"""
-
-    phase_guidance = {
-        "identifier": "Tu aides à clarifier le contexte, les objectifs, les contraintes et les ressources disponibles.",
-        "planifier":   "Tu aides à construire un plan d'action détaillé et structuré.",
-        "creer":       "Tu aides à produire le livrable demandé, étape par étape.",
-        "reflechir":   "Tu analyses ce qui a été produit de façon critique et objective. Mode avocat du diable si demandé.",
-        "ajuster":     "Tu synthétises les leçons apprises et proposes des ajustements concrets pour la prochaine fois.",
+    category_guidance = {
+        "input":      "Tu aides à traiter et qualifier cette capture brute. Propose si elle doit devenir un Projet, une Ressource, ou une Casquette.",
+        "projet":     "Tu aides à structurer et faire avancer ce projet. Propose des prochaines actions concrètes.",
+        "casquette":  "Tu aides à définir et clarifier ce rôle/responsabilité. Quelles actions et ressources lui sont associées ?",
+        "ressource":  "Tu enrichis cette ressource avec des informations complémentaires, des exemples ou des liens utiles.",
+        "archive":    "Tu synthétises les leçons apprises de cet élément archivé. Qu'est-ce qui peut être réutilisé ?",
     }
 
-    system = f"""Tu es un assistant expert en méthodologie IPCRA (Identifier → Planifier → Créer → Réfléchir → Ajuster).
-{phase_guidance.get(body.phase, '')}
-Réponds toujours dans la langue de l'utilisateur.
+    system = f"""Tu es un assistant expert en organisation personnelle et PKM (Personal Knowledge Management).
+Système utilisé : IPCRA (Input, Projet, Casquette, Ressource, Archive) par Eliott Meunier.
 
-{session_ctx}{mem_block}"""
+Catégorie de l'élément : {item.categorie.upper()}
+{category_guidance.get(item.categorie, '')}
+
+Élément actuel :
+## {item.titre}
+{item.contenu or '(pas encore de contenu)'}
+
+Tags : {', '.join(json.loads(item.tags or '[]')) or 'aucun'}
+{f'Casquette : {item.casquette}' if item.casquette else ''}
+{mem_block}
+
+Réponds toujours dans la langue de l'utilisateur."""
 
     t0 = time.monotonic()
 
@@ -359,7 +261,7 @@ Réponds toujours dans la langue de l'utilisateur.
                     f"{forge_url}/api/agents/react",
                     json={
                         "message": body.prompt,
-                        "sessionId": f"ipcra-{session_id}-{body.phase}",
+                        "sessionId": f"ipcra-{item_id}",
                         "systemOverride": system,
                         "provider": agent.forge_provider or None,
                         "model": agent.forge_model or None,
@@ -369,172 +271,71 @@ Réponds toujours dans la langue de l'utilisateur.
                     data = r.json()
                     duree = int((time.monotonic() - t0) * 1000)
                     background_tasks.add_task(
-                        _persist_trace,
-                        session_id, body.phase, body.prompt,
-                        data.get("answer", ""), data.get("steps", []),
-                        agent.nom, duree,
+                        _save_trace,
+                        item_id, user["id"], body.prompt,
+                        data.get("answer", ""), agent.nom, duree, db,
                     )
                     return data
         except httpx.ConnectError:
             pass
         return {"answer": f"[Agent Forge non disponible sur {forge_url}]", "steps": []}
 
-    # Pas d'agent assigné — guide textuel (on trace quand même)
-    guides = {
-        "identifier": "Pour cette phase, documente : 1) Le problème ou l'objectif précis 2) Les contraintes (temps, ressources) 3) Les documents/infos disponibles 4) Les parties prenantes.",
-        "planifier":  "Décompose l'objectif en étapes concrètes. Pour chaque étape : action, responsable, durée estimée, dépendances.",
-        "creer":      "Commence à produire le livrable. Itère par brouillons successifs. Documente tes choix.",
-        "reflechir":  "Analyse : Qu'est-ce qui a bien fonctionné ? Qu'est-ce qui aurait pu être mieux ? Quels biais ont influencé les décisions ?",
-        "ajuster":    "Liste les leçons apprises. Quels processus modifier ? Quelles connaissances sauvegarder dans ta mémoire ?",
+    return {
+        "answer": (
+            f"Aucun agent assigné. Pour utiliser l'IA, assigne un agent Forge à cet élément.\n\n"
+            f"**Conseil pour la catégorie {item.categorie}** : {category_guidance.get(item.categorie, '')}"
+        ),
+        "steps": [],
     }
-    answer = guides.get(body.phase, "Aucun agent assigné à cette session.")
-    duree = int((time.monotonic() - t0) * 1000)
-    background_tasks.add_task(
-        _persist_trace,
-        session_id, body.phase, body.prompt,
-        answer, [], "guide-textuel", duree,
+
+
+def _save_trace(item_id, owner_id, prompt, answer, agent_nom, duree_ms, db):
+    from database import SessionLocal
+    _db = SessionLocal()
+    try:
+        trace = IPCRATrace(
+            item_id=item_id, owner_id=owner_id,
+            prompt=prompt, answer=answer,
+            agent_nom=agent_nom, duree_ms=duree_ms,
+        )
+        _db.add(trace)
+        _db.commit()
+    finally:
+        _db.close()
+
+
+@router.get("/{item_id}/traces")
+def get_traces(item_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    if not item:
+        raise HTTPException(404)
+    traces = (
+        db.query(IPCRATrace)
+        .filter_by(item_id=item_id)
+        .order_by(IPCRATrace.created_at.asc())
+        .all()
     )
-    return {"answer": answer, "steps": []}
+    return [
+        {
+            "id": t.id,
+            "prompt": t.prompt,
+            "answer": t.answer,
+            "agent_nom": t.agent_nom,
+            "duree_ms": t.duree_ms,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in traces
+    ]
 
 
-# ── Conseil LLM (multi-modèles parallèles) ───────────────────────
+# ── Recherche sémantique via MemPalace ────────────────────────────
 
-class ConseilBody(BaseModel):
-    prompt:    str
-    providers: list  # [{provider: str, model: str}]
-
-
-@router.post("/{session_id}/conseil")
-async def ipcra_conseil(
-    session_id: str, body: ConseilBody,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
+@router.get("/search/semantic")
+async def semantic_search(
+    q: str,
+    categorie: Optional[str] = None,
+    user=Depends(get_current_user),
 ):
-    """
-    Soumet un prompt à plusieurs modèles LLM en parallèle via Forge /api/conseil.
-    Retourne les réponses de chaque modèle pour comparaison (Conseil LLM).
-    """
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404)
-
-    agent = None
-    if s.agent_id:
-        agent = db.query(AgentDefinition).filter_by(id=s.agent_id, is_active=True).first()
-
-    if not agent:
-        raise HTTPException(400, "Aucun agent Forge assigné à cette session")
-
-    forge_url = agent.forge_url.rstrip("/")
-    system = f"Tu es un expert en méthodologie IPCRA. Phase : {s.phase}. Session : {s.titre}."
-
-    try:
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            r = await client.post(
-                f"{forge_url}/api/conseil",
-                json={
-                    "prompt":    body.prompt,
-                    "system":    system,
-                    "providers": body.providers,
-                }
-            )
-            if r.status_code == 200:
-                return r.json()
-    except httpx.ConnectError:
-        pass
-    raise HTTPException(503, f"Forge non disponible sur {forge_url}")
-
-
-# ── Mode Avocat du Diable ────────────────────────────────────────
-
-DEVIL_SYSTEM = """Tu es l'Avocat du Diable d'un processus de réflexion structuré (IPCRA).
-Ton rôle : identifier les failles, biais cognitifs, angles morts et hypothèses non vérifiées dans le contenu soumis.
-
-Tu dois retourner une réponse JSON structurée avec exactement ces 4 clés :
-- "critique" : string — analyse critique principale (2-4 phrases)
-- "biais" : array of strings — liste des biais cognitifs détectés (3-5 items max)
-- "questions" : array of strings — questions difficiles que personne n'a posées (3-5)
-- "steelman" : string — la version la plus forte de l'argument opposé (2-3 phrases)
-
-Sois direct, sans complaisance, mais constructif."""
-
-
-class DevilBody(BaseModel):
-    content: str
-    phase:   str
-
-
-@router.post("/{session_id}/devil")
-async def ipcra_devil(
-    session_id: str, body: DevilBody,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
-):
-    """
-    Mode Avocat du Diable : analyse critique du contenu d'une phase IPCRA.
-    Identifie biais cognitifs, angles morts, questions difficiles et steelman.
-    """
-    if body.phase not in PHASES:
-        raise HTTPException(400)
-
-    s = db.query(IPCRASession).filter_by(id=session_id, owner_id=user["id"]).first()
-    if not s:
-        raise HTTPException(404)
-
-    agent = None
-    if s.agent_id:
-        agent = db.query(AgentDefinition).filter_by(id=s.agent_id, is_active=True).first()
-
-    if not agent:
-        raise HTTPException(400, "Aucun agent Forge assigné à cette session")
-
-    prompt = f"""Analyse ce contenu de la phase "{body.phase}" de la session "{s.titre}" :
-
----
-{body.content}
----
-
-Identifie les failles, biais, angles morts et formule le steelman opposé.
-Retourne uniquement le JSON demandé, sans texte autour."""
-
-    forge_url = agent.forge_url.rstrip("/")
-    t0 = time.monotonic()
-
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            r = await client.post(
-                f"{forge_url}/api/agents/react",
-                json={
-                    "message":        prompt,
-                    "sessionId":      f"devil-{session_id}-{body.phase}",
-                    "systemOverride": DEVIL_SYSTEM,
-                    "provider":       agent.forge_provider or None,
-                    "model":          agent.forge_model or None,
-                }
-            )
-            if r.status_code == 200:
-                data = r.json()
-                raw = data.get("answer", "")
-                duree = int((time.monotonic() - t0) * 1000)
-
-                # Extraction du JSON depuis la réponse
-                try:
-                    start = raw.index("{")
-                    end   = raw.rindex("}") + 1
-                    parsed = json.loads(raw[start:end])
-                except (ValueError, json.JSONDecodeError):
-                    parsed = {
-                        "critique":  raw,
-                        "biais":     [],
-                        "questions": [],
-                        "steelman":  "",
-                    }
-
-                background_tasks.add_task(
-                    _persist_trace,
-                    session_id, body.phase, f"[Avocat du Diable] {body.content[:100]}…",
-                    raw, data.get("steps", []), "avocat-du-diable", duree,
-                )
-                return parsed
-    except httpx.ConnectError:
-        pass
-    raise HTTPException(503, f"Forge non disponible sur {forge_url}")
+    """Recherche sémantique dans les items IPCRA via MemPalace."""
+    hits = mp.prefetch(q, n=10, wing=categorie, user_id=user["id"])
+    return {"query": q, "results": hits}

@@ -14,7 +14,7 @@ from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
-import chromadb
+from .storage import get_palace_storage
 
 READABLE_EXTENSIONS = {
     ".txt",
@@ -182,11 +182,7 @@ def chunk_text(content: str, source_file: str) -> list:
 
 def get_collection(palace_path: str):
     os.makedirs(palace_path, exist_ok=True)
-    client = chromadb.PersistentClient(path=palace_path)
-    try:
-        return client.get_collection("mempalace_drawers")
-    except Exception:
-        return client.create_collection("mempalace_drawers")
+    return get_palace_storage(palace_path, create=True)
 
 
 def file_already_mined(collection, source_file: str) -> bool:
@@ -396,10 +392,8 @@ def mine(
 
 def status(palace_path: str):
     """Show what's been filed in the palace."""
-    try:
-        client = chromadb.PersistentClient(path=palace_path)
-        col = client.get_collection("mempalace_drawers")
-    except Exception:
+    col = get_palace_storage(palace_path, create=False)
+    if col is None:
         print(f"\n  No palace found at {palace_path}")
         print("  Run: mempalace init <dir> then mempalace mine <dir>")
         return

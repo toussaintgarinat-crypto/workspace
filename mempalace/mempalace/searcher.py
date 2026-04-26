@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-import chromadb
+from .storage import get_palace_storage
 
 from .decay import (
     apply_decay_boost,
@@ -25,10 +25,8 @@ def search(query: str, palace_path: str, wing: str = None, room: str = None, n_r
     Search the palace. Returns verbatim drawer content.
     Optionally filter by wing (project) or room (aspect).
     """
-    try:
-        client = chromadb.PersistentClient(path=palace_path)
-        col = client.get_collection("mempalace_drawers")
-    except Exception:
+    col = get_palace_storage(palace_path, create=False)
+    if col is None:
         print(f"\n  No palace found at {palace_path}")
         print("  Run: mempalace init <dir> then mempalace mine <dir>")
         sys.exit(1)
@@ -123,11 +121,9 @@ def search_memories(
     (80% similarity + 20% decay boost). Access times are tracked unless
     track_access=False.
     """
-    try:
-        client = chromadb.PersistentClient(path=palace_path)
-        col = client.get_collection("mempalace_drawers")
-    except Exception as e:
-        return {"error": f"No palace found at {palace_path}: {e}"}
+    col = get_palace_storage(palace_path, create=False)
+    if col is None:
+        return {"error": f"No palace found at {palace_path}"}
 
     # Build where filter
     where = {}

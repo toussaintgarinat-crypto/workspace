@@ -21,10 +21,9 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 
-import chromadb
-
 from .config import MempalaceConfig
 from .decay import apply_decay_boost, compute_activation
+from .storage import get_palace_storage
 
 
 # ---------------------------------------------------------------------------
@@ -92,8 +91,7 @@ class Layer1:
     def generate(self) -> str:
         """Pull top drawers from ChromaDB and format as compact L1 text."""
         try:
-            client = chromadb.PersistentClient(path=self.palace_path)
-            col = client.get_collection("mempalace_drawers")
+            col = get_palace_storage(self.palace_path, create=False)
         except Exception:
             return "## L1 — No palace found. Run: mempalace mine <dir>"
 
@@ -196,8 +194,7 @@ class Layer2:
     def retrieve(self, wing: str = None, room: str = None, n_results: int = 10) -> str:
         """Retrieve drawers filtered by wing and/or room."""
         try:
-            client = chromadb.PersistentClient(path=self.palace_path)
-            col = client.get_collection("mempalace_drawers")
+            col = get_palace_storage(self.palace_path, create=False)
         except Exception:
             return "No palace found."
 
@@ -260,8 +257,7 @@ class Layer3:
     def search(self, query: str, wing: str = None, room: str = None, n_results: int = 5) -> str:
         """Semantic search, returns compact result text."""
         try:
-            client = chromadb.PersistentClient(path=self.palace_path)
-            col = client.get_collection("mempalace_drawers")
+            col = get_palace_storage(self.palace_path, create=False)
         except Exception:
             return "No palace found."
 
@@ -316,8 +312,7 @@ class Layer3:
     ) -> list:
         """Return raw dicts instead of formatted text."""
         try:
-            client = chromadb.PersistentClient(path=self.palace_path)
-            col = client.get_collection("mempalace_drawers")
+            col = get_palace_storage(self.palace_path, create=False)
         except Exception:
             return []
 
@@ -437,8 +432,7 @@ class MemoryStack:
 
         # Count drawers
         try:
-            client = chromadb.PersistentClient(path=self.palace_path)
-            col = client.get_collection("mempalace_drawers")
+            col = get_palace_storage(self.palace_path, create=False)
             count = col.count()
             result["total_drawers"] = count
         except Exception:

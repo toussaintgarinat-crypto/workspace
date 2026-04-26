@@ -163,8 +163,8 @@ def cmd_consolidate(args):
 
 def cmd_compress(args):
     """Compress drawers in a wing using AAAK Dialect."""
-    import chromadb
     from .dialect import Dialect
+    from .storage import get_palace_storage
 
     palace_path = os.path.expanduser(args.palace) if args.palace else MempalaceConfig().palace_path
 
@@ -182,11 +182,8 @@ def cmd_compress(args):
     else:
         dialect = Dialect()
 
-    # Connect to palace
-    try:
-        client = chromadb.PersistentClient(path=palace_path)
-        col = client.get_collection("mempalace_drawers")
-    except Exception:
+    col = get_palace_storage(palace_path, create=False)
+    if col is None:
         print(f"\n  No palace found at {palace_path}")
         print("  Run: mempalace init <dir> then mempalace mine <dir>")
         sys.exit(1)

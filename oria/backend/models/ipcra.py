@@ -3,36 +3,41 @@ from datetime import datetime, timezone
 import uuid
 from database import Base
 
+CATEGORIES = ["input", "projet", "casquette", "ressource", "archive"]
+
+
+class IPCRAItem(Base):
+    """Élément IPCRA selon la méthode d'Eliott Meunier.
+
+    Input      → capture brute, idée à traiter
+    Projet     → projet actif avec objectif et deadline
+    Casquette  → rôle / responsabilité (chapeau porté)
+    Ressource  → référence, template, connaissance réutilisable
+    Archive    → élément terminé / inactif
+    """
+    __tablename__ = "ipcra_items"
+    id         = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id   = Column(String, nullable=False, index=True)
+    world_id   = Column(String, nullable=True)
+    categorie  = Column(String, nullable=False, default="input")  # voir CATEGORIES
+    titre      = Column(String, nullable=False)
+    contenu    = Column(Text, default="")
+    tags       = Column(Text, default="[]")      # JSON list de strings
+    casquette  = Column(String, nullable=True)   # nom du rôle (si catégorie=casquette)
+    source_url = Column(String, nullable=True)   # URL source (pour les inputs web)
+    agent_id   = Column(String, nullable=True)   # agent Forge assigné
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 
 class IPCRATrace(Base):
-    """Trace d'une exécution agent sur une phase IPCRA (steps VoltAgent persistés)."""
+    """Historique des interactions IA sur un élément IPCRA."""
     __tablename__ = "ipcra_traces"
     id         = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id = Column(String, nullable=False, index=True)
-    phase      = Column(String, nullable=False)
+    item_id    = Column(String, nullable=True, index=True)
+    owner_id   = Column(String, nullable=False)
     prompt     = Column(Text, default="")
     answer     = Column(Text, default="")
-    steps      = Column(Text, default="[]")   # JSON list des steps VoltAgent
     agent_nom  = Column(String, default="")
     duree_ms   = Column(Integer, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-
-class IPCRASession(Base):
-    """Session de travail structurée selon la méthodologie IPCRA."""
-    __tablename__ = "ipcra_sessions"
-    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    owner_id    = Column(String, nullable=False)
-    world_id    = Column(String, nullable=True)
-    agent_id    = Column(String, nullable=True)    # agent assigné à cette session
-    titre       = Column(String, nullable=False)
-    phase       = Column(String, default="identifier")  # identifier|planifier|creer|reflechir|ajuster
-    # Contenu de chaque phase (JSON text)
-    identifier_notes  = Column(Text, default="")   # contexte, objectifs, documents liés
-    planifier_notes   = Column(Text, default="")   # plan, étapes, ressources
-    creer_output      = Column(Text, default="")   # livrable produit
-    reflechir_notes   = Column(Text, default="")   # retour critique, traces agent
-    ajuster_notes     = Column(Text, default="")   # leçons apprises, ajustements MemPalace
-    status      = Column(String, default="active") # active|completee|archivee
-    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
