@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../services/api.js'
+import { api, authHeaders } from '../services/api.js'
 
 const AVATARS = ['👤','🧑','👩','🧔','👨‍💻','👩‍💻','🧑‍🎨','👩‍🎤','🧑‍🚀','🦊','🐺','🐸']
 
@@ -39,6 +39,7 @@ export default function SettingsModal({ moi, onSauvegarde, onDeconnexion, onFerm
   async function exporterDonnees() {
     const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/auth/me/export`, {
       credentials: 'include',
+      headers: authHeaders(),
     })
     if (r.ok) {
       const data = await r.json()
@@ -54,6 +55,7 @@ export default function SettingsModal({ moi, onSauvegarde, onDeconnexion, onFerm
     const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/auth/me`, {
       method: 'DELETE',
       credentials: 'include',
+      headers: authHeaders(),
     })
     if (r.ok) {
       onDeconnexion()

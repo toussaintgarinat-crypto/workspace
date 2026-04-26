@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../services/api.js'
+import { api, authHeaders } from '../services/api.js'
 
 const PROVIDER_LABELS = {
   anthropic: 'Anthropic',
@@ -55,7 +55,7 @@ export default function LLMConfigPanel({ world, moi, onFermer }) {
     const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/llm-config/${world.id}/test`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
     })
     const d = await r.json().catch(() => null)
     setTesting(false)

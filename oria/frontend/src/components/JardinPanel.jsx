@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { api } from '../services/api.js'
+import { api, authHeaders } from '../services/api.js'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -60,7 +60,7 @@ export default function JardinPanel({ moi }) {
     try {
       const res = await fetch(`${BASE}/api/jardin/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         credentials: 'include',
         body: JSON.stringify({ message: msg, save_to_memory: true }),
       })
@@ -115,7 +115,7 @@ export default function JardinPanel({ moi }) {
     form.append('file', file)
     try {
       const res = await fetch(`${BASE}/api/jardin/upload`, {
-        method: 'POST', credentials: 'include', body: form,
+        method: 'POST', credentials: 'include', headers: authHeaders(), body: form,
       })
       if (res.ok) {
         const doc = await res.json()

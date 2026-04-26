@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { LiveKitRoom } from '@livekit/components-react'
-import { api } from '../services/api.js'
+import { api, authHeaders } from '../services/api.js'
 import { useMatrixRoom } from '../hooks/useMatrixRoom.js'
 import { getMatrixClient } from '../services/matrixClient.js'
 import VocalSalon from './VocalSalon.jsx'
@@ -70,6 +70,7 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
     const res = await fetch(`${API_URL}/api/files/upload/${room.id}`, {
       method: 'POST',
       credentials: 'include',
+      headers: authHeaders(),
       body: form,
     })
     if (res.ok) chargerFichiers()

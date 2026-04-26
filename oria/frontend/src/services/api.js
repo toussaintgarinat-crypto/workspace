@@ -1,15 +1,31 @@
+import keycloak from '../keycloak'
+
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function notifyError(message) {
   window.dispatchEvent(new CustomEvent('oria:error', { detail: message }))
 }
 
+function _authHeaders(extra = {}) {
+  return {
+    'Content-Type': 'application/json',
+    ...(keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {}),
+    ...extra,
+  }
+}
+
+async function _refreshToken() {
+  if (!keycloak.authenticated) return
+  try { await keycloak.updateToken(30) } catch { keycloak.logout?.() }
+}
+
 async function request(path, options = {}) {
+  await _refreshToken()
   try {
     const r = await fetch(`${BASE}/api${path}`, {
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers: _authHeaders(options.headers),
     })
     if (!r.ok) {
       let detail = `Erreur ${r.status}`
@@ -17,7 +33,6 @@ async function request(path, options = {}) {
       notifyError(detail)
       return null
     }
-    // 204 No Content
     if (r.status === 204) return null
     return await r.json()
   } catch (e) {
@@ -35,10 +50,13 @@ export const api = {
   post:  (path, body)  => request(path, { method: 'POST',  body: JSON.stringify(body) }),
   patch: (path, body)  => request(path, { method: 'PATCH', body: JSON.stringify(body) }),
   del:   (path)        => request(path, { method: 'DELETE' }),
-  upload: (path, formData) => {
+  upload: async (path, formData) => {
+    await _refreshToken()
+    const headers = keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {}
     return fetch(`${BASE}/api${path}`, {
       method: 'POST',
       credentials: 'include',
+      headers,
       body: formData,
     })
       .then(async r => {
@@ -47,4 +65,12 @@ export const api = {
       })
       .catch(() => { notifyError('Erreur upload'); return null })
   },
+}
+
+// Helper pour les fetch directs dans les composants (streaming, uploads custom)
+export function authHeaders(extra = {}) {
+  return {
+    ...(keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {}),
+    ...extra,
+  }
 }

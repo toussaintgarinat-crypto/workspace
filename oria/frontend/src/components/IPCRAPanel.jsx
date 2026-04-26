@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { api } from '../services/api.js'
+import { api, authHeaders } from '../services/api.js'
 
 const BASE    = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const ACCEPT  = '.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg,.mp3,.mp4'
@@ -390,6 +390,7 @@ function DocumentSection({ sessionId, sessionTitre, worldId, existingDocs, onAtt
         const r = await fetch(`${BASE}/api/documents/upload`, {
           method: 'POST',
           credentials: 'include',
+          headers: authHeaders(),
           body: form,
         })
         if (!r.ok) {

@@ -7,7 +7,7 @@ from models.world import World, Member
 from models.building import Building, Room
 from models.abonnement import MembreAbonnement
 from models.user import User
-from routers.auth import get_current_user, SECRET_KEY, ALGORITHM
+from routers.auth import get_current_user, _get_jwks
 from jose import jwt, JWTError
 import uuid
 import services.matrix_service as matrix
@@ -43,14 +43,20 @@ def _serialise_membres(membres, db: Session) -> list:
 
 
 def get_current_user_optional(authorization: str = Header(None)):
-    """Dépendance optionnelle — retourne None si pas de token valide."""
+    """Dépendance optionnelle — retourne None si pas de token Keycloak valide."""
     if not authorization or not authorization.startswith("Bearer "):
         return None
     try:
-        payload = jwt.decode(authorization[7:], SECRET_KEY, algorithms=[ALGORITHM])
+        jwks = _get_jwks()
+        payload = jwt.decode(
+            authorization[7:], jwks,
+            algorithms=["RS256"],
+            options={"verify_aud": False, "verify_at_hash": False},
+        )
         user_id = payload.get("sub")
-        return {"id": user_id, "nom": payload.get("nom")} if user_id else None
-    except JWTError:
+        nom = payload.get("nom") or payload.get("preferred_username") or payload.get("name")
+        return {"id": user_id, "nom": nom} if user_id else None
+    except Exception:
         return None
 
 

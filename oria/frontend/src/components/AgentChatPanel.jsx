@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { api } from '../services/api.js'
+import { api, authHeaders } from '../services/api.js'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -242,7 +242,7 @@ export default function AgentChatPanel({ agent, moi, onClose }) {
       const res = await fetch(`${BASE}/api/agents/${agent.id}/chat`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ message: text, session_id: sessionId }),
       })
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { api } from '../services/api.js'
+import { api, authHeaders } from '../services/api.js'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -55,6 +55,7 @@ export default function DocumentsPanel({ scope, scopeId, scopeNom, moi, onFermer
     const res = await fetch(`${API_URL}/api/files/upload/${scope}/${scopeId}`, {
       method: 'POST',
       credentials: 'include',
+      headers: authHeaders(),
       body: form,
     })
     setChargement(false)
