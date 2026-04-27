@@ -3,6 +3,11 @@ set -e
 
 echo "=== Forge Standalone Setup ==="
 
+# Vérification des prérequis
+command -v docker >/dev/null 2>&1 || { echo "Erreur : Docker non trouvé. Installer Docker Desktop."; exit 1; }
+docker compose version >/dev/null 2>&1 || { echo "Erreur : docker compose (v2) non trouvé."; exit 1; }
+command -v openssl >/dev/null 2>&1 || { echo "Erreur : openssl non trouvé."; exit 1; }
+
 if [ ! -f .env ]; then
     cp .env.example .env
 

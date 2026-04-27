@@ -70,7 +70,7 @@ def clean_tables():
     session = TestSessionLocal()
     try:
         session.execute(text("DELETE FROM ipcra_traces"))
-        session.execute(text("DELETE FROM ipcra_sessions"))
+        session.execute(text("DELETE FROM ipcra_items"))
         session.execute(text("DELETE FROM agent_definitions"))
         session.commit()
     except Exception:

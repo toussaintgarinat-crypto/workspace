@@ -1,7 +1,7 @@
 """
-Tests end-to-end du flux IPCRA.
-Couvre : CRUD sessions · gestion des phases · assist IA · traces VoltAgent ·
-         contradictions KG · Avocat du Diable · flux complet 5-phases.
+Tests end-to-end du système IPCRA.
+Couvre : CRUD items · déplacement entre catégories · assist IA ·
+         traces · recherche sémantique · isolation utilisateurs.
 """
 import json
 import pytest
@@ -14,17 +14,16 @@ from models.agent import AgentDefinition
 
 # ── Helpers ──────────────────────────────────────────────────────
 
-def create_session(client, titre="Test session", agent_id=None):
-    body = {"titre": titre}
+def create_item(client, titre="Test item", categorie="input", contenu="", agent_id=None):
+    body = {"titre": titre, "categorie": categorie, "contenu": contenu}
     if agent_id:
         body["agent_id"] = agent_id
     r = client.post("/api/ipcra/", json=body)
-    assert r.status_code == 200, r.text
+    assert r.status_code == 201, r.text
     return r.json()
 
 
 def create_agent(nom="Agent Test", forge_url="http://forge-test:3001", use_memory=False):
-    """Crée un AgentDefinition directement en base et retourne son id."""
     db = SessionLocal()
     try:
         agent = AgentDefinition(
@@ -46,11 +45,9 @@ def create_agent(nom="Agent Test", forge_url="http://forge-test:3001", use_memor
 
 
 def mock_forge_response(answer: str, steps: list = None):
-    """Construit un mock httpx.AsyncClient qui retourne une réponse Forge."""
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {"answer": answer, "steps": steps or []}
-
     mock_http = AsyncMock()
     mock_http.__aenter__ = AsyncMock(return_value=mock_http)
     mock_http.__aexit__ = AsyncMock(return_value=False)
@@ -58,488 +55,323 @@ def mock_forge_response(answer: str, steps: list = None):
     return mock_http
 
 
-# ── CRUD Sessions ─────────────────────────────────────────────────
+# ── CRUD Items ────────────────────────────────────────────────────
 
-class TestSessionCRUD:
-    def test_create_session_crée_branche_kg(self, client):
-        with patch("mempalace_client.create_branch", return_value=True) as mock_branch:
-            r = client.post("/api/ipcra/", json={"titre": "Mon projet test"})
-        assert r.status_code == 200
+class TestItemCRUD:
+    def test_create_item_retourne_201(self, client):
+        r = client.post("/api/ipcra/", json={"titre": "Idée capture", "categorie": "input"})
+        assert r.status_code == 201
         data = r.json()
-        assert data["titre"] == "Mon projet test"
-        assert data["phase"] == "identifier"
-        assert data["status"] == "active"
+        assert data["titre"] == "Idée capture"
+        assert data["categorie"] == "input"
         assert "id" in data
-        mock_branch.assert_called_once_with(data["id"])
 
-    def test_list_sessions_retourne_les_siennes(self, client):
-        create_session(client, "Session A")
-        create_session(client, "Session B")
+    def test_create_item_categories_valides(self, client):
+        for cat in ["input", "projet", "casquette", "ressource", "archive"]:
+            r = client.post("/api/ipcra/", json={"titre": f"Item {cat}", "categorie": cat})
+            assert r.status_code == 201, f"Catégorie {cat} rejetée : {r.text}"
+
+    def test_create_item_categorie_invalide_retourne_400(self, client):
+        r = client.post("/api/ipcra/", json={"titre": "X", "categorie": "inexistante"})
+        assert r.status_code == 400
+
+    def test_list_items_retourne_les_siens(self, client):
+        create_item(client, "Item A")
+        create_item(client, "Item B", "projet")
         r = client.get("/api/ipcra/")
         assert r.status_code == 200
         assert len(r.json()) == 2
 
-    def test_get_session_existante(self, client):
-        s = create_session(client)
-        r = client.get(f"/api/ipcra/{s['id']}")
+    def test_list_items_filtre_par_categorie(self, client):
+        create_item(client, "Input 1", "input")
+        create_item(client, "Projet 1", "projet")
+        create_item(client, "Input 2", "input")
+        r = client.get("/api/ipcra/?categorie=input")
         assert r.status_code == 200
-        assert r.json()["id"] == s["id"]
+        items = r.json()
+        assert len(items) == 2
+        assert all(i["categorie"] == "input" for i in items)
 
-    def test_get_session_inconnue_retourne_404(self, client):
-        r = client.get("/api/ipcra/session-inexistante-000")
+    def test_get_item_existant(self, client):
+        item = create_item(client, "Mon item")
+        r = client.get(f"/api/ipcra/{item['id']}")
+        assert r.status_code == 200
+        assert r.json()["id"] == item["id"]
+
+    def test_get_item_inexistant_retourne_404(self, client):
+        r = client.get("/api/ipcra/item-qui-nexiste-pas")
         assert r.status_code == 404
 
-    def test_delete_session(self, client):
-        s = create_session(client)
-        r = client.delete(f"/api/ipcra/{s['id']}")
+    def test_update_item(self, client):
+        item = create_item(client, "Titre initial")
+        r = client.put(f"/api/ipcra/{item['id']}", json={"titre": "Titre modifié", "contenu": "Contenu ajouté"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["titre"] == "Titre modifié"
+        assert data["contenu"] == "Contenu ajouté"
+
+    def test_delete_item(self, client):
+        item = create_item(client)
+        r = client.delete(f"/api/ipcra/{item['id']}")
         assert r.status_code == 204
-        assert client.get(f"/api/ipcra/{s['id']}").status_code == 404
+        assert client.get(f"/api/ipcra/{item['id']}").status_code == 404
 
-    def test_update_status_valide(self, client):
-        s = create_session(client)
-        r = client.patch(f"/api/ipcra/{s['id']}/status", params={"status": "archivee"})
+    def test_tags_sauvegardes_et_restitues(self, client):
+        r = client.post("/api/ipcra/", json={
+            "titre": "Avec tags",
+            "categorie": "ressource",
+            "tags": ["python", "fastapi", "memoire"],
+        })
+        assert r.status_code == 201
+        assert r.json()["tags"] == ["python", "fastapi", "memoire"]
+
+
+# ── Déplacement entre catégories ──────────────────────────────────
+
+class TestMoveCategorieIPCRA:
+    def test_move_input_vers_projet(self, client):
+        item = create_item(client, "Idée à qualifier", "input")
+        r = client.patch(f"/api/ipcra/{item['id']}/categorie?categorie=projet")
         assert r.status_code == 200
-        assert r.json()["status"] == "archivee"
+        assert r.json()["categorie"] == "projet"
 
-    def test_update_status_invalide_retourne_400(self, client):
-        s = create_session(client)
-        r = client.patch(f"/api/ipcra/{s['id']}/status", params={"status": "n_existe_pas"})
+    def test_move_projet_vers_archive(self, client):
+        item = create_item(client, "Projet terminé", "projet")
+        r = client.patch(f"/api/ipcra/{item['id']}/categorie?categorie=archive")
+        assert r.status_code == 200
+        assert r.json()["categorie"] == "archive"
+
+    def test_move_categorie_invalide_retourne_400(self, client):
+        item = create_item(client)
+        r = client.patch(f"/api/ipcra/{item['id']}/categorie?categorie=inexistante")
         assert r.status_code == 400
 
+    def test_move_item_inexistant_retourne_404(self, client):
+        r = client.patch("/api/ipcra/item-fantome/categorie?categorie=archive")
+        assert r.status_code == 404
 
-# ── Gestion des phases ────────────────────────────────────────────
-
-class TestPhases:
-    def test_mise_à_jour_contenu_phase(self, client):
-        s = create_session(client)
-        r = client.patch(
-            f"/api/ipcra/{s['id']}/phase/identifier",
-            json={"content": "Objectif : réduire le temps de déploiement de 50 %"},
-        )
-        assert r.status_code == 200
-        assert "réduire le temps" in r.json()["identifier_notes"]
-
-    def test_phase_invalide_retourne_400(self, client):
-        s = create_session(client)
-        r = client.patch(f"/api/ipcra/{s['id']}/phase/inexistante", json={"content": "x"})
-        assert r.status_code == 400
-
-    def test_advance_passe_à_planifier(self, client):
-        s = create_session(client)
-        r = client.post(f"/api/ipcra/{s['id']}/advance")
-        assert r.status_code == 200
-        assert r.json()["phase"] == "planifier"
-
-    def test_advance_toutes_phases_dans_lordre(self, client):
-        s = create_session(client)
-        phases_attendues = ["planifier", "creer", "reflechir", "ajuster"]
-        for phase in phases_attendues:
-            r = client.post(f"/api/ipcra/{s['id']}/advance")
-            assert r.status_code == 200
-            assert r.json()["phase"] == phase
-
-    def test_advance_dernière_phase_complète_la_session(self, client):
-        s = create_session(client)
-        for _ in range(5):
-            client.post(f"/api/ipcra/{s['id']}/advance")
-        r = client.get(f"/api/ipcra/{s['id']}")
-        assert r.json()["status"] == "completee"
-
-    def test_advance_vers_ajuster_déclenche_merge_kg(self, client):
-        """Entrer en phase 'ajuster' doit appeler merge_branch exactement une fois."""
-        s = create_session(client)
-        for _ in range(3):  # identifier → planifier → creer → reflechir
-            client.post(f"/api/ipcra/{s['id']}/advance")
-
-        with patch("mempalace_client.merge_branch", return_value={"merged": 7, "conflicts": []}) as mock_merge:
-            r = client.post(f"/api/ipcra/{s['id']}/advance")
-
-        assert r.status_code == 200
-        assert r.json()["phase"] == "ajuster"
-        mock_merge.assert_called_once_with(s["id"])
-        assert r.json()["merge"]["merged"] == 7
-
-    def test_advance_avec_contenu_déclenche_sync_mempalace(self, client):
-        """Avancer une phase non-vide doit indexer son contenu dans MemPalace."""
-        s = create_session(client)
-        client.patch(
-            f"/api/ipcra/{s['id']}/phase/identifier",
-            json={"content": "Contenu important à synchroniser"},
-        )
+    def test_move_declenche_sync_mempalace(self, client):
+        item = create_item(client, "Ressource à déplacer", "input", "Contenu utile")
         with patch("mempalace_client.sync", return_value=True) as mock_sync:
-            client.post(f"/api/ipcra/{s['id']}/advance")
-
+            client.patch(f"/api/ipcra/{item['id']}/categorie?categorie=ressource")
         mock_sync.assert_called_once()
-        call_args = mock_sync.call_args[0]
-        assert "Contenu important à synchroniser" in call_args[0]
-        assert call_args[1] == s["id"]
-        assert call_args[2] == "identifier"
 
-    def test_advance_sans_contenu_ne_sync_pas(self, client):
-        """Une phase vide ne doit pas déclencher de sync MemPalace."""
-        s = create_session(client)
-        with patch("mempalace_client.sync") as mock_sync:
-            client.post(f"/api/ipcra/{s['id']}/advance")
-        mock_sync.assert_not_called()
+
+# ── Sync MemPalace ────────────────────────────────────────────────
+
+class TestSyncMemPalace:
+    def test_create_avec_contenu_declenche_sync(self, client):
+        with patch("mempalace_client.sync", return_value=True) as mock_sync:
+            create_item(client, "Item sync", "projet", "Contenu à indexer")
+        mock_sync.assert_called_once()
+        args = mock_sync.call_args[0]
+        assert "Contenu à indexer" in args[0]
+        assert args[2] == "projet"
+
+    def test_create_sans_contenu_sync_titre_seulement(self, client):
+        # _sync_item synce le titre même sans contenu — comportement normal
+        with patch("mempalace_client.sync", return_value=True) as mock_sync:
+            create_item(client, "Item titre seulement")
+        mock_sync.assert_called_once()
+        args = mock_sync.call_args[0]
+        assert "Item titre seulement" in args[0]
+        assert "##" in args[0]  # format "## Titre"
 
 
 # ── Assist IA ────────────────────────────────────────────────────
 
 class TestAssist:
-    def test_assist_sans_agent_retourne_guide_textuel(self, client):
-        s = create_session(client)
-        r = client.post(
-            f"/api/ipcra/{s['id']}/assist",
-            json={"phase": "identifier", "prompt": "Comment démarrer ?"},
-        )
+    def test_assist_sans_agent_retourne_conseil_categorie(self, client):
+        item = create_item(client, "Mon projet", "projet")
+        r = client.post(f"/api/ipcra/{item['id']}/assist", json={"prompt": "Que faire ensuite ?"})
         assert r.status_code == 200
         data = r.json()
         assert len(data["answer"]) > 20
         assert data.get("steps") == []
 
-    def test_assist_phase_invalide_retourne_400(self, client):
-        s = create_session(client)
-        r = client.post(
-            f"/api/ipcra/{s['id']}/assist",
-            json={"phase": "phase_inconnue", "prompt": "test"},
-        )
-        assert r.status_code == 400
-
-    def test_assist_persiste_trace_en_base(self, client):
-        s = create_session(client)
-        client.post(
-            f"/api/ipcra/{s['id']}/assist",
-            json={"phase": "planifier", "prompt": "Construis mon plan d'action"},
-        )
-        traces = client.get(f"/api/ipcra/{s['id']}/traces").json()
-        assert len(traces) == 1
-        t = traces[0]
-        assert t["phase"] == "planifier"
-        assert t["agent_nom"] == "guide-textuel"
-        assert "Construis mon plan" in t["prompt"]
+    def test_assist_item_inexistant_retourne_404(self, client):
+        r = client.post("/api/ipcra/item-fantome/assist", json={"prompt": "test"})
+        assert r.status_code == 404
 
     def test_assist_avec_agent_forge_appelle_forge(self, client):
         agent_id = create_agent("Agent Forge Test")
-        s = create_session(client, agent_id=agent_id)
-
+        item = create_item(client, "Projet avec agent", "projet", agent_id=agent_id)
         with patch("httpx.AsyncClient", return_value=mock_forge_response("Voici mon analyse.", [{"step": 1}])):
-            r = client.post(
-                f"/api/ipcra/{s['id']}/assist",
-                json={"phase": "creer", "prompt": "Génère le livrable"},
-            )
-
+            r = client.post(f"/api/ipcra/{item['id']}/assist", json={"prompt": "Analyse ce projet"})
         assert r.status_code == 200
         assert r.json()["answer"] == "Voici mon analyse."
 
-    def test_assist_avec_agent_forge_down_dégrade_gracieusement(self, client):
+    def test_assist_avec_agent_forge_down_degrade_gracieusement(self, client):
         agent_id = create_agent("Agent Forge Down", forge_url="http://forge-down:9999")
-        s = create_session(client, agent_id=agent_id)
-
+        item = create_item(client, "Item forge down", "input", agent_id=agent_id)
         mock_http = AsyncMock()
         mock_http.__aenter__ = AsyncMock(return_value=mock_http)
         mock_http.__aexit__ = AsyncMock(return_value=False)
         mock_http.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
-
         with patch("httpx.AsyncClient", return_value=mock_http):
-            r = client.post(
-                f"/api/ipcra/{s['id']}/assist",
-                json={"phase": "identifier", "prompt": "Test"},
-            )
-
+            r = client.post(f"/api/ipcra/{item['id']}/assist", json={"prompt": "Test"})
         assert r.status_code == 200
         assert "non disponible" in r.json()["answer"]
 
-    def test_assist_avec_mempalace_injecte_contexte(self, client):
-        """Avec use_memory=True, le prefetch MemPalace doit être appelé."""
+    def test_assist_avec_mempalace_prefetch_appele(self, client):
         agent_id = create_agent("Agent Mémoire", use_memory=True)
-        s = create_session(client, agent_id=agent_id)
-
+        item = create_item(client, "Item avec mémoire", "ressource", agent_id=agent_id)
         with patch("mempalace_client.prefetch", return_value=[]) as mock_prefetch, \
-             patch("httpx.AsyncClient", return_value=mock_forge_response("Réponse avec mémoire")):
-            client.post(
-                f"/api/ipcra/{s['id']}/assist",
-                json={"phase": "identifier", "prompt": "Test mémoire"},
-            )
-
+             patch("httpx.AsyncClient", return_value=mock_forge_response("Réponse enrichie")):
+            client.post(f"/api/ipcra/{item['id']}/assist", json={"prompt": "Test mémoire"})
         mock_prefetch.assert_called_once()
 
+    def test_assist_persiste_trace(self, client):
+        agent_id = create_agent("Agent Trace")
+        item = create_item(client, "Item tracé", "casquette", agent_id=agent_id)
+        with patch("httpx.AsyncClient", return_value=mock_forge_response("Réponse tracée")):
+            client.post(f"/api/ipcra/{item['id']}/assist", json={"prompt": "Trace ce message"})
+        traces = client.get(f"/api/ipcra/{item['id']}/traces").json()
+        assert len(traces) == 1
+        assert "Trace ce message" in traces[0]["prompt"]
+        assert traces[0]["agent_nom"] == "Agent Trace"
+        assert isinstance(traces[0]["duree_ms"], int)
 
-# ── Traces VoltAgent ─────────────────────────────────────────────
+
+# ── Traces ────────────────────────────────────────────────────────
 
 class TestTraces:
     def test_traces_vides_initialement(self, client):
-        s = create_session(client)
-        r = client.get(f"/api/ipcra/{s['id']}/traces")
+        item = create_item(client)
+        r = client.get(f"/api/ipcra/{item['id']}/traces")
         assert r.status_code == 200
         assert r.json() == []
 
-    def test_traces_saccumulent_par_assist(self, client):
-        s = create_session(client)
-        for phase in ["identifier", "planifier", "creer"]:
-            client.post(
-                f"/api/ipcra/{s['id']}/assist",
-                json={"phase": phase, "prompt": f"Aide pour {phase}"},
-            )
-        traces = client.get(f"/api/ipcra/{s['id']}/traces").json()
-        assert len(traces) == 3
-        phases_tracées = {t["phase"] for t in traces}
-        assert phases_tracées == {"identifier", "planifier", "creer"}
-
-    def test_traces_triées_par_date_asc(self, client):
-        s = create_session(client)
-        for phase in ["identifier", "planifier"]:
-            client.post(
-                f"/api/ipcra/{s['id']}/assist",
-                json={"phase": phase, "prompt": "test"},
-            )
-        traces = client.get(f"/api/ipcra/{s['id']}/traces").json()
-        assert traces[0]["phase"] == "identifier"
-        assert traces[1]["phase"] == "planifier"
-
-    def test_traces_session_inconnue_retourne_404(self, client):
-        r = client.get("/api/ipcra/session-inconnue-xyz/traces")
+    def test_traces_item_inexistant_retourne_404(self, client):
+        r = client.get("/api/ipcra/item-inexistant-xyz/traces")
         assert r.status_code == 404
 
-    def test_trace_contient_duree_ms(self, client):
-        s = create_session(client)
-        client.post(
-            f"/api/ipcra/{s['id']}/assist",
-            json={"phase": "reflechir", "prompt": "Analyse"},
-        )
-        trace = client.get(f"/api/ipcra/{s['id']}/traces").json()[0]
-        assert isinstance(trace["duree_ms"], int)
-        assert trace["duree_ms"] >= 0
+    def test_traces_triees_par_date_asc(self, client):
+        agent_id = create_agent("Agent Ordre")
+        item = create_item(client, "Item multi-traces", "projet", agent_id=agent_id)
+        for msg in ["Premier appel", "Deuxième appel"]:
+            with patch("httpx.AsyncClient", return_value=mock_forge_response(f"Réponse: {msg}")):
+                client.post(f"/api/ipcra/{item['id']}/assist", json={"prompt": msg})
+        traces = client.get(f"/api/ipcra/{item['id']}/traces").json()
+        assert len(traces) == 2
+        assert "Premier" in traces[0]["prompt"]
+        assert "Deuxième" in traces[1]["prompt"]
 
 
-# ── Contradictions KG ─────────────────────────────────────────────
+# ── Recherche sémantique ──────────────────────────────────────────
 
-class TestContradictions:
-    def test_contradictions_vides_par_défaut(self, client):
-        s = create_session(client)
-        r = client.get(f"/api/ipcra/{s['id']}/contradictions")
+class TestSemanticSearch:
+    def test_search_sans_resultats_retourne_vide(self, client):
+        with patch("mempalace_client.prefetch", return_value=[]) as mock_prefetch:
+            r = client.get("/api/ipcra/search/semantic?q=optimisation+cloud")
         assert r.status_code == 200
-        data = r.json()
-        assert data["session_id"] == s["id"]
-        assert data["conflicts"] == []
-        assert data["count"] == 0
+        assert r.json()["results"] == []
+        mock_prefetch.assert_called_once()
 
-    def test_contradictions_retourne_les_conflits_détectés(self, client):
-        s = create_session(client)
-        conflicts = [
-            {
-                "sujet": "projet",
-                "predicat": "durée",
-                "branche": "3 mois",
-                "trunk": "6 mois",
-                "severity": "high",
-            }
-        ]
-        with patch("mempalace_client.check_contradictions", return_value=conflicts):
-            r = client.get(f"/api/ipcra/{s['id']}/contradictions")
-
+    def test_search_retourne_hits_mempalace(self, client):
+        hits = [{"text": "Migration AWS", "wing": "wing_user", "room": "ipcra-sessions", "similarity": 0.85}]
+        with patch("mempalace_client.prefetch", return_value=hits):
+            r = client.get("/api/ipcra/search/semantic?q=migration+cloud")
         assert r.status_code == 200
-        assert r.json()["count"] == 1
-        assert r.json()["conflicts"][0]["severity"] == "high"
-
-    def test_contradictions_session_inconnue_retourne_404(self, client):
-        r = client.get("/api/ipcra/session-fantome/contradictions")
-        assert r.status_code == 404
+        assert len(r.json()["results"]) == 1
+        assert r.json()["results"][0]["similarity"] == 0.85
 
 
-# ── Avocat du Diable ─────────────────────────────────────────────
+# ── Isolation utilisateurs ────────────────────────────────────────
 
-class TestDevilAdvocate:
-    def test_devil_sans_agent_retourne_400(self, client):
-        s = create_session(client)
-        r = client.post(
-            f"/api/ipcra/{s['id']}/devil",
-            json={"content": "Le projet est parfait.", "phase": "planifier"},
-        )
-        assert r.status_code == 400
-
-    def test_devil_retourne_json_structuré(self, client):
-        agent_id = create_agent("Agent Devil")
-        s = create_session(client, agent_id=agent_id)
-
-        devil_payload = {
-            "critique": "Le plan ignore les risques techniques majeurs.",
-            "biais": ["Optimisme excessif", "Biais de confirmation", "Effet de halo"],
-            "questions": [
-                "Que se passe-t-il si le délai double ?",
-                "Qui valide la qualité du livrable ?",
-            ],
-            "steelman": "Un délai court peut favoriser la créativité sous contrainte.",
-        }
-
-        with patch("httpx.AsyncClient", return_value=mock_forge_response(
-            json.dumps(devil_payload, ensure_ascii=False)
-        )):
-            r = client.post(
-                f"/api/ipcra/{s['id']}/devil",
-                json={"content": "Plan sans plan B.", "phase": "planifier"},
-            )
-
-        assert r.status_code == 200
-        data = r.json()
-        assert "critique" in data
-        assert isinstance(data["biais"], list)
-        assert len(data["biais"]) == 3
-        assert isinstance(data["questions"], list)
-        assert "steelman" in data
-
-    def test_devil_forge_down_retourne_503(self, client):
-        agent_id = create_agent("Agent Devil Down", forge_url="http://forge-down:9999")
-        s = create_session(client, agent_id=agent_id)
-
-        mock_http = AsyncMock()
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-        mock_http.post = AsyncMock(side_effect=httpx.ConnectError("down"))
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            r = client.post(
-                f"/api/ipcra/{s['id']}/devil",
-                json={"content": "Contenu test", "phase": "reflechir"},
-            )
-        assert r.status_code == 503
-
-    def test_devil_persiste_trace_avocat(self, client):
-        """L'Avocat du Diable doit créer une trace avec agent_nom='avocat-du-diable'."""
-        agent_id = create_agent("Agent Devil Trace")
-        s = create_session(client, agent_id=agent_id)
-
-        with patch("httpx.AsyncClient", return_value=mock_forge_response(
-            '{"critique": "ok", "biais": [], "questions": [], "steelman": "ok"}'
-        )):
-            client.post(
-                f"/api/ipcra/{s['id']}/devil",
-                json={"content": "Contenu à analyser", "phase": "reflechir"},
-            )
-
-        traces = client.get(f"/api/ipcra/{s['id']}/traces").json()
-        assert any(t["agent_nom"] == "avocat-du-diable" for t in traces)
-
-    def test_devil_json_malformé_retourne_critique_brute(self, client):
-        """Si Forge ne retourne pas du JSON valide, on doit retourner la réponse brute dans 'critique'."""
-        agent_id = create_agent("Agent Devil Brut")
-        s = create_session(client, agent_id=agent_id)
-
-        with patch("httpx.AsyncClient", return_value=mock_forge_response(
-            "Ce n'est pas du JSON valide, juste du texte brut."
-        )):
-            r = client.post(
-                f"/api/ipcra/{s['id']}/devil",
-                json={"content": "Contenu", "phase": "identifier"},
-            )
-
-        assert r.status_code == 200
-        data = r.json()
-        assert "Ce n'est pas du JSON" in data["critique"]
-        assert data["biais"] == []
-
-
-# ── Flux complet end-to-end ───────────────────────────────────────
-
-class TestFluxCompletE2E:
-    def test_flux_ipcra_5_phases(self, client):
-        """
-        Simule le parcours complet d'un utilisateur sur une session IPCRA :
-        création → 5 phases remplies → assist sur chaque phase →
-        avancement (avec merge KG à l'entrée en ajuster) → session completée →
-        vérification traces + contradictions.
-        """
-        PHASES = ["identifier", "planifier", "creer", "reflechir", "ajuster"]
-        CONTENUS = {
-            "identifier": "Contexte : migration cloud AWS. Deadline : Q2 2026.",
-            "planifier":  "Étapes : 1) Audit infra 2) Plan migration 3) Tests 4) Prod.",
-            "creer":      "Livrable : document de migration complet avec schémas.",
-            "reflechir":  "Points forts : coordination équipe. Lacune : tests insuffisants.",
-            "ajuster":    "Amélioration : ajouter une phase de tests dédiée dès le début.",
-        }
-
-        # 1. Créer la session
-        s = create_session(client, "Migration Cloud AWS E2E")
-        sid = s["id"]
-        assert s["phase"] == "identifier"
-        assert s["status"] == "active"
-
-        # 2. Pour chaque phase : remplir le contenu + demander assist + avancer
-        for i, phase in enumerate(PHASES):
-            # Sauvegarder le contenu de la phase
-            r = client.patch(
-                f"/api/ipcra/{sid}/phase/{phase}",
-                json={"content": CONTENUS[phase]},
-            )
-            assert r.status_code == 200, f"PATCH phase {phase} : {r.text}"
-
-            # Assist IA (guide textuel car pas d'agent)
-            r = client.post(
-                f"/api/ipcra/{sid}/assist",
-                json={"phase": phase, "prompt": f"Guide-moi pour la phase {phase}"},
-            )
-            assert r.status_code == 200, f"Assist {phase} : {r.text}"
-            assert "answer" in r.json()
-
-            # Avancer (sauf depuis la dernière phase)
-            if i < len(PHASES) - 1:
-                next_phase = PHASES[i + 1]
-                if next_phase == "ajuster":
-                    with patch(
-                        "mempalace_client.merge_branch",
-                        return_value={"merged": 4, "conflicts": []},
-                    ) as mock_merge:
-                        r = client.post(f"/api/ipcra/{sid}/advance")
-                    assert r.json().get("merge", {}).get("merged") == 4
-                    mock_merge.assert_called_once_with(sid)
-                else:
-                    r = client.post(f"/api/ipcra/{sid}/advance")
-
-                assert r.status_code == 200, f"Advance depuis {phase} : {r.text}"
-                assert r.json()["phase"] == next_phase
-
-        # 3. Compléter la session (advance depuis ajuster)
-        r = client.post(f"/api/ipcra/{sid}/advance")
-        assert r.status_code == 200
-
-        final = client.get(f"/api/ipcra/{sid}").json()
-        assert final["status"] == "completee"
-        assert final["identifier_notes"] == CONTENUS["identifier"]
-        assert final["ajuster_notes"] == CONTENUS["ajuster"]
-
-        # 4. Vérifier les 5 traces (une par assist)
-        traces = client.get(f"/api/ipcra/{sid}/traces").json()
-        assert len(traces) == 5
-        phases_tracées = {t["phase"] for t in traces}
-        assert phases_tracées == set(PHASES)
-        assert all(t["agent_nom"] == "guide-textuel" for t in traces)
-
-        # 5. Vérifier les contradictions (dégradation gracieuse → vide)
-        r = client.get(f"/api/ipcra/{sid}/contradictions")
-        assert r.status_code == 200
-        assert r.json()["count"] == 0
-
-    def test_session_isolation_entre_utilisateurs(self, client):
-        """
-        Les sessions d'un utilisateur ne doivent pas être visibles
-        dans le GET /{session_id} d'un autre utilisateur (404).
-        """
+class TestIsolationUtilisateurs:
+    def test_item_invisible_autre_utilisateur(self, client):
         from main import app
         from routers.auth import get_current_user as gcu
 
-        # Créer une session avec l'utilisateur par défaut
-        s = create_session(client, "Session privée user A")
+        item = create_item(client, "Item privé user A")
 
-        # Simuler un autre utilisateur
         app.dependency_overrides[gcu] = lambda: {
             "id": "user-autre-xyz",
             "email": "autre@test.com",
         }
-        r = client.get(f"/api/ipcra/{s['id']}")
+        r = client.get(f"/api/ipcra/{item['id']}")
         app.dependency_overrides[gcu] = lambda: {
             "id": "user-test-abc-123",
             "email": "test@oria-test.com",
             "nom": "Test User",
             "avatar_emoji": "👤",
         }
-
         assert r.status_code == 404
+
+    def test_list_ne_retourne_que_ses_items(self, client):
+        from main import app
+        from routers.auth import get_current_user as gcu
+
+        create_item(client, "Item user A")
+
+        app.dependency_overrides[gcu] = lambda: {"id": "user-autre-xyz", "email": "autre@test.com"}
+        r = client.get("/api/ipcra/")
+        app.dependency_overrides[gcu] = lambda: {
+            "id": "user-test-abc-123",
+            "email": "test@oria-test.com",
+            "nom": "Test User",
+            "avatar_emoji": "👤",
+        }
+        assert r.json() == []
+
+
+# ── Flux complet end-to-end ───────────────────────────────────────
+
+class TestFluxCompletIPCRA:
+    def test_parcours_complet_input_vers_archive(self, client):
+        """
+        Simule le cycle de vie complet d'un élément IPCRA :
+        capture (Input) → qualification → déplacement (Projet) →
+        enrichissement → archivage.
+        """
+        # 1. Capture brute
+        item = create_item(client, "Idée de feature voice search", "input",
+                           "Permettre la recherche vocale dans l'app mobile")
+        assert item["categorie"] == "input"
+
+        # 2. Qualifier : déplacer vers Projet
+        r = client.patch(f"/api/ipcra/{item['id']}/categorie?categorie=projet")
+        assert r.status_code == 200
+        assert r.json()["categorie"] == "projet"
+
+        # 3. Enrichir avec du contenu
+        r = client.put(f"/api/ipcra/{item['id']}", json={
+            "contenu": "Objectif : intégrer Whisper API. Deadline Q3 2026.",
+            "tags": ["voice", "whisper", "mobile"],
+        })
+        assert r.status_code == 200
+        assert r.json()["tags"] == ["voice", "whisper", "mobile"]
+
+        # 4. Demander conseil IA (sans agent → guide textuel)
+        r = client.post(f"/api/ipcra/{item['id']}/assist",
+                        json={"prompt": "Quelles sont les prochaines étapes ?"})
+        assert r.status_code == 200
+        assert len(r.json()["answer"]) > 20
+
+        # 5. Archiver
+        r = client.patch(f"/api/ipcra/{item['id']}/categorie?categorie=archive")
+        assert r.status_code == 200
+        final = r.json()
+        assert final["categorie"] == "archive"
+        assert final["contenu"] == "Objectif : intégrer Whisper API. Deadline Q3 2026."
+        assert final["tags"] == ["voice", "whisper", "mobile"]
+
+    def test_creation_5_categories_independantes(self, client):
+        """Chaque catégorie IPCRA est indépendante — pas de séquence imposée."""
+        items = {
+            "input":     create_item(client, "Capture brute",         "input"),
+            "projet":    create_item(client, "Projet actif",           "projet"),
+            "casquette": create_item(client, "Rôle tech lead",         "casquette"),
+            "ressource": create_item(client, "Template de réunion",    "ressource"),
+            "archive":   create_item(client, "Projet terminé 2025",    "archive"),
+        }
+        # Toutes existent de façon indépendante
+        for cat, item in items.items():
+            r = client.get(f"/api/ipcra/{item['id']}")
+            assert r.status_code == 200
+            assert r.json()["categorie"] == cat
+
+        # Le filtre retourne exactement les bons items
+        r = client.get("/api/ipcra/")
+        assert len(r.json()) == 5
