@@ -16,6 +16,12 @@ stripe>=8.0.0
 markitdown>=0.0.1
 chromadb>=0.4.0
 
+# Yjs CRDT WebSocket
+y-py>=0.6.0
+
+# Document storage (S3/MinIO)
+boto3>=1.28.0
+
 # Tests
 pytest>=8.0.0
 pytest-asyncio>=1.0.0

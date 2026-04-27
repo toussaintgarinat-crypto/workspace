@@ -17,7 +17,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -25,6 +26,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from mempalace.storage import get_palace_storage
+from mempalace.document_storage import get_storage_backend, StorageBackend
 
 # ── Config ───────────────────────────────────────────────────────
 JWT_SECRET      = os.environ.get("JWT_SECRET", "change_this_in_production")
@@ -89,6 +91,116 @@ def _user_count() -> int:
     return count
 
 
+def _init_docs_db() -> None:
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS documents (
+            id               TEXT PRIMARY KEY,
+            filename         TEXT NOT NULL,
+            mime_type        TEXT NOT NULL,
+            size             INTEGER NOT NULL,
+            storage_backend  TEXT NOT NULL DEFAULT 'local',
+            storage_path     TEXT NOT NULL,
+            owner_id         TEXT NOT NULL,
+            chunk_count      INTEGER DEFAULT 0,
+            created_at       TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _register_document(
+    doc_id: str, filename: str, mime_type: str, size: int,
+    storage_backend: str, storage_path: str, owner_id: str,
+) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        """INSERT OR REPLACE INTO documents
+           (id, filename, mime_type, size, storage_backend, storage_path, owner_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (doc_id, filename, mime_type, size, storage_backend,
+         storage_path, owner_id, datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+_TEXT_EXTENSIONS = {
+    ".txt", ".md", ".py", ".js", ".ts", ".jsx", ".tsx",
+    ".json", ".yaml", ".yml", ".csv", ".xml", ".html", ".css",
+}
+
+
+def _extract_text(filename: str, mime_type: str, data: bytes) -> Optional[str]:
+    ext = Path(filename).suffix.lower()
+    if mime_type.startswith("text/") or ext in _TEXT_EXTENSIONS:
+        return data.decode("utf-8", errors="replace")
+    if mime_type == "application/pdf" or ext == ".pdf":
+        try:
+            import io
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(data))
+            return "\n".join(
+                p.extract_text() for p in reader.pages if p.extract_text()
+            )
+        except ImportError:
+            pass
+    return None
+
+
+def _chunk_text(text: str, size: int = 512, overlap: int = 50) -> list[str]:
+    chunks, i = [], 0
+    while i < len(text):
+        chunks.append(text[i: i + size])
+        i += size - overlap
+    return chunks
+
+
+def _vectorize_document(
+    doc_id: str, filename: str, mime_type: str, data: bytes,
+    user_id: str, wing: str, room: str,
+) -> None:
+    text = _extract_text(filename, mime_type, data)
+    if not text:
+        return
+    chunks = _chunk_text(text)
+    if not chunks:
+        return
+    col = get_palace_storage(_palace(user_id), create=True)
+    if not col:
+        return
+    ids   = [f"{doc_id}_c{i}" for i in range(len(chunks))]
+    now   = datetime.utcnow().isoformat()
+    metas = [
+        {"wing": wing, "room": room, "doc_id": doc_id,
+         "chunk_index": i, "source_filename": filename, "added_at": now}
+        for i in range(len(chunks))
+    ]
+    batch = 32
+    for start in range(0, len(ids), batch):
+        col.add(
+            ids=ids[start: start + batch],
+            documents=chunks[start: start + batch],
+            metadatas=metas[start: start + batch],
+        )
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
+    conn.commit()
+    conn.close()
+
+
+# Singleton storage backend (initialized on first use)
+_storage_backend: Optional[StorageBackend] = None
+
+
+def _get_storage() -> StorageBackend:
+    global _storage_backend
+    if _storage_backend is None:
+        _storage_backend = get_storage_backend(PALACE_BASE)
+    return _storage_backend
+
+
 def _create_token(user_id: str, username: str) -> str:
     expire = datetime.utcnow() + timedelta(minutes=JWT_EXPIRE_MIN)
     return jwt.encode(
@@ -131,6 +243,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     _init_db()
+    _init_docs_db()
 
 
 # ── Health ───────────────────────────────────────────────────────
@@ -321,3 +434,107 @@ def delete_drawer(drawer_id: str, user: dict = Depends(_current_user)):
         raise HTTPException(status_code=404, detail="Palace not found")
     col.delete([drawer_id])
     return {"ok": True}
+
+
+# ── Documents (original file + vectorized chunks) ─────────────────
+
+@app.post("/api/documents", status_code=201)
+async def upload_document(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    wing: str = "documents",
+    room: str = "files",
+    user: dict = Depends(_current_user),
+):
+    data     = await file.read()
+    doc_id   = hashlib.sha256(data).hexdigest()[:16]
+    filename = file.filename or "unnamed"
+    mime     = file.content_type or "application/octet-stream"
+    backend  = os.environ.get("MEMPALACE_STORAGE", "local")
+
+    storage_path = _get_storage().save(user["id"], doc_id, filename, data)
+    _register_document(
+        doc_id=doc_id, filename=filename, mime_type=mime, size=len(data),
+        storage_backend=backend, storage_path=storage_path, owner_id=user["id"],
+    )
+    background_tasks.add_task(
+        _vectorize_document, doc_id, filename, mime, data, user["id"], wing, room,
+    )
+    return {"id": doc_id, "filename": filename, "size": len(data), "wing": wing, "room": room}
+
+
+@app.get("/api/documents")
+def list_documents(user: dict = Depends(_current_user)):
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT id, filename, mime_type, size, chunk_count, created_at "
+        "FROM documents WHERE owner_id = ? ORDER BY created_at DESC",
+        (user["id"],),
+    ).fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "filename": r[1], "mime_type": r[2],
+         "size": r[3], "chunk_count": r[4], "created_at": r[5]}
+        for r in rows
+    ]
+
+
+@app.get("/api/documents/{doc_id}")
+def get_document(doc_id: str, user: dict = Depends(_current_user)):
+    conn = sqlite3.connect(DB_PATH)
+    row  = conn.execute(
+        "SELECT id, filename, mime_type, size, storage_backend, chunk_count, created_at "
+        "FROM documents WHERE id = ? AND owner_id = ?",
+        (doc_id, user["id"]),
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {
+        "id": row[0], "filename": row[1], "mime_type": row[2], "size": row[3],
+        "storage_backend": row[4], "chunk_count": row[5], "created_at": row[6],
+    }
+
+
+@app.get("/api/documents/{doc_id}/download")
+def download_document(doc_id: str, user: dict = Depends(_current_user)):
+    conn = sqlite3.connect(DB_PATH)
+    row  = conn.execute(
+        "SELECT filename, mime_type, storage_path FROM documents WHERE id = ? AND owner_id = ?",
+        (doc_id, user["id"]),
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    filename, mime_type, storage_path = row
+    data = _get_storage().load(storage_path)
+    return Response(
+        content=data,
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.delete("/api/documents/{doc_id}", status_code=204)
+def delete_document(doc_id: str, user: dict = Depends(_current_user)):
+    conn = sqlite3.connect(DB_PATH)
+    row  = conn.execute(
+        "SELECT storage_path, chunk_count FROM documents WHERE id = ? AND owner_id = ?",
+        (doc_id, user["id"]),
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Document not found")
+    storage_path, chunk_count = row
+    conn.execute("DELETE FROM documents WHERE id = ? AND owner_id = ?", (doc_id, user["id"]))
+    conn.commit()
+    conn.close()
+
+    try:
+        _get_storage().delete(storage_path)
+    except Exception:
+        pass
+
+    col = get_palace_storage(_palace(user["id"]))
+    if col and chunk_count:
+        col.delete([f"{doc_id}_c{i}" for i in range(chunk_count)])

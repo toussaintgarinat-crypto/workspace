@@ -10,6 +10,7 @@ import models.agent
 import models.document
 import models.ipcra
 import models.social
+import models.shared_zone
 from routers import worlds, buildings, rooms, tokens, auth, quartiers
 from routers import invitations, files as files_router, network as network_router
 from routers import abonnements as abonnements_router
@@ -76,10 +77,21 @@ app.include_router(discovery_router, prefix="/api/discover",  tags=["Découverte
 app.include_router(ipcra_router,     prefix="/api/ipcra",     tags=["IPCRA"])
 from routers.social_router import router as social_router
 from routers.jardin_router import router as jardin_router
-app.include_router(social_router,    prefix="/api/social",    tags=["Social"])
-app.include_router(jardin_router,    prefix="/api/jardin",    tags=["Jardin Secret"])
+from routers.shared_zones_router import router as shared_zones_router
+app.include_router(social_router,      prefix="/api/social",        tags=["Social"])
+app.include_router(jardin_router,      prefix="/api/jardin",        tags=["Jardin Secret"])
+app.include_router(shared_zones_router, prefix="/api/shared-zones", tags=["Zones partagées"])
 # Application Service Matrix — montée sans préfixe /api (protocole Matrix)
 app.include_router(matrix_as.router, tags=["Matrix AS"])
+
+# ── Yjs CRDT WebSocket ─────────────────────────────────────────
+from fastapi import WebSocket
+from yjs_server import yjs_websocket_handler
+
+@app.websocket("/ws/yjs/{zone_id}")
+async def yjs_ws(websocket: WebSocket, zone_id: str):
+    await yjs_websocket_handler(websocket, zone_id)
+
 
 @app.get("/")
 def root():

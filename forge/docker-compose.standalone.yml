@@ -43,7 +43,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/master > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8080' 2>/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -58,7 +58,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -95,7 +95,7 @@ services:
       keycloak:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/health || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/3001' 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -116,12 +116,30 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8001/docs || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8001' 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
     restart: unless-stopped
+
+  # ── MinIO (S3-compatible object storage) ────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9102"
+    ports:
+      - "9101:9000"
+      - "9102:9102"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-forge}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-forge_secret}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000' 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # ── Frontend (React / Vite) ─────────────────────────────────
   frontend:
@@ -134,7 +152,7 @@ services:
       core:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/80' 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -144,3 +162,4 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  minio_data:

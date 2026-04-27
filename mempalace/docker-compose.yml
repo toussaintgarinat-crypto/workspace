@@ -14,7 +14,25 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── MinIO (S3-compatible object storage) ─────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9101"
+    ports:
+      - "9100:9000"
+      - "9101:9101"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-mempalace}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-mempalace_secret}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000' 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,6 +52,12 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change_this_in_production}
       - MEMPALACE_ADMIN_TOKEN=${MEMPALACE_ADMIN_TOKEN:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      # Storage: "local" (default) or "s3" (MinIO)
+      - MEMPALACE_STORAGE=${MEMPALACE_STORAGE:-local}
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-mempalace}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-mempalace_secret}
+      - S3_BUCKET=${S3_BUCKET:-mempalace}
     volumes:
       - palace_data:/data
       - fastembed_cache:/root/.cache/fastembed
@@ -52,3 +76,4 @@ volumes:
   qdrant_data:
   palace_data:
   fastembed_cache:
+  minio_data:
