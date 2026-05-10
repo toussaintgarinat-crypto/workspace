@@ -1,0 +1,63 @@
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: "sqlite:////data/litellm.db"
+  port: 4000
+  ui_access_mode: "all"
+
+model_list:
+  - model_name: openai/gpt-4o
+    litellm_params:
+      model: openrouter/openai/gpt-4o
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+
+  - model_name: openai/gpt-4o-mini
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+
+  - model_name: anthropic/claude-sonnet-4-6
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4-6
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+
+  - model_name: google/gemini-2.5-flash
+    litellm_params:
+      model: openrouter/google/gemini-2.5-flash-preview
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+
+  - model_name: ollama/llama3.2
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: http://host.docker.internal:11434
+
+  - model_name: ollama/llama3.3
+    litellm_params:
+      model: ollama/llama3.3
+      api_base: http://host.docker.internal:11434
+
+virtual_keys:
+  - key: sk-forge
+    key_alias: forge
+    max_budget: 10
+    budget_duration: 1mo
+    models: auto
+
+  - key: sk-mempalace
+    key_alias: mempalace
+    max_budget: 5
+    budget_duration: 1mo
+    models:
+      - openai/gpt-4o-mini
+      - google/gemini-2.5-flash
+      - ollama/llama3.2
+      - ollama/llama3.3
+
+  - key: sk-assistant
+    key_alias: assistant
+    max_budget: 10
+    budget_duration: 1mo
+    models: auto

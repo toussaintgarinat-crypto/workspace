@@ -168,6 +168,9 @@ export default function Sidebar({ sessions, activeId, onNew, onNewInContext, onS
         <button className={`${styles.navItem} ${location.pathname === '/search' ? styles.navActive : ''}`} onClick={() => navigate('/search')}>
           🔍 Recherche
         </button>
+        <button className={`${styles.navItem} ${location.pathname === '/mempalace' ? styles.navActive : ''}`} onClick={() => navigate('/mempalace')}>
+          🧠 MemPalace
+        </button>
       </div>
 
       {/* Ventures & Pôles */}

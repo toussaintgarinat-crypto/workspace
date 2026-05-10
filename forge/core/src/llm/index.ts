@@ -28,6 +28,11 @@ const openrouterProvider = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY || 'no-key',
 })
 
+const gatewayProvider = createOpenAI({
+  baseURL: process.env.GATEWAY_BASE_URL || 'http://gateway:4000',
+  apiKey: process.env.GATEWAY_API_KEY || 'sk-forge',
+})
+
 const DEFAULT_PROVIDER = process.env.DEFAULT_LLM_PROVIDER || 'ollama'
 const DEFAULT_MODEL    = process.env.DEFAULT_LLM_MODEL    || 'llama3.2'
 
@@ -44,6 +49,7 @@ export function getModel(provider?: string, model?: string): LanguageModelV1 {
     case 'deepseek':   return deepseekProvider(m || 'deepseek-chat') as LanguageModelV1
     case 'lmstudio':   return lmstudioProvider(m || 'local-model') as LanguageModelV1
     case 'openrouter': return openrouterProvider(m || 'openai/gpt-4o') as LanguageModelV1
+    case 'gateway':    return gatewayProvider(m || 'openai/gpt-4o') as LanguageModelV1
     case 'ollama':
     default:           return ollamaProvider(m) as LanguageModelV1
   }
@@ -143,6 +149,13 @@ export const AVAILABLE_PROVIDERS = [
       'openai/gpt-4.1', 'openai/gpt-4o', 'anthropic/claude-sonnet-4-6',
       'meta-llama/llama-4-maverick', 'google/gemini-2.5-pro',
       'deepseek/deepseek-r1', 'qwen/qwq-32b',
+    ],
+  },
+  {
+    id: 'gateway', label: 'LiteLLM Gateway',
+    models: [
+      'openai/gpt-4o', 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4-6',
+      'google/gemini-2.5-flash', 'ollama/llama3.2', 'ollama/llama3.3',
     ],
   },
 ]

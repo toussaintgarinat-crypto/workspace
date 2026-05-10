@@ -26,28 +26,9 @@ from mempalace.entity_detector import detect_entities, scan_for_detection
 # ─────────────────────────────────────────────────────────────────────────────
 
 DEFAULT_WINGS = {
-    "work": [
-        "projects",
-        "clients",
-        "team",
-        "decisions",
-        "research",
-    ],
-    "personal": [
-        "family",
-        "health",
-        "creative",
-        "reflections",
-        "relationships",
-    ],
-    "combo": [
-        "family",
-        "work",
-        "health",
-        "creative",
-        "projects",
-        "reflections",
-    ],
+    "work":     ["input", "projet", "casquette", "ressource", "archive"],
+    "personal": ["input", "projet", "casquette", "ressource", "archive"],
+    "combo":    ["input", "projet", "casquette", "ressource", "archive"],
 }
 
 

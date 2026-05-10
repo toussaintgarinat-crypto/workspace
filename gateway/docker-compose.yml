@@ -1,0 +1,26 @@
+services:
+
+  gateway:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - LITELLM_CONFIG=/app/config.yaml
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+      - gateway_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  gateway_data:

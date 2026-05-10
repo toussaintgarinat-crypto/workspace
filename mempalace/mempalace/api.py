@@ -23,7 +23,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 
 from mempalace.storage import get_palace_storage
 from mempalace.document_storage import get_storage_backend, StorageBackend
@@ -41,7 +41,12 @@ CORS_ORIGINS    = os.environ.get("CORS_ORIGINS",
                     "http://localhost:3000,http://localhost:8080").split(",")
 
 # ── Helpers ──────────────────────────────────────────────────────
-pwd_ctx       = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def _hash_pw(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def _verify_pw(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
@@ -73,7 +78,7 @@ def _get_user(username: str) -> dict | None:
 
 def _create_user(username: str, password: str) -> dict:
     uid    = str(uuid.uuid4())
-    hashed = pwd_ctx.hash(password)
+    hashed = _hash_pw(password)
     conn   = sqlite3.connect(DB_PATH)
     conn.execute(
         "INSERT INTO users (id, username, hashed_pw, created_at) VALUES (?, ?, ?, ?)",
@@ -264,7 +269,7 @@ class RegisterBody(BaseModel):
 @app.post("/auth/login")
 def login(form: OAuth2PasswordRequestForm = Depends()):
     user = _get_user(form.username)
-    if not user or not pwd_ctx.verify(form.password, user["hashed_pw"]):
+    if not user or not _verify_pw(form.password, user["hashed_pw"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return {"access_token": _create_token(user["id"], user["username"]), "token_type": "bearer"}
 
@@ -279,7 +284,7 @@ class ServiceTokenBody(BaseModel):
 def service_token(body: ServiceTokenBody):
     """Generate a long-lived token for service-to-service auth (Forge, Oria)."""
     user = _get_user(body.username)
-    if not user or not pwd_ctx.verify(body.password, user["hashed_pw"]):
+    if not user or not _verify_pw(body.password, user["hashed_pw"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     days   = max(1, min(body.expires_days, 3650))
     expire = datetime.utcnow() + timedelta(days=days)
@@ -421,10 +426,26 @@ def add_drawer(body: DrawerBody, user: dict = Depends(_current_user)):
         "wing":     body.wing,
         "room":     body.room,
         "added_at": datetime.utcnow().isoformat(),
+        "id":       drawer_id,
         **(body.metadata or {}),
     }
     col.add(ids=[drawer_id], documents=[body.content], metadatas=[meta])
     return {"id": drawer_id, "wing": body.wing, "room": body.room}
+
+
+@app.get("/api/wings/{wing}/drawers")
+def list_wing_drawers(wing: str, limit: int = 50, user: dict = Depends(_current_user)):
+    col = get_palace_storage(_palace(user["id"]))
+    if not col:
+        return []
+    results = col.get(where={"wing": wing}, limit=limit, include=["documents", "metadatas"])
+    docs  = results.get("documents", [])
+    metas = results.get("metadatas", [])
+    ids   = results.get("ids", [])
+    return [
+        {"content": doc, "metadata": meta, "id": oid}
+        for doc, meta, oid in zip(docs, metas, ids)
+    ]
 
 
 @app.delete("/api/drawers/{drawer_id}")
@@ -538,3 +559,72 @@ def delete_document(doc_id: str, user: dict = Depends(_current_user)):
     col = get_palace_storage(_palace(user["id"]))
     if col and chunk_count:
         col.delete([f"{doc_id}_c{i}" for i in range(chunk_count)])
+
+
+# ── LLM classify (IPCRA via gateway) ─────────────────────────────
+
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "")
+GATEWAY_KEY = os.environ.get("GATEWAY_API_KEY", "sk-mempalace")
+GATEWAY_MODEL = os.environ.get("GATEWAY_MODEL", "openai/gpt-4o-mini")
+
+_IPCRA_PROMPT = """Tu es un assistant de classement IPCRA (système PKM d'Eliott Meunier).
+Les 5 catégories IPCRA sont :
+- Input : information brute, article, note de lecture, idée à traiter
+- Projet : tâche active, projet en cours, sprint, objectif à atteindre
+- Casquette : rôle, identité, responsabilité (ex: "en tant que CTO", "en tant que père")
+- Ressource : référence durable, template, checklist, procédure, outil
+- Archive : contenu terminé, décision passée, projet clôturé
+
+Analyse le contenu suivant et retourne uniquement un JSON avec :
+- "category" : une des 5 catégories exactes
+- "room" : un sous-dossier court suggéré (1-3 mots, slug kebab-case)
+- "confidence" : nombre entre 0 et 1
+- "reason" : une phrase courte expliquant pourquoi"""
+
+_IPCRA_CATEGORIES = {"Input", "Projet", "Casquette", "Ressource", "Archive"}
+
+
+class ClassifyBody(BaseModel):
+    content: str
+    hint: Optional[str] = None
+
+
+@app.post("/api/classify")
+async def classify_ipcra(body: ClassifyBody, user: dict = Depends(_current_user)):
+    if not GATEWAY_URL:
+        return {"category": None, "room": "general", "confidence": 0,
+                "reason": "LLM gateway not configured", "available": False}
+
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(base_url=GATEWAY_URL, api_key=GATEWAY_KEY)
+
+        user_msg = body.content
+        if body.hint:
+            user_msg = f"[Contexte utilisateur : {body.hint}]\n\n{body.content}"
+
+        resp = await client.chat.completions.create(
+            model=GATEWAY_MODEL,
+            messages=[
+                {"role": "system", "content": _IPCRA_PROMPT},
+                {"role": "user", "content": user_msg[:4000]},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+
+        import json
+        data = json.loads(resp.choices[0].message.content)
+        category = data.get("category", "Input")
+        if category not in _IPCRA_CATEGORIES:
+            category = "Input"
+        return {
+            "category": category,
+            "room": data.get("room", "general"),
+            "confidence": float(data.get("confidence", 0.7)),
+            "reason": data.get("reason", ""),
+            "available": True,
+        }
+    except Exception as exc:
+        return {"category": None, "room": "general", "confidence": 0,
+                "reason": str(exc), "available": False}

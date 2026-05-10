@@ -23,6 +23,7 @@ import TeamView from './views/TeamView'
 import StripeView from './views/StripeView'
 import MCPView from './views/MCPView'
 import SkillsView from './views/SkillsView'
+import MemPalaceView from './views/MemPalaceView'
 
 function AppRoutes() {
   const { loading } = useAuth()
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="/abonnements"          element={<StripeView />} />
         <Route path="/mcp"                  element={<MCPView />} />
         <Route path="/skills"               element={<SkillsView />} />
+        <Route path="/mempalace"            element={<MemPalaceView />} />
         <Route path="*"                     element={<Navigate to="/workspace" replace />} />
       </Routes>
     </AppShell>

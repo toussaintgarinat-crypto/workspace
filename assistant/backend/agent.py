@@ -1,0 +1,145 @@
+import json
+import logging
+from typing import Callable
+
+from openai import AsyncOpenAI
+
+from config import settings
+from tools.mempalace import MemPalaceTools
+from tools.forge import ForgeTools
+from tools.oria import OriaTools
+
+logger = logging.getLogger(__name__)
+
+MAX_ITERATIONS = 5
+
+
+class ReActAgent:
+    def __init__(self, connections: list[dict]):
+        self.connections = connections
+        self._tool_handlers: dict = {}
+        self._tools: list[dict] = []
+        self._build_tools()
+
+    def _build_tools(self):
+        for conn in self.connections:
+            if not conn.get("enabled"):
+                continue
+            app_type = conn["app_type"]
+            url = conn["url"]
+            token = conn["token"]
+            try:
+                if app_type == "mempalace":
+                    handler = MemPalaceTools(url, token)
+                elif app_type == "forge":
+                    handler = ForgeTools(url, token)
+                elif app_type == "oria":
+                    handler = OriaTools(url, token)
+                else:
+                    continue
+                for tool in handler.get_tools():
+                    self._tools.append(tool)
+                    self._tool_handlers[tool["function"]["name"]] = handler
+            except Exception as e:
+                logger.error("Failed to init tools for %s (%s): %s", conn.get("name"), app_type, e)
+
+    def build_tools(self) -> list[dict]:
+        return self._tools
+
+    def build_system_prompt(self, tool_names: list[str]) -> str:
+        tools_section = "\n".join(f"- {n}" for n in tool_names) if tool_names else "Aucun outil disponible."
+        return (
+            "Tu es un assistant personnel intelligent connecté aux apps de ton utilisateur.\n\n"
+            "Outils disponibles :\n"
+            f"{tools_section}\n\n"
+            "Règles :\n"
+            "- Avant de sauvegarder une information dans MemPalace, demande confirmation sur la catégorie "
+            "et le titre si le contexte n'est pas clair.\n"
+            "- Utilise les outils de manière proactive quand c'est pertinent.\n"
+            "- Si un outil échoue, informe l'utilisateur et continue sans lui.\n"
+            "- Réponds toujours en français sauf demande contraire."
+        )
+
+    async def stream_chat(self, messages: list[dict], on_chunk: Callable):
+        client = AsyncOpenAI(
+            base_url=settings.GATEWAY_URL,
+            api_key=settings.GATEWAY_API_KEY,
+        )
+
+        tool_names = [t["function"]["name"] for t in self._tools]
+        system_message = {"role": "system", "content": self.build_system_prompt(tool_names)}
+        history = [system_message] + list(messages)
+
+        for _ in range(MAX_ITERATIONS):
+            kwargs: dict = {
+                "model": settings.GATEWAY_MODEL,
+                "messages": history,
+                "stream": True,
+            }
+            if self._tools:
+                kwargs["tools"] = self._tools
+                kwargs["tool_choice"] = "auto"
+
+            collected_content = ""
+            collected_tool_calls: dict[int, dict] = {}
+
+            stream = await client.chat.completions.create(**kwargs)
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                if delta.content:
+                    collected_content += delta.content
+                    await on_chunk({"type": "text", "content": delta.content})
+
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in collected_tool_calls:
+                            collected_tool_calls[idx] = {
+                                "id": tc.id or "",
+                                "name": (tc.function.name or "") if tc.function else "",
+                                "arguments": "",
+                            }
+                        if tc.id:
+                            collected_tool_calls[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                collected_tool_calls[idx]["name"] = tc.function.name
+                            if tc.function.arguments:
+                                collected_tool_calls[idx]["arguments"] += tc.function.arguments
+
+            if not collected_tool_calls:
+                break
+
+            assistant_tool_calls = [
+                {
+                    "id": v["id"],
+                    "type": "function",
+                    "function": {"name": v["name"], "arguments": v["arguments"]},
+                }
+                for v in collected_tool_calls.values()
+            ]
+            history.append({
+                "role": "assistant",
+                "content": collected_content or None,
+                "tool_calls": assistant_tool_calls,
+            })
+
+            for tc in assistant_tool_calls:
+                tool_name = tc["function"]["name"]
+                await on_chunk({"type": "tool_start", "name": tool_name})
+                try:
+                    args = json.loads(tc["function"]["arguments"] or "{}")
+                    handler = self._tool_handlers.get(tool_name)
+                    if handler is None:
+                        result = f"Outil inconnu : {tool_name}"
+                    else:
+                        result = await handler.execute_tool(tool_name, args)
+                except Exception as e:
+                    logger.error("Tool %s failed: %s", tool_name, e)
+                    result = f"Erreur lors de l'exécution de {tool_name}: {e}"
+
+                await on_chunk({"type": "tool_result", "name": tool_name, "result": result})
+                history.append({"role": "tool", "tool_call_id": tc["id"], "content": result})

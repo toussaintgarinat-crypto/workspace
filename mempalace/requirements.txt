@@ -6,8 +6,11 @@ pyyaml>=6.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
 python-multipart>=0.0.9
 
 # Document storage
 boto3>=1.28.0
+
+# LLM gateway (optional, for IPCRA classify)
+openai>=1.50.0

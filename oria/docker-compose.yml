@@ -22,7 +22,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-oria}:${POSTGRES_PASSWORD:-oria_secret}@db:5432/${POSTGRES_DB:-oria}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3002,http://localhost:3000}
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-oria}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-oria-app}
@@ -71,15 +71,15 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9103"
     ports:
-      - "9102:9000"
-      - "9103:9103"
+      - "9106:9000"
+      - "9107:9103"
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-oria}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-oria_secret}
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/minio/health/live || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -87,7 +87,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       VITE_API_URL: http://localhost:8000
       VITE_WS_URL: ws://localhost:8000

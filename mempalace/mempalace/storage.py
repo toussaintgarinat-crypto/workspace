@@ -151,14 +151,15 @@ class QdrantCollection:
         vec = _embed([query_texts[0]])[0]
         qfilter = _chroma_where_to_qdrant(where)
 
-        hits = self._client.search(
+        from qdrant_client.models import Query
+        results = self._client.query_points(
             collection_name=self._name,
-            query_vector=vec,
+            query=vec,
             limit=n_results,
             query_filter=qfilter,
             with_payload=True,
-            score_threshold=None,
         )
+        hits = results.points
 
         ids, docs, metas, distances = [], [], [], []
         for h in hits:
@@ -166,7 +167,6 @@ class QdrantCollection:
             docs.append(h.payload.get("_text", ""))
             meta = {k: v for k, v in h.payload.items() if not k.startswith("_")}
             metas.append(meta)
-            # ChromaDB distances sont 1 - cosine_similarity; Qdrant retourne cosine_similarity
             distances.append(1 - h.score)
 
         return {

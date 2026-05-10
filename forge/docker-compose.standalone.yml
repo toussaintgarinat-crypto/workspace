@@ -43,7 +43,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8080' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -58,7 +58,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/ >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -87,6 +87,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change_this_32_char_random_key!!}
+      - GATEWAY_BASE_URL=http://host.docker.internal:4000
+      - GATEWAY_API_KEY=${GATEWAY_API_KEY:-sk-forge}
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,7 +97,7 @@ services:
       keycloak:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/3001' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -116,7 +118,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8001' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8001/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -136,7 +138,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -152,7 +154,7 @@ services:
       core:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/80' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ > /dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
