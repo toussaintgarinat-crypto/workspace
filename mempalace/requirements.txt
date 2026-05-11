@@ -14,3 +14,6 @@ boto3>=1.28.0
 
 # LLM gateway (optional, for IPCRA classify)
 openai>=1.50.0
+
+# Keycloak dual-auth (optional)
+httpx>=0.27.0

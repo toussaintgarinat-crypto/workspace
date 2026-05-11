@@ -1,5 +1,39 @@
 const BASE_URL = '/api';
 
+// ── Vault (token store chiffré) ───────────────────────────────────────────────
+
+export async function getVaultTokens() {
+  const res = await fetch(`${BASE_URL}/vault/tokens`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function storeVaultToken(appType, accessToken, refreshToken = null, expiresAt = null) {
+  const res = await fetch(`${BASE_URL}/vault/tokens/${appType}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteVaultToken(appType) {
+  const res = await fetch(`${BASE_URL}/vault/tokens/${appType}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function oauthCallback(appType, body) {
+  const res = await fetch(`${BASE_URL}/vault/oauth-callback/${appType}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function getConnections() {
   const res = await fetch(`${BASE_URL}/connections`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -4,6 +4,7 @@ import { api, authHeaders } from '../services/api.js'
 import { useMatrixRoom } from '../hooks/useMatrixRoom.js'
 import { getMatrixClient } from '../services/matrixClient.js'
 import VocalSalon from './VocalSalon.jsx'
+import CoinPanel from './CoinPanel.jsx'
 
 const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL || 'ws://localhost:7880'
 const API_URL     = import.meta.env.VITE_API_URL      || 'http://localhost:8000'
@@ -16,6 +17,8 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
   const [fichiers, setFichiers]   = useState([])
   const [emojiPickerId, setEmojiPickerId] = useState(null)
   const [texte, setTexte]         = useState('')
+  const [accesPaye, setAccesPaye] = useState(null) // null=loading, true=ok, false=paywall
+  const [infoAcces, setInfoAcces] = useState(null)
   const basRef = useRef(null)
   const fileRef = useRef(null)
 
@@ -23,9 +26,32 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
   const messages = matrix.messages
 
   useEffect(() => {
-    chargerFichiers()
-    if (room.type !== 'texte') obtenirToken()
+    verifierAcces()
   }, [room.id])
+
+  useEffect(() => {
+    if (accesPaye) {
+      chargerFichiers()
+      if (room.type !== 'texte') obtenirToken()
+    }
+  }, [room.id, accesPaye])
+
+  async function verifierAcces() {
+    if (!room.est_payante) { setAccesPaye(true); return }
+    const data = await api.get(`/rooms/${room.id}/acces-paye`)
+    if (data) {
+      setAccesPaye(data.acces)
+      setInfoAcces(data)
+    } else {
+      setAccesPaye(false)
+    }
+  }
+
+  async function demanderCheckout() {
+    const data = await api.post(`/rooms/${room.id}/checkout-acces`, {})
+    if (data?.checkout_url) window.open(data.checkout_url, '_blank')
+    else if (data?.acces) setAccesPaye(true)
+  }
 
   async function chargerFichiers() {
     const data = await api.get(`/files/room/${room.id}`)
@@ -84,6 +110,56 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
 
   useEffect(() => { basRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
+  // Écran chargement accès
+  if (accesPaye === null) {
+    return (
+      <div className="room-view" style={{ display: 'flex', alignItems: 'center',
+                                          justifyContent: 'center', color: '#72767d' }}>
+        Vérification de l'accès...
+      </div>
+    )
+  }
+
+  // Paywall
+  if (accesPaye === false) {
+    const prix = infoAcces?.prix_acces
+    const devise = infoAcces?.devise_acces || 'EUR'
+    const type = infoAcces?.type_paiement
+    return (
+      <div className="room-view" style={{ display: 'flex', alignItems: 'center',
+                                          justifyContent: 'center' }}>
+        <div style={{
+          background: '#2b2d31', borderRadius: 16, padding: '40px 48px',
+          textAlign: 'center', maxWidth: 400, boxShadow: '0 8px 32px rgba(0,0,0,.4)',
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+          <h2 style={{ color: '#fff', marginBottom: 8 }}>{room.emoji} {room.nom}</h2>
+          <p style={{ color: '#b5bac1', fontSize: 14, marginBottom: 20 }}>
+            Cette room est en accès payant.
+            {prix ? ` Accès à partir de ${prix} ${devise}${type === 'abonnement' ? '/mois' : ''}.` : ''}
+          </p>
+          <button
+            onClick={demanderCheckout}
+            style={{
+              padding: '12px 32px', borderRadius: 10, border: 'none',
+              background: '#5865f2', color: 'white', fontSize: 15,
+              fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            💳 Payer et accéder
+          </button>
+          <div style={{ marginTop: 16 }}>
+            <button onClick={onQuitter}
+              style={{ background: 'none', border: 'none', color: '#72767d',
+                       cursor: 'pointer', fontSize: 13 }}>
+              ← Retour
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="room-view" onClick={() => setEmojiPickerId(null)}>
       <div className="room-header">
@@ -107,11 +183,23 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
               <button className={onglet === 'vocal' ? 'actif' : ''} onClick={() => setOnglet('vocal')}>🔊</button>
             </div>
           )}
+          {room.est_payante && (
+            <div className="room-onglets">
+              <button className={onglet === 'coins' ? 'actif' : ''} onClick={() => setOnglet('coins')}
+                title="Coins des membres">🏠</button>
+            </div>
+          )}
           <button className="btn-quitter-room" onClick={onQuitter}>✕</button>
         </div>
       </div>
 
-      {onglet === 'vocal' && token && (
+      {onglet === 'coins' && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <CoinPanel room={room} moi={moi} />
+        </div>
+      )}
+
+      {onglet !== 'coins' && onglet === 'vocal' && token && (
         <div className="room-vocal">
           <LiveKitRoom
             serverUrl={LIVEKIT_URL}
@@ -125,11 +213,11 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
           </LiveKitRoom>
         </div>
       )}
-      {onglet === 'vocal' && !token && (
+      {onglet !== 'coins' && onglet === 'vocal' && !token && (
         <div className="vocal-connecting">Connexion au vocal...</div>
       )}
 
-      {onglet !== 'vocal' && (
+      {onglet !== 'coins' && onglet !== 'vocal' && (
         <>
           <div className="room-messages">
             {messages.length === 0 && fichiers.length === 0 && (

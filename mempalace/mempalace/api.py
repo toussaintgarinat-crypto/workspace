@@ -39,6 +39,11 @@ DB_PATH         = os.environ.get("MEMPALACE_DB_PATH",
 ADMIN_TOKEN     = os.environ.get("MEMPALACE_ADMIN_TOKEN", "")
 CORS_ORIGINS    = os.environ.get("CORS_ORIGINS",
                     "http://localhost:3000,http://localhost:8080").split(",")
+# Keycloak dual-auth (optional)
+KEYCLOAK_URL    = os.environ.get("KEYCLOAK_URL", "")
+KEYCLOAK_REALM  = os.environ.get("KEYCLOAK_REALM", "forge")
+
+_jwks_cache: dict | None = None
 
 # ── Helpers ──────────────────────────────────────────────────────
 def _hash_pw(password: str) -> str:
@@ -215,16 +220,42 @@ def _create_token(user_id: str, username: str) -> str:
     )
 
 
+async def _fetch_jwks() -> dict:
+    global _jwks_cache
+    if _jwks_cache:
+        return _jwks_cache
+    import httpx
+    url = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs"
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url, timeout=5)
+        r.raise_for_status()
+    _jwks_cache = r.json()
+    return _jwks_cache
+
+
 async def _current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    # Try local HS256 first
     try:
-        payload  = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id  = payload.get("sub")
-        username = payload.get("username")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return {"id": user_id, "username": username}
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if user_id:
+            return {"id": user_id, "username": payload.get("username", user_id)}
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        pass
+
+    # Try Keycloak RS256 if configured
+    if KEYCLOAK_URL:
+        try:
+            jwks = await _fetch_jwks()
+            payload = jwt.decode(token, jwks, algorithms=["RS256"], options={"verify_aud": False})
+            user_id = payload.get("sub")
+            if user_id:
+                username = payload.get("preferred_username") or payload.get("nom") or user_id
+                return {"id": user_id, "username": username}
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
 def _palace(user_id: str) -> str:

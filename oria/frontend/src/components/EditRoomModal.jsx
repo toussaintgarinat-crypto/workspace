@@ -17,6 +17,10 @@ export default function EditRoomModal({ room, worldId, onSave, onFermer }) {
   const [requis, setRequis]           = useState(
     (room.abonnements_requis || []).map(a => a.id)
   )
+  const [estPayante, setEstPayante]   = useState(room.est_payante || false)
+  const [prixAcces, setPrixAcces]     = useState(room.prix_acces || '')
+  const [deviseAcces, setDeviseAcces] = useState(room.devise_acces || 'EUR')
+  const [typePaiement, setTypePaiement] = useState(room.type_paiement || 'unique')
   const [loading, setLoading]         = useState(false)
 
   useEffect(() => {
@@ -38,6 +42,10 @@ export default function EditRoomModal({ room, worldId, onSave, onFermer }) {
       nom, type, emoji,
       acces_restreint: acces,
       abonnements_requis_ids: acces !== 'libre' ? requis : [],
+      est_payante: estPayante,
+      prix_acces: estPayante && prixAcces ? parseFloat(prixAcces) : null,
+      devise_acces: deviseAcces,
+      type_paiement: typePaiement,
     })
     setLoading(false)
     onSave()
@@ -122,6 +130,75 @@ export default function EditRoomModal({ room, worldId, onSave, onFermer }) {
                 </div>
               )}
             </>
+          )}
+
+          {/* Room payante */}
+          <label style={{ marginTop: 14 }}>Accès payant</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <button
+              type="button"
+              onClick={() => setEstPayante(p => !p)}
+              style={{
+                padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                background: estPayante ? '#57F287' : '#2b2d31',
+                color: estPayante ? '#000' : '#b5bac1',
+                fontWeight: 600, fontSize: 13,
+              }}
+            >
+              {estPayante ? '💰 Activé' : '🔓 Désactivé'}
+            </button>
+            <span style={{ color: '#72767d', fontSize: 12 }}>
+              Les membres devront payer pour accéder à cette room
+            </span>
+          </div>
+
+          {estPayante && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <label style={{ fontSize: 12 }}>Prix</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={prixAcces}
+                  onChange={e => setPrixAcces(e.target.value)}
+                  placeholder="Ex: 9.99"
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div style={{ minWidth: 80 }}>
+                <label style={{ fontSize: 12 }}>Devise</label>
+                <select
+                  value={deviseAcces}
+                  onChange={e => setDeviseAcces(e.target.value)}
+                  style={{ width: '100%', background: '#1e1f22', color: '#dcddde',
+                           border: '1px solid #3d3f45', borderRadius: 6, padding: '8px 6px' }}
+                >
+                  <option value="EUR">EUR €</option>
+                  <option value="USD">USD $</option>
+                  <option value="GBP">GBP £</option>
+                </select>
+              </div>
+              <div style={{ flex: 2, minWidth: 140 }}>
+                <label style={{ fontSize: 12 }}>Type de paiement</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { id: 'unique',      label: '💳 Achat unique' },
+                    { id: 'abonnement',  label: '🔄 Mensuel' },
+                  ].map(opt => (
+                    <button
+                      key={opt.id} type="button"
+                      onClick={() => setTypePaiement(opt.id)}
+                      style={{
+                        flex: 1, padding: '6px 8px', borderRadius: 8, border: 'none',
+                        cursor: 'pointer', fontSize: 12,
+                        background: typePaiement === opt.id ? '#5865f2' : '#2b2d31',
+                        color: typePaiement === opt.id ? 'white' : '#b5bac1',
+                        fontWeight: typePaiement === opt.id ? 600 : 400,
+                      }}
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
 
           <div className="modal-actions">

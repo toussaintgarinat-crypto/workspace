@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, DateTime
+from sqlalchemy import Column, String, Integer, ForeignKey, Text, DateTime, Boolean, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
@@ -30,11 +30,19 @@ class Room(Base):
     position    = Column(Integer, default=0)
     emoji              = Column(String, default="💬")
     matrix_room_id     = Column(String, nullable=True)  # "!xxx:oria.local"
-    acces_restreint    = Column(String, default="libre")  # libre | cadenas | cache
+    acces_restreint         = Column(String, default="libre")  # libre | cadenas | cache
+    est_payante             = Column(Boolean, default=False)
+    prix_acces              = Column(Float, nullable=True)
+    devise_acces            = Column(String, default="EUR")
+    type_paiement           = Column(String, nullable=True)   # abonnement | unique
+    stripe_price_id_acces   = Column(String, nullable=True)
+    stripe_product_id_acces = Column(String, nullable=True)
     building           = relationship("Building", back_populates="rooms")
     messages           = relationship("Message", back_populates="room", cascade="all, delete")
     files              = relationship("File", back_populates="room", cascade="all, delete")
     abonnements_requis = relationship("RoomAbonnement", back_populates="room", cascade="all, delete")
+    acces_payes        = relationship("RoomAccesPaye", back_populates="room", cascade="all, delete")
+    coins              = relationship("Coin", back_populates="room", cascade="all, delete")
 
 class Message(Base):
     __tablename__ = "messages"

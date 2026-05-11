@@ -11,6 +11,7 @@ import models.document
 import models.ipcra
 import models.social
 import models.shared_zone
+import models.coin
 from routers import worlds, buildings, rooms, tokens, auth, quartiers
 from routers import invitations, files as files_router, network as network_router
 from routers import abonnements as abonnements_router
@@ -81,6 +82,8 @@ from routers.shared_zones_router import router as shared_zones_router
 app.include_router(social_router,      prefix="/api/social",        tags=["Social"])
 app.include_router(jardin_router,      prefix="/api/jardin",        tags=["Jardin Secret"])
 app.include_router(shared_zones_router, prefix="/api/shared-zones", tags=["Zones partagées"])
+from routers.coins_router import router as coins_router
+app.include_router(coins_router, prefix="/api", tags=["Coins & Rooms payantes"])
 # Application Service Matrix — montée sans préfixe /api (protocole Matrix)
 app.include_router(matrix_as.router, tags=["Matrix AS"])
 

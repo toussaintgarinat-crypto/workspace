@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ChatView from './views/ChatView.jsx';
-import ConnectionsView from './views/ConnectionsView.jsx';
+import ConnectView from './views/ConnectView.jsx';
 
 const s = {
   layout: {
@@ -79,7 +79,7 @@ export default function App() {
         </button>
       </nav>
       <main style={s.main}>
-        {view === 'chat' ? <ChatView /> : <ConnectionsView />}
+        {view === 'chat' ? <ChatView /> : <ConnectView />}
       </main>
     </div>
   );

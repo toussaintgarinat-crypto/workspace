@@ -1,7 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+import os
+
+STRIPE_ENABLED = False
+stripe = None
+try:
+    import stripe as _stripe
+    _key = os.getenv("STRIPE_SECRET_KEY")
+    if _key:
+        _stripe.api_key = _key
+        STRIPE_ENABLED = True
+        stripe = _stripe
+except ImportError:
+    pass
 from database import get_db
 from models.building import Building, Room
 from models.world import Member
@@ -56,11 +69,15 @@ class UpdateBuilding(BaseModel):
     couleur:     str = ""
 
 class UpdateRoom(BaseModel):
-    nom:                    str       = ""
-    type:                   str       = ""
-    emoji:                  str       = ""
-    acces_restreint:        str       = ""
-    abonnements_requis_ids: List[str] = None
+    nom:                    str            = ""
+    type:                   str            = ""
+    emoji:                  str            = ""
+    acces_restreint:        str            = ""
+    abonnements_requis_ids: List[str]      = None
+    est_payante:            Optional[bool] = None
+    prix_acces:             Optional[float]= None
+    devise_acces:           str            = ""
+    type_paiement:          str            = ""  # abonnement | unique
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,14 +87,18 @@ def _serialise_room(r: Room) -> dict:
         for ra in r.abonnements_requis
     ]
     return {
-        "id":                 r.id,
-        "nom":                r.nom,
-        "type":               r.type,
-        "etage":              r.etage,
-        "emoji":              r.emoji,
-        "matrix_room_id":     r.matrix_room_id,
-        "acces_restreint":    r.acces_restreint,
-        "abonnements_requis": abonnements,
+        "id":                    r.id,
+        "nom":                   r.nom,
+        "type":                  r.type,
+        "etage":                 r.etage,
+        "emoji":                 r.emoji,
+        "matrix_room_id":        r.matrix_room_id,
+        "acces_restreint":       r.acces_restreint,
+        "abonnements_requis":    abonnements,
+        "est_payante":           bool(getattr(r, "est_payante", False)),
+        "prix_acces":            getattr(r, "prix_acces", None),
+        "devise_acces":          getattr(r, "devise_acces", None) or "EUR",
+        "type_paiement":         getattr(r, "type_paiement", None),
     }
 
 
@@ -135,15 +156,40 @@ def modifier_room(room_id: str, data: UpdateRoom, db: Session = Depends(get_db),
     r = db.query(Room).filter(Room.id == room_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Pièce introuvable")
-    if data.nom:            r.nom            = data.nom
-    if data.type:           r.type           = data.type
-    if data.emoji:          r.emoji          = data.emoji
+    if data.nom:             r.nom             = data.nom
+    if data.type:            r.type            = data.type
+    if data.emoji:           r.emoji           = data.emoji
     if data.acces_restreint: r.acces_restreint = data.acces_restreint
     if data.abonnements_requis_ids is not None:
-        # Remplacer tous les abonnements requis
         db.query(RoomAbonnement).filter(RoomAbonnement.room_id == r.id).delete()
         for abonnement_id in data.abonnements_requis_ids:
             db.add(RoomAbonnement(room_id=r.id, abonnement_id=abonnement_id))
+
+    # Champs room payante
+    if data.est_payante is not None: r.est_payante  = data.est_payante
+    if data.prix_acces  is not None: r.prix_acces   = data.prix_acces
+    if data.devise_acces:            r.devise_acces  = data.devise_acces
+    if data.type_paiement:           r.type_paiement = data.type_paiement
+
+    # Créer le produit/prix Stripe si nécessaire
+    if (STRIPE_ENABLED and r.est_payante and r.prix_acces and r.prix_acces > 0
+            and not r.stripe_price_id_acces):
+        try:
+            mode = "recurring" if r.type_paiement == "abonnement" else None
+            product = stripe.Product.create(name=f"Accès — {r.nom}")
+            price_kwargs = {
+                "product": product.id,
+                "unit_amount": int(r.prix_acces * 100),
+                "currency": (r.devise_acces or "EUR").lower(),
+            }
+            if mode:
+                price_kwargs["recurring"] = {"interval": "month"}
+            price = stripe.Price.create(**price_kwargs)
+            r.stripe_product_id_acces = product.id
+            r.stripe_price_id_acces   = price.id
+        except Exception:
+            pass
+
     db.commit()
     db.refresh(r)
     return _serialise_room(r)

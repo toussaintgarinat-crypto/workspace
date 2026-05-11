@@ -18,6 +18,16 @@ async def init_db():
                 created_at TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS user_tokens (
+                user_sub TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                access_token_enc BLOB,
+                refresh_token_enc BLOB,
+                expires_at TEXT,
+                PRIMARY KEY (user_sub, app_type)
+            )
+        """)
         await db.commit()
 
 
