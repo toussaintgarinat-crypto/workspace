@@ -29,15 +29,27 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
 
+  # Ollama sur Mac (modèles lourds) — OLLAMA_MAC_URL = IP NetBird du Mac
   - model_name: ollama/llama3.2
     litellm_params:
       model: ollama/llama3.2
-      api_base: http://host.docker.internal:11434
+      api_base: os.environ/OLLAMA_MAC_URL
 
   - model_name: ollama/llama3.3
     litellm_params:
       model: ollama/llama3.3
-      api_base: http://host.docker.internal:11434
+      api_base: os.environ/OLLAMA_MAC_URL
+
+  # Ollama sur HP (modèles légers CPU) — LXC ollama-hp sur 10.10.10.60
+  - model_name: ollama-hp/llama3.2
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: os.environ/OLLAMA_HP_URL
+
+  - model_name: ollama-hp/llama3.2:8b
+    litellm_params:
+      model: ollama/llama3.2:8b
+      api_base: os.environ/OLLAMA_HP_URL
 
 virtual_keys:
   - key: sk-forge
@@ -55,6 +67,8 @@ virtual_keys:
       - google/gemini-2.5-flash
       - ollama/llama3.2
       - ollama/llama3.3
+      - ollama-hp/llama3.2
+      - ollama-hp/llama3.2:8b
 
   - key: sk-assistant
     key_alias: assistant

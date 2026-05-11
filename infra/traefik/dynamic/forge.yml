@@ -66,17 +66,20 @@ http:
         servers:
           - url: "http://10.10.10.10:3000"
 
+    # Keycloak dans LXC infra (10.10.10.2)
     keycloak:
       loadBalancer:
         passHostHeader: true
         servers:
-          - url: "http://10.10.10.10:8080"
+          - url: "http://10.10.10.2:8080"
 
+    # NetBird dashboard dans LXC infra (10.10.10.2)
     netbird-dashboard:
       loadBalancer:
         servers:
-          - url: "http://10.10.10.10:8088"
+          - url: "http://10.10.10.2:8088"
 
+    # Qdrant Forge dans LXC forge (10.10.10.10)
     qdrant:
       loadBalancer:
         servers:

@@ -80,7 +80,7 @@ services:
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
       - ML_MODULE_URL=http://ml-module:8001
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434/api
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/api}
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-ollama}
       - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-llama3.2}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
