@@ -1,7 +1,0 @@
-[     292ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/poles:0
-[     294ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/orgs:0
-[     297ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sessions:0
-[    5327ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sessions:0
-[    5329ms] Error: Invalid token
-    at Q (http://localhost:3000/assets/index-DG6isJvj.js:75:14242)
-    at async o (http://localhost:3000/assets/index-DG6isJvj.js:75:32812)

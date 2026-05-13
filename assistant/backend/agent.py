@@ -129,17 +129,23 @@ class ReActAgent:
 
             for tc in assistant_tool_calls:
                 tool_name = tc["function"]["name"]
-                await on_chunk({"type": "tool_start", "name": tool_name})
                 try:
                     args = json.loads(tc["function"]["arguments"] or "{}")
+                except Exception:
+                    args = {}
+                await on_chunk({"type": "tool_start", "name": tool_name, "args": args})
+                error = False
+                try:
                     handler = self._tool_handlers.get(tool_name)
                     if handler is None:
                         result = f"Outil inconnu : {tool_name}"
+                        error = True
                     else:
                         result = await handler.execute_tool(tool_name, args)
                 except Exception as e:
                     logger.error("Tool %s failed: %s", tool_name, e)
-                    result = f"Erreur lors de l'exécution de {tool_name}: {e}"
+                    result = f"Erreur : {e}"
+                    error = True
 
-                await on_chunk({"type": "tool_result", "name": tool_name, "result": result})
+                await on_chunk({"type": "tool_result", "name": tool_name, "result": result, "error": error})
                 history.append({"role": "tool", "tool_call_id": tc["id"], "content": result})

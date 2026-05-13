@@ -1,2 +1,0 @@
-[   30053ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8088/callback?state=FoaTrH2rzUIWmtWt&session_state=a4af79cc-9a7f-4d08-a44b-f93dafb5a41c&iss=http%3A%2F%2Flocalhost%3A8080%2Frealms%2Fforge&code=ac4913db-8a0d-4884-8e98-071970e42f7b.a4af79cc-9a7f-4d08-a44b-f93dafb5a41c.bb3f7437-bdcb-45b8-9371-7cedd837ff79:0
-[   32196ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ http://localhost:8088/_next/static/chunks/375c23148ae936f5.js:4
