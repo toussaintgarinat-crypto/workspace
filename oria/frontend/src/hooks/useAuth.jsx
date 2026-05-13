@@ -11,10 +11,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Guard StrictMode double-invoke
-    if (typeof keycloak.authenticated !== 'undefined') {
+    // Guard StrictMode double-invoke: keycloak.didInitialize is set synchronously
+    // when init() starts, so the 2nd StrictMode call skips a redundant init().
+    if (keycloak.didInitialize) {
       if (keycloak.authenticated) _fetchMe()
-      else setLoading(false)
+      // else: init is in progress → redirect will happen → keep loading=true
       return
     }
 

@@ -88,13 +88,16 @@ chatRouter.post(
     await db.insert(messages).values({ sessionId, role: 'user', content })
 
     const llmModel = getModel(resolvedProvider, resolvedModel) as any
-    const result = await streamText({
+    const result = streamText({
       model: llmModel,
       system: buildSystemPrompt(context, poleContext, ventureContext),
       messages: [{ role: 'user', content }],
     })
 
-    const response = await result.text
+    let response = ''
+    for await (const chunk of result.textStream) {
+      response += chunk
+    }
 
     await db.insert(messages).values({ sessionId, role: 'assistant', content: response })
     await db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, sessionId))

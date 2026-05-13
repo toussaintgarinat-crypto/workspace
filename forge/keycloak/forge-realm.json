@@ -112,8 +112,7 @@
           }
         }
       ]
-    }
-  ],
+    },
     {
       "clientId": "assistant-app",
       "name": "Assistant App",
