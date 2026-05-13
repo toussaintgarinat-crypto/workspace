@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import ChatView from './views/ChatView.jsx';
 import ConnectView from './views/ConnectView.jsx';
+import GatewayView from './views/GatewayView.jsx';
+import MemoryView from './views/MemoryView.jsx';
+import SwarmView from './views/SwarmView.jsx';
 
 const s = {
   layout: {
@@ -77,9 +80,34 @@ export default function App() {
         >
           🔗
         </button>
+        <button
+          style={s.navBtn(view === 'gateway')}
+          onClick={() => setView('gateway')}
+          title="Gateway IA"
+        >
+          ⚡
+        </button>
+        <button
+          style={s.navBtn(view === 'memory')}
+          onClick={() => setView('memory')}
+          title="Mémoire"
+        >
+          🧠
+        </button>
+        <button
+          style={s.navBtn(view === 'swarm')}
+          onClick={() => setView('swarm')}
+          title="Swarm Mode"
+        >
+          🤖
+        </button>
       </nav>
       <main style={s.main}>
-        {view === 'chat' ? <ChatView /> : <ConnectView />}
+        {view === 'chat' && <ChatView />}
+        {view === 'connections' && <ConnectView />}
+        {view === 'gateway' && <GatewayView />}
+        {view === 'memory' && <MemoryView />}
+        {view === 'swarm' && <SwarmView />}
       </main>
     </div>
   );

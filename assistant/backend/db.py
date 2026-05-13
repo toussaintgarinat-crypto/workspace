@@ -28,6 +28,19 @@ async def init_db():
                 PRIMARY KEY (user_sub, app_type)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS swarm_tasks (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                role TEXT NOT NULL,
+                instructions TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'backlog',
+                log TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT
+            )
+        """)
         await db.commit()
 
 

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import uuid as _uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -15,6 +16,7 @@ from db import init_db, get_connections, upsert_connection, delete_connection
 from auth import get_current_user
 from vault import list_vault, get_vault_token, upsert_vault_token, delete_vault_token
 from agent import ReActAgent
+import swarm as swarm_mod
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -169,6 +171,177 @@ async def vault_oauth_callback(
         expires_at=expires_at,
     )
     return {"connected": True, "app_type": app_type}
+
+
+# ── Gateway management ───────────────────────────────────────────────────────
+
+class GatewayModelBody(BaseModel):
+    model_name: str
+    litellm_params: dict
+
+
+class GatewayKeyBody(BaseModel):
+    key_alias: str
+    max_budget: float = 10
+    budget_duration: str = "1mo"
+    models: list[str] | str = "auto"
+
+
+async def _gw(method: str, path: str, body: dict | None = None):
+    headers = {"Authorization": f"Bearer {settings.GATEWAY_MASTER_KEY}"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        url = f"{settings.GATEWAY_URL}{path}"
+        if method == "GET":
+            r = await client.get(url, headers=headers)
+        else:
+            r = await client.post(url, json=body, headers=headers)
+    if not r.is_success:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json()
+
+
+@app.get("/gateway/models")
+async def gateway_list_models():
+    return await _gw("GET", "/model/info")
+
+
+@app.post("/gateway/models")
+async def gateway_add_model(body: GatewayModelBody):
+    return await _gw("POST", "/model/new", body.model_dump())
+
+
+@app.delete("/gateway/models/{model_id}")
+async def gateway_delete_model(model_id: str):
+    return await _gw("POST", "/model/delete", {"id": model_id})
+
+
+@app.get("/gateway/keys")
+async def gateway_list_keys():
+    return await _gw("GET", "/key/list")
+
+
+@app.post("/gateway/keys")
+async def gateway_add_key(body: GatewayKeyBody):
+    return await _gw("POST", "/key/generate", body.model_dump())
+
+
+@app.delete("/gateway/keys/{key}")
+async def gateway_delete_key(key: str):
+    return await _gw("POST", "/key/delete", {"keys": [key]})
+
+
+# ── MemPalace proxy ──────────────────────────────────────────────────────────
+
+class MempalaceSearchBody(BaseModel):
+    query: str
+    wing: str | None = None
+    n_results: int = 10
+
+
+async def _get_mempalace_creds(user: dict) -> tuple[str, str]:
+    """Return (url, token) for MemPalace or raise 503."""
+    if settings.AUTH_ENABLED:
+        token = await get_vault_token(user["sub"], "mempalace")
+        if not token:
+            raise HTTPException(status_code=503, detail="MemPalace not connected")
+        return _default_url("mempalace"), token
+    else:
+        connections = await get_connections()
+        for c in connections:
+            if c.get("app_type") == "mempalace" and c.get("enabled"):
+                return c["url"], c["token"]
+        raise HTTPException(status_code=503, detail="MemPalace not connected")
+
+
+@app.get("/mempalace/wings")
+async def mempalace_wings(user: dict = Depends(get_current_user)):
+    url, token = await _get_mempalace_creds(user)
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"{url}/api/wings",
+                             headers={"Authorization": f"Bearer {token}"})
+    if not r.is_success:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json()
+
+
+@app.post("/mempalace/search")
+async def mempalace_search(body: MempalaceSearchBody, user: dict = Depends(get_current_user)):
+    url, token = await _get_mempalace_creds(user)
+    payload = {"query": body.query, "n_results": body.n_results}
+    if body.wing:
+        payload["wing"] = body.wing
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(f"{url}/api/search",
+                              json=payload,
+                              headers={"Authorization": f"Bearer {token}"})
+    if not r.is_success:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json()
+
+
+@app.get("/mempalace/entries/{wing}")
+async def mempalace_entries(wing: str, limit: int = 50, user: dict = Depends(get_current_user)):
+    url, token = await _get_mempalace_creds(user)
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"{url}/api/wings/{wing}/drawers",
+                             params={"limit": limit},
+                             headers={"Authorization": f"Bearer {token}"})
+    if not r.is_success:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json()
+
+
+# ── Swarm ────────────────────────────────────────────────────────────────────
+
+class SwarmTaskBody(BaseModel):
+    title: str
+    role: str
+    instructions: str
+    id: str | None = None
+
+
+@app.get("/swarm/tasks")
+async def swarm_list():
+    return await swarm_mod.list_swarm_tasks()
+
+
+@app.post("/swarm/tasks")
+async def swarm_create(body: SwarmTaskBody):
+    task_id = body.id or str(_uuid.uuid4())
+    return await swarm_mod.create_swarm_task(task_id, body.title, body.role, body.instructions)
+
+
+@app.patch("/swarm/tasks/{task_id}/done")
+async def swarm_done(task_id: str):
+    return await swarm_mod.mark_task_done(task_id)
+
+
+@app.delete("/swarm/tasks/{task_id}")
+async def swarm_cancel(task_id: str):
+    await swarm_mod.cancel_swarm_task(task_id)
+    return {"cancelled": task_id}
+
+
+@app.get("/swarm/events")
+async def swarm_events():
+    q = swarm_mod.subscribe()
+
+    async def generator():
+        tasks = await swarm_mod.list_swarm_tasks()
+        yield json.dumps({"type": "init", "tasks": tasks}, ensure_ascii=False)
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(q.get(), timeout=25)
+                    yield json.dumps(item, ensure_ascii=False)
+                except asyncio.TimeoutError:
+                    yield json.dumps({"type": "ping"}, ensure_ascii=False)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            swarm_mod.unsubscribe(q)
+
+    return EventSourceResponse(generator())
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
