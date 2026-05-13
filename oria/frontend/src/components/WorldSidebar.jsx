@@ -10,6 +10,7 @@ export default function WorldSidebar({
   onIPCRA, showIPCRA,
   onFeed, showFeed,
   showJardin,
+  onConductor, showConductor,
 }) {
   const jardin       = worlds.find(w => w.is_garden)
   const autresWorlds = worlds.filter(w => !w.is_garden)
@@ -111,6 +112,15 @@ export default function WorldSidebar({
       >
         <span>🎯</span>
         <span className="world-btn-tooltip">Sessions IPCRA</span>
+      </button>
+
+      <button
+        className={`world-btn nav-btn ${showConductor ? 'actif' : ''}`}
+        onClick={onConductor}
+        title="Conductor"
+      >
+        <span>🎛</span>
+        <span className="world-btn-tooltip">Conductor</span>
       </button>
 
       <button

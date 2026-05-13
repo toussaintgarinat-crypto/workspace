@@ -12,6 +12,7 @@ import models.ipcra
 import models.social
 import models.shared_zone
 import models.coin
+import models.resident_agent
 from routers import worlds, buildings, rooms, tokens, auth, quartiers
 from routers import invitations, files as files_router, network as network_router
 from routers import abonnements as abonnements_router
@@ -20,6 +21,7 @@ from routers.agents_router   import router as agents_router
 from routers.documents_router import router as documents_router
 from routers.discovery_router import router as discovery_router
 from routers.ipcra_router    import router as ipcra_router
+from routers.conductor_router import router as conductor_router
 import os
 
 Base.metadata.create_all(bind=engine)
@@ -84,16 +86,68 @@ app.include_router(jardin_router,      prefix="/api/jardin",        tags=["Jardi
 app.include_router(shared_zones_router, prefix="/api/shared-zones", tags=["Zones partagées"])
 from routers.coins_router import router as coins_router
 app.include_router(coins_router, prefix="/api", tags=["Coins & Rooms payantes"])
+app.include_router(conductor_router, prefix="/api/conductor", tags=["Conductor"])
 # Application Service Matrix — montée sans préfixe /api (protocole Matrix)
 app.include_router(matrix_as.router, tags=["Matrix AS"])
 
 # ── Yjs CRDT WebSocket ─────────────────────────────────────────
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from yjs_server import yjs_websocket_handler
 
 @app.websocket("/ws/yjs/{zone_id}")
 async def yjs_ws(websocket: WebSocket, zone_id: str):
     await yjs_websocket_handler(websocket, zone_id)
+
+
+# ── Conductor WebSocket ─────────────────────────────────────────
+from services.conductor_ws import conductor_manager
+
+@app.websocket("/ws/conductor")
+async def conductor_ws(websocket: WebSocket):
+    await conductor_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # garder la connexion vivante
+    except WebSocketDisconnect:
+        await conductor_manager.disconnect(websocket)
+
+
+# ── Seeding des 5 agents résidents pôle ────────────────────────
+from contextlib import asynccontextmanager
+
+_POLE_AGENTS = [
+    ("Finance",   "💰", "Expert financier — budgets, P&L, trésorerie, reporting CFO."),
+    ("Marketing", "📢", "Expert marketing — brand, campagnes, leads, analytics."),
+    ("Sales",     "🤝", "Expert commercial — pipeline CRM, deals, relances, prévisions."),
+    ("Ops",       "⚙️", "Expert opérations — sprints, process, infra, delivery."),
+    ("Legal",     "⚖️", "Expert juridique — contrats, conformité, IP, RGPD."),
+]
+
+
+def _seed_resident_agents():
+    from database import SessionLocal
+    from models.resident_agent import ResidentAgent
+    forge_url   = os.getenv("FORGE_URL", "http://localhost:3001")
+    forge_token = os.getenv("FORGE_TOKEN", "sk-forge")
+    db = SessionLocal()
+    try:
+        existing = {a.pole_type for a in db.query(ResidentAgent).all()}
+        for pole, emoji, desc in _POLE_AGENTS:
+            if pole not in existing:
+                db.add(ResidentAgent(
+                    name=f"Agent {pole}",
+                    pole_type=pole,
+                    avatar_emoji=emoji,
+                    description=desc,
+                    forge_url=forge_url,
+                    forge_token=forge_token,
+                ))
+        db.commit()
+    finally:
+        db.close()
+
+
+_seed_resident_agents()
 
 
 @app.get("/")

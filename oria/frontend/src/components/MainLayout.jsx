@@ -26,6 +26,7 @@ import AgentManager from './AgentManager.jsx'
 import IPCRAPanel from './IPCRAPanel.jsx'
 import ActivityFeed from './ActivityFeed.jsx'
 import JardinPanel from './JardinPanel.jsx'
+import ConductorView from './ConductorView.jsx'
 
 export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
   const [worlds, setWorlds]                 = useState([])
@@ -48,6 +49,7 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
   const [showIPCRA, setShowIPCRA]           = useState(false)
   const [showFeed, setShowFeed]             = useState(false)
   const [showJardin, setShowJardin]         = useState(false)
+  const [showConductor, setShowConductor]   = useState(false)
   const [worldAgents, setWorldAgents]       = useState([])
 
   const resizeRef = useRef(null) // { index, startX, startWidths, containerWidth }
@@ -93,6 +95,7 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
     setOutilActif(null); setVoteConseil(null)
     setShowMap(false); setShowDiscovery(false); setShowMyDocs(false)
     setShowAgents(false); setShowIPCRA(false); setShowNetwork(false); setShowFeed(false); setShowJardin(false)
+    setShowConductor(false)
   }
 
   function entrerRoom(room, building) {
@@ -206,7 +209,9 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
   const roomIds = new Set(roomsOuvertes.map(r => r.room.id))
 
   let contenuPrincipal
-  if (showJardin) {
+  if (showConductor) {
+    contenuPrincipal = <ConductorView moi={moi} />
+  } else if (showJardin) {
     contenuPrincipal = <JardinPanel moi={moi} />
   } else if (showFeed) {
     contenuPrincipal = (
@@ -360,6 +365,8 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
         onFeed={() => { clearAllViews(); setShowFeed(true) }}
         showFeed={showFeed}
         showJardin={showJardin}
+        onConductor={() => { clearAllViews(); setShowConductor(true) }}
+        showConductor={showConductor}
       />
 
       {!showNetwork && (
