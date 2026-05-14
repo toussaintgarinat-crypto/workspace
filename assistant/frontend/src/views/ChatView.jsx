@@ -282,6 +282,25 @@ const s = {
     flexShrink: 0,
     height: '42px',
   }),
+  peBtn: (active) => ({
+    padding: '0 12px',
+    height: '42px',
+    background: active ? '#7c3aed22' : 'transparent',
+    border: `1px solid ${active ? '#7c3aed66' : '#333'}`,
+    borderRadius: '10px',
+    color: active ? '#a78bfa' : '#555',
+    cursor: 'pointer',
+    fontSize: '14px',
+    flexShrink: 0,
+    transition: 'all 0.15s ease',
+  }),
+  refinedBadge: {
+    display: 'inline-block',
+    marginTop: '4px',
+    fontSize: '10px',
+    color: '#7c3aed99',
+    letterSpacing: '0.05em',
+  },
 };
 
 // ── ToolCard ──────────────────────────────────────────────────────────────────
@@ -339,7 +358,12 @@ function Message({ msg }) {
             <ReactMarkdown>{msg.content || ''}</ReactMarkdown>
           </div>
         ) : (
-          <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+          <>
+            <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+            {msg.refined && (
+              <div style={s.refinedBadge}>✦ affiné</div>
+            )}
+          </>
         )}
         {msg.tools && msg.tools.length > 0 && (
           <div style={s.toolsWrapper}>
@@ -404,6 +428,9 @@ export default function ChatView() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [promptEngineerEnabled, setPromptEngineerEnabled] = useState(
+    () => localStorage.getItem('ws_pe_enabled') === 'true'
+  );
 
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -540,6 +567,19 @@ export default function ChatView() {
         },
         // onDone
         () => setIsStreaming(false),
+        // usePromptEngineer
+        promptEngineerEnabled,
+        // onPromptRefined — mark user message with refined badge
+        () => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const userIdx = assistantIdxRef.current - 1;
+            if (userIdx >= 0) {
+              updated[userIdx] = { ...updated[userIdx], refined: true };
+            }
+            return updated;
+          });
+        },
       );
     } catch (err) {
       setMessages(prev => {
@@ -622,6 +662,17 @@ export default function ChatView() {
             disabled={isStreaming}
             rows={1}
           />
+          <button
+            style={s.peBtn(promptEngineerEnabled)}
+            onClick={() => {
+              const next = !promptEngineerEnabled;
+              setPromptEngineerEnabled(next);
+              localStorage.setItem('ws_pe_enabled', String(next));
+            }}
+            title={promptEngineerEnabled ? 'Prompt Architect actif' : 'Prompt Architect inactif'}
+          >
+            ✦
+          </button>
           <button
             style={s.sendBtn(!input.trim() || isStreaming)}
             onClick={() => sendMessage(input)}

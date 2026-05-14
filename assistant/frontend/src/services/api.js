@@ -159,11 +159,19 @@ export async function swarmCancelTask(taskId) {
   return res.json();
 }
 
-export async function streamChat(messages, onChunk, onToolStart, onTool, onDone) {
+export async function streamChat(
+  messages,
+  onChunk,
+  onToolStart,
+  onTool,
+  onDone,
+  usePromptEngineer = false,
+  onPromptRefined = null,
+) {
   const res = await fetch(`${BASE_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, use_prompt_engineer: usePromptEngineer }),
   });
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -195,6 +203,7 @@ export async function streamChat(messages, onChunk, onToolStart, onTool, onDone)
       if (event.type === 'text') onChunk(event.content);
       else if (event.type === 'tool_start') onToolStart(event.name, event.args || {});
       else if (event.type === 'tool_result') onTool(event.name, event.result, event.error || false);
+      else if (event.type === 'prompt_refined' && onPromptRefined) onPromptRefined(event.data);
       else if (event.type === 'done') { onDone(); return; }
     }
   }
