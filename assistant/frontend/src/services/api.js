@@ -1,15 +1,25 @@
+import { getToken, refreshIfNeeded } from './keycloak.js';
+
 const BASE_URL = '/api';
+
+async function apiFetch(url, options = {}) {
+  await refreshIfNeeded();
+  const token = getToken();
+  const headers = { ...(options.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
 
 // ── Vault (token store chiffré) ───────────────────────────────────────────────
 
 export async function getVaultTokens() {
-  const res = await fetch(`${BASE_URL}/vault/tokens`);
+  const res = await apiFetch(`${BASE_URL}/vault/tokens`);
   if (!res.ok) return [];
   return res.json();
 }
 
 export async function storeVaultToken(appType, accessToken, refreshToken = null, expiresAt = null) {
-  const res = await fetch(`${BASE_URL}/vault/tokens/${appType}`, {
+  const res = await apiFetch(`${BASE_URL}/vault/tokens/${appType}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt }),
@@ -19,13 +29,13 @@ export async function storeVaultToken(appType, accessToken, refreshToken = null,
 }
 
 export async function deleteVaultToken(appType) {
-  const res = await fetch(`${BASE_URL}/vault/tokens/${appType}`, { method: 'DELETE' });
+  const res = await apiFetch(`${BASE_URL}/vault/tokens/${appType}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function oauthCallback(appType, body) {
-  const res = await fetch(`${BASE_URL}/vault/oauth-callback/${appType}`, {
+  const res = await apiFetch(`${BASE_URL}/vault/oauth-callback/${appType}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -35,13 +45,13 @@ export async function oauthCallback(appType, body) {
 }
 
 export async function getConnections() {
-  const res = await fetch(`${BASE_URL}/connections`);
+  const res = await apiFetch(`${BASE_URL}/connections`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function upsertConnection(data) {
-  const res = await fetch(`${BASE_URL}/connections`, {
+  const res = await apiFetch(`${BASE_URL}/connections`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -51,7 +61,7 @@ export async function upsertConnection(data) {
 }
 
 export async function deleteConnection(id) {
-  const res = await fetch(`${BASE_URL}/connections/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`${BASE_URL}/connections/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -59,13 +69,13 @@ export async function deleteConnection(id) {
 // ── Gateway management ────────────────────────────────────────────────────────
 
 export async function gatewayListModels() {
-  const res = await fetch(`${BASE_URL}/gateway/models`);
+  const res = await apiFetch(`${BASE_URL}/gateway/models`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function gatewayAddModel(body) {
-  const res = await fetch(`${BASE_URL}/gateway/models`, {
+  const res = await apiFetch(`${BASE_URL}/gateway/models`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -75,19 +85,19 @@ export async function gatewayAddModel(body) {
 }
 
 export async function gatewayDeleteModel(modelId) {
-  const res = await fetch(`${BASE_URL}/gateway/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+  const res = await apiFetch(`${BASE_URL}/gateway/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function gatewayListKeys() {
-  const res = await fetch(`${BASE_URL}/gateway/keys`);
+  const res = await apiFetch(`${BASE_URL}/gateway/keys`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function gatewayAddKey(body) {
-  const res = await fetch(`${BASE_URL}/gateway/keys`, {
+  const res = await apiFetch(`${BASE_URL}/gateway/keys`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -97,7 +107,7 @@ export async function gatewayAddKey(body) {
 }
 
 export async function gatewayDeleteKey(key) {
-  const res = await fetch(`${BASE_URL}/gateway/keys/${encodeURIComponent(key)}`, { method: 'DELETE' });
+  const res = await apiFetch(`${BASE_URL}/gateway/keys/${encodeURIComponent(key)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -105,14 +115,14 @@ export async function gatewayDeleteKey(key) {
 // ── MemPalace proxy ───────────────────────────────────────────────────────────
 
 export async function mempalaceWings() {
-  const res = await fetch(`${BASE_URL}/mempalace/wings`);
+  const res = await apiFetch(`${BASE_URL}/mempalace/wings`);
   if (res.status === 503) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function mempalaceSearch(query, wing = null, nResults = 10) {
-  const res = await fetch(`${BASE_URL}/mempalace/search`, {
+  const res = await apiFetch(`${BASE_URL}/mempalace/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, wing, n_results: nResults }),
@@ -123,7 +133,7 @@ export async function mempalaceSearch(query, wing = null, nResults = 10) {
 }
 
 export async function mempalaceEntries(wing, limit = 50) {
-  const res = await fetch(`${BASE_URL}/mempalace/entries/${encodeURIComponent(wing)}?limit=${limit}`);
+  const res = await apiFetch(`${BASE_URL}/mempalace/entries/${encodeURIComponent(wing)}?limit=${limit}`);
   if (res.status === 503) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -132,13 +142,13 @@ export async function mempalaceEntries(wing, limit = 50) {
 // ── Swarm ─────────────────────────────────────────────────────────────────────
 
 export async function swarmListTasks() {
-  const res = await fetch(`${BASE_URL}/swarm/tasks`);
+  const res = await apiFetch(`${BASE_URL}/swarm/tasks`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function swarmCreateTask(title, role, instructions) {
-  const res = await fetch(`${BASE_URL}/swarm/tasks`, {
+  const res = await apiFetch(`${BASE_URL}/swarm/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, role, instructions }),
@@ -148,13 +158,13 @@ export async function swarmCreateTask(title, role, instructions) {
 }
 
 export async function swarmMarkDone(taskId) {
-  const res = await fetch(`${BASE_URL}/swarm/tasks/${taskId}/done`, { method: 'PATCH' });
+  const res = await apiFetch(`${BASE_URL}/swarm/tasks/${taskId}/done`, { method: 'PATCH' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function swarmCancelTask(taskId) {
-  const res = await fetch(`${BASE_URL}/swarm/tasks/${taskId}`, { method: 'DELETE' });
+  const res = await apiFetch(`${BASE_URL}/swarm/tasks/${taskId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -162,13 +172,13 @@ export async function swarmCancelTask(taskId) {
 // ── Voice ─────────────────────────────────────────────────────────────────────
 
 export async function getVoiceSettings() {
-  const res = await fetch(`${BASE_URL}/voice/settings`);
+  const res = await apiFetch(`${BASE_URL}/voice/settings`);
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function saveVoiceSettingsToBackend(settings) {
-  const res = await fetch(`${BASE_URL}/voice/settings`, {
+  const res = await apiFetch(`${BASE_URL}/voice/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
@@ -181,19 +191,37 @@ export async function transcribeAudio(audioBlob, language = 'fr-FR') {
   const formData = new FormData();
   formData.append('audio', audioBlob, 'recording.webm');
   formData.append('language', language);
-  const res = await fetch(`${BASE_URL}/voice/transcribe`, { method: 'POST', body: formData });
+  const res = await apiFetch(`${BASE_URL}/voice/transcribe`, { method: 'POST', body: formData });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function synthesizeText(text, voice = null) {
-  const res = await fetch(`${BASE_URL}/voice/synthesize`, {
+  const res = await apiFetch(`${BASE_URL}/voice/synthesize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voice }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.blob();
+}
+
+export async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await apiFetch(`${BASE_URL}/upload`, { method: 'POST', body: fd });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function confirmDocument({ file_id, filename, wing, room, summary }) {
+  const res = await apiFetch(`${BASE_URL}/upload/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id, filename, wing, room, summary }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 export async function streamChat(
@@ -205,7 +233,7 @@ export async function streamChat(
   usePromptEngineer = false,
   onPromptRefined = null,
 ) {
-  const res = await fetch(`${BASE_URL}/chat`, {
+  const res = await apiFetch(`${BASE_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, use_prompt_engineer: usePromptEngineer }),

@@ -64,6 +64,14 @@ class ChatBody(BaseModel):
     use_prompt_engineer: bool = False
 
 
+class ConfirmUploadBody(BaseModel):
+    file_id: str | None = None
+    filename: str
+    wing: str
+    room: str
+    summary: str
+
+
 class VaultTokenBody(BaseModel):
     access_token: str
     refresh_token: str | None = None
@@ -80,11 +88,21 @@ class OAuthCallbackBody(BaseModel):
     client_id: str
 
 
-# ── Health ────────────────────────────────────────────────────────────────────
+# ── Health / Auth config ──────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "2.0.0", "auth_enabled": settings.AUTH_ENABLED}
+
+
+@app.get("/auth/config")
+async def auth_config():
+    return {
+        "auth_enabled": settings.AUTH_ENABLED,
+        "keycloak_url": settings.KEYCLOAK_URL,
+        "keycloak_realm": settings.KEYCLOAK_REALM,
+        "keycloak_client_id": settings.KEYCLOAK_CLIENT_ID,
+    }
 
 
 # ── Global connections (legacy / AUTH_ENABLED=false) ─────────────────────────
@@ -490,6 +508,85 @@ async def voice_synthesize(body: SynthesizeBody):
     voice = body.voice or vs.get("tts_voice", "alloy")
     audio_bytes, content_type = await tts.synthesize(body.text, voice, vs.get("language", "fr-FR"))
     return Response(content=audio_bytes, media_type=content_type)
+
+
+# ── Document Upload ────────────────────────────────────────────────────────────
+
+@app.post("/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    from doc_intelligence import extract_text, classify_document
+
+    content = await file.read()
+    filename = file.filename or "document"
+    mime = file.content_type
+
+    text = await extract_text(content, filename, mime)
+    classification = await classify_document(text, filename)
+
+    connections = await get_connections()
+    mp_conn = next(
+        (c for c in connections if c.get("app_type") == "mempalace" and c.get("enabled")),
+        None,
+    )
+    file_id = None
+    if mp_conn:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{mp_conn['url'].rstrip('/')}/api/documents",
+                    files={"file": (filename, content, mime or "application/octet-stream")},
+                    data={
+                        "wing": classification.get("wing", "Ressource").lower(),
+                        "room": classification.get("room", "documents"),
+                    },
+                    headers={"Authorization": f"Bearer {mp_conn['token']}"},
+                )
+                if resp.status_code in (200, 201):
+                    file_id = resp.json().get("id")
+        except Exception as e:
+            logger.warning("MemPalace raw upload failed: %s", e)
+
+    return {
+        "file_id": file_id,
+        "filename": filename,
+        "size": len(content),
+        "summary": classification.get("summary", ""),
+        "proposed_wing": classification.get("wing", "Ressource"),
+        "proposed_room": classification.get("room", "documents"),
+        "confidence": classification.get("confidence", 0.5),
+        "text_length": len(text),
+    }
+
+
+@app.post("/upload/confirm")
+async def confirm_upload(body: ConfirmUploadBody, user: dict = Depends(get_current_user)):
+    connections = await get_connections()
+    mp_conn = next(
+        (c for c in connections if c.get("app_type") == "mempalace" and c.get("enabled")),
+        None,
+    )
+    if not mp_conn:
+        return {"ok": False, "error": "MemPalace non connecté"}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{mp_conn['url'].rstrip('/')}/api/drawers",
+                json={
+                    "content": body.summary,
+                    "wing": body.wing.lower(),
+                    "room": body.room.lower().replace(" ", "-"),
+                    "metadata": {"source_file": body.filename, "file_id": body.file_id},
+                },
+                headers={"Authorization": f"Bearer {mp_conn['token']}"},
+            )
+            resp.raise_for_status()
+        return {"ok": True}
+    except Exception as e:
+        logger.error("MemPalace confirm failed: %s", e)
+        return {"ok": False, "error": str(e)}
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────

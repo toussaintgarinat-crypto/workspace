@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:8300,http://localhost:3000"
     KEYCLOAK_URL: str = "http://localhost:8080"
     KEYCLOAK_REALM: str = "forge"
+    KEYCLOAK_CLIENT_ID: str = "assistant-app"
     AUTH_ENABLED: bool = False
     VAULT_SECRET: str = "change_this_vault_secret_in_production_32chars"
     SWARM_MAX_WORKERS: int = 3

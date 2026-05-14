@@ -18,6 +18,7 @@ services:
       - CORS_ORIGINS=http://localhost:8300,http://localhost:3000
       - KEYCLOAK_URL=${KEYCLOAK_URL:-http://host.docker.internal:8080}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-assistant-app}
       - AUTH_ENABLED=${AUTH_ENABLED:-false}
       - VAULT_SECRET=${VAULT_SECRET:-change_this_vault_secret_in_production_32chars}
     volumes:

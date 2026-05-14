@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isEnabled, getUser, logout } from './services/keycloak.js';
 import ChatView from './views/ChatView.jsx';
 import ConnectView from './views/ConnectView.jsx';
 import GatewayView from './views/GatewayView.jsx';
@@ -109,6 +110,15 @@ export default function App() {
         >
           🎙️
         </button>
+        {isEnabled() && (
+          <button
+            style={{ ...s.navBtn(false), marginTop: 'auto' }}
+            onClick={logout}
+            title={`Déconnexion — ${getUser()?.preferred_username ?? ''}`}
+          >
+            👤
+          </button>
+        )}
       </nav>
       <main style={s.main}>
         {view === 'chat' && <ChatView />}
