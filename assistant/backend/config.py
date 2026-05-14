@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     AUTH_ENABLED: bool = False
     VAULT_SECRET: str = "change_this_vault_secret_in_production_32chars"
     SWARM_MAX_WORKERS: int = 3
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+    DISCORD_WEBHOOK_URL: str = ""
 
     class Config:
         env_file = ".env"

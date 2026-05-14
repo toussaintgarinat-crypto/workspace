@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { isEnabled, getUser, logout } from './services/keycloak.js';
 import ChatView from './views/ChatView.jsx';
 import ConnectView from './views/ConnectView.jsx';
@@ -6,6 +6,9 @@ import GatewayView from './views/GatewayView.jsx';
 import MemoryView from './views/MemoryView.jsx';
 import SwarmView from './views/SwarmView.jsx';
 import VoiceView from './views/VoiceView.jsx';
+import AlertsView from './views/AlertsView.jsx';
+
+const API = import.meta.env.VITE_API_URL || '/api';
 
 const s = {
   layout: {
@@ -63,6 +66,22 @@ const s = {
 
 export default function App() {
   const [view, setView] = useState('chat');
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  useEffect(() => {
+    const es = new EventSource(`${API}/proactive/alerts/stream`);
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'init' || data.type === 'badge_update') {
+          setUnreadAlerts(data.unread_count ?? 0);
+        } else if (data.type === 'alert') {
+          setUnreadAlerts(prev => prev + 1);
+        }
+      } catch {}
+    };
+    return () => es.close();
+  }, []);
 
   return (
     <div style={s.layout}>
@@ -110,6 +129,33 @@ export default function App() {
         >
           🎙️
         </button>
+        <button
+          style={{ ...s.navBtn(view === 'alerts'), position: 'relative' }}
+          onClick={() => setView('alerts')}
+          title="Alertes proactives"
+        >
+          🔔
+          {unreadAlerts > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '4px',
+              right: '4px',
+              width: '16px',
+              height: '16px',
+              borderRadius: '50%',
+              background: '#7c3aed',
+              color: '#fff',
+              fontSize: '9px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+            }}>
+              {unreadAlerts > 9 ? '9+' : unreadAlerts}
+            </span>
+          )}
+        </button>
         {isEnabled() && (
           <button
             style={{ ...s.navBtn(false), marginTop: 'auto' }}
@@ -127,6 +173,7 @@ export default function App() {
         {view === 'memory' && <MemoryView />}
         {view === 'swarm' && <SwarmView />}
         {view === 'voice' && <VoiceView />}
+        {view === 'alerts' && <AlertsView />}
       </main>
     </div>
   );

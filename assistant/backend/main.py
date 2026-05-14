@@ -16,6 +16,8 @@ from config import settings
 from db import (
     init_db, get_connections, upsert_connection, delete_connection,
     get_voice_settings, upsert_voice_settings,
+    get_proactive_config, upsert_proactive_config,
+    get_alerts, mark_alert_read, count_unread_alerts,
 )
 from auth import get_current_user
 from vault import encrypt, decrypt, list_vault, get_vault_token, upsert_vault_token, delete_vault_token
@@ -25,6 +27,8 @@ from tools.oria import OriaTools
 from voice.stt import get_stt_provider
 from voice.tts import get_tts_provider
 import swarm as swarm_mod
+import proactive as proactive_mod
+from notifiers import inapp as inapp_notifier
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,7 +37,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    proactive_mod.start_scheduler()
     yield
+    proactive_mod.stop_scheduler()
 
 
 app = FastAPI(title="Assistant Backend", version="2.0.0", lifespan=lifespan)
@@ -587,6 +593,86 @@ async def confirm_upload(body: ConfirmUploadBody, user: dict = Depends(get_curre
     except Exception as e:
         logger.error("MemPalace confirm failed: %s", e)
         return {"ok": False, "error": str(e)}
+
+
+# ── Proactive ────────────────────────────────────────────────────────────────
+
+class ProactiveConfigBody(BaseModel):
+    enabled: bool
+    interval_minutes: int = 30
+    reminder_hours: int = 0
+    events_config: dict = {}
+    channels_config: dict = {}
+
+
+@app.get("/proactive/status")
+async def proactive_status():
+    status = proactive_mod.get_status()
+    cfg = await get_proactive_config()
+    status["enabled"] = cfg.get("enabled", False)
+    status["unread_count"] = await count_unread_alerts()
+    return status
+
+
+@app.get("/proactive/config")
+async def proactive_get_config():
+    return await get_proactive_config()
+
+
+@app.put("/proactive/config")
+async def proactive_put_config(body: ProactiveConfigBody):
+    await upsert_proactive_config(
+        enabled=body.enabled,
+        interval_minutes=body.interval_minutes,
+        reminder_hours=body.reminder_hours,
+        events_config=body.events_config,
+        channels_config=body.channels_config,
+    )
+    return {"saved": True}
+
+
+@app.post("/proactive/check")
+async def proactive_manual_check():
+    cfg = await get_proactive_config()
+    if not cfg.get("enabled"):
+        raise HTTPException(status_code=400, detail="Le mode proactif est désactivé")
+    asyncio.create_task(proactive_mod.run_check())
+    return {"started": True}
+
+
+@app.get("/proactive/alerts")
+async def proactive_list_alerts(unread_only: bool = False, limit: int = 100):
+    return await get_alerts(unread_only=unread_only, limit=limit)
+
+
+@app.post("/proactive/alerts/{alert_id}/read")
+async def proactive_mark_read(alert_id: str):
+    await mark_alert_read(alert_id)
+    unread = await count_unread_alerts()
+    await inapp_notifier.broadcast({"type": "badge_update", "unread_count": unread})
+    return {"ok": True}
+
+
+@app.get("/proactive/alerts/stream")
+async def proactive_alerts_stream():
+    q = inapp_notifier.subscribe()
+
+    async def generator():
+        unread = await count_unread_alerts()
+        yield json.dumps({"type": "init", "unread_count": unread}, ensure_ascii=False)
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(q.get(), timeout=25)
+                    yield json.dumps(item, ensure_ascii=False)
+                except asyncio.TimeoutError:
+                    yield json.dumps({"type": "ping"}, ensure_ascii=False)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            inapp_notifier.unsubscribe(q)
+
+    return EventSourceResponse(generator())
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
