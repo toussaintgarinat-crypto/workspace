@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { streamChat } from '../services/api.js';
+import { VoiceManager, loadVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
 
 // ── Session store ─────────────────────────────────────────────────────────────
 
@@ -294,6 +295,37 @@ const s = {
     flexShrink: 0,
     transition: 'all 0.15s ease',
   }),
+  micBtn: (recording) => ({
+    width: '42px',
+    height: '42px',
+    background: recording ? '#ef444422' : 'transparent',
+    border: `1px solid ${recording ? '#ef444466' : '#333'}`,
+    borderRadius: '10px',
+    color: recording ? '#ef4444' : '#555',
+    cursor: 'pointer',
+    fontSize: '16px',
+    flexShrink: 0,
+    transition: 'all 0.15s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  }),
+  ttsBtn: (active) => ({
+    width: '42px',
+    height: '42px',
+    background: active ? '#0891b222' : 'transparent',
+    border: `1px solid ${active ? '#0891b266' : '#333'}`,
+    borderRadius: '10px',
+    color: active ? '#22d3ee' : '#555',
+    cursor: 'pointer',
+    fontSize: '15px',
+    flexShrink: 0,
+    transition: 'all 0.15s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
   refinedBadge: {
     display: 'inline-block',
     marginTop: '4px',
@@ -313,7 +345,12 @@ function ToolCard({ tool }) {
 
   return (
     <>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}.tool-spin{display:inline-block;animation:spin 0.9s linear infinite}`}</style>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .tool-spin{display:inline-block;animation:spin 0.9s linear infinite}
+        @keyframes pulse-ring{0%{transform:scale(1);opacity:0.8}70%{transform:scale(1.6);opacity:0}100%{transform:scale(1.6);opacity:0}}
+        .mic-pulse::before{content:'';position:absolute;inset:-4px;border-radius:50%;border:2px solid #ef4444;animation:pulse-ring 1.2s ease-out infinite}
+      `}</style>
       <div style={s.toolCard}>
         <button style={s.toolHeader(isError, isRunning)} onClick={() => !isRunning && setOpen(!open)}>
           <span className={isRunning ? 'tool-spin' : ''}>
@@ -431,6 +468,26 @@ export default function ChatView() {
   const [promptEngineerEnabled, setPromptEngineerEnabled] = useState(
     () => localStorage.getItem('ws_pe_enabled') === 'true'
   );
+
+  // Voice state
+  const [isRecording, setIsRecording] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const [ttsEnabled, setTtsEnabled] = useState(
+    () => (loadVoiceSettings().ttsEnabled ?? DEFAULT_VOICE_SETTINGS.ttsEnabled)
+  );
+
+  const voiceManager = useMemo(() => {
+    const settings = { ...DEFAULT_VOICE_SETTINGS, ...loadVoiceSettings() };
+    const vm = new VoiceManager(settings);
+    vm.onRecordingChange(setIsRecording);
+    vm.onInterim((text) => setInterimText(text));
+    vm.onTranscript((text) => {
+      setInterimText('');
+      setInput(text);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    });
+    return vm;
+  }, []);
 
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -566,7 +623,19 @@ export default function ChatView() {
           });
         },
         // onDone
-        () => setIsStreaming(false),
+        () => {
+          setIsStreaming(false);
+          // TTS: read out the final assistant response
+          if (ttsEnabled) {
+            setMessages(prev => {
+              const lastMsg = prev[assistantIdxRef.current];
+              if (lastMsg?.role === 'assistant' && lastMsg.content) {
+                voiceManager.speak(lastMsg.content);
+              }
+              return prev;
+            });
+          }
+        },
         // usePromptEngineer
         promptEngineerEnabled,
         // onPromptRefined — mark user message with refined badge
@@ -655,13 +724,36 @@ export default function ChatView() {
           <textarea
             ref={textareaRef}
             style={s.textarea}
-            value={input}
-            onChange={(e) => { setInput(e.target.value); adjustTextarea(); }}
+            value={interimText || input}
+            onChange={(e) => { if (!isRecording) { setInput(e.target.value); adjustTextarea(); } }}
             onKeyDown={handleKeyDown}
-            placeholder="Envoyer un message… (Shift+Entrée pour nouvelle ligne)"
+            placeholder={isRecording ? '🎙️ Écoute en cours…' : 'Envoyer un message… (Shift+Entrée pour nouvelle ligne)'}
             disabled={isStreaming}
             rows={1}
           />
+          <button
+            style={s.micBtn(isRecording)}
+            className={isRecording ? 'mic-pulse' : ''}
+            onClick={() => voiceManager.startRecording()}
+            title={isRecording ? 'Arrêter l\'enregistrement' : 'Démarrer l\'enregistrement vocal'}
+          >
+            🎙️
+          </button>
+          <button
+            style={s.ttsBtn(ttsEnabled)}
+            onClick={() => {
+              const next = !ttsEnabled;
+              setTtsEnabled(next);
+              voiceManager.updateSettings({ ttsEnabled: next });
+              const saved = loadVoiceSettings();
+              saved.ttsEnabled = next;
+              import('../services/voice/index.js').then(m => m.saveVoiceSettings(saved));
+              if (!next) voiceManager.stopSpeaking();
+            }}
+            title={ttsEnabled ? 'Lecture vocale activée' : 'Lecture vocale désactivée'}
+          >
+            {ttsEnabled ? '🔊' : '🔇'}
+          </button>
           <button
             style={s.peBtn(promptEngineerEnabled)}
             onClick={() => {

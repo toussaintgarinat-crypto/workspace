@@ -159,6 +159,43 @@ export async function swarmCancelTask(taskId) {
   return res.json();
 }
 
+// ── Voice ─────────────────────────────────────────────────────────────────────
+
+export async function getVoiceSettings() {
+  const res = await fetch(`${BASE_URL}/voice/settings`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function saveVoiceSettingsToBackend(settings) {
+  const res = await fetch(`${BASE_URL}/voice/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function transcribeAudio(audioBlob, language = 'fr-FR') {
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'recording.webm');
+  formData.append('language', language);
+  const res = await fetch(`${BASE_URL}/voice/transcribe`, { method: 'POST', body: formData });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function synthesizeText(text, voice = null) {
+  const res = await fetch(`${BASE_URL}/voice/synthesize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.blob();
+}
+
 export async function streamChat(
   messages,
   onChunk,

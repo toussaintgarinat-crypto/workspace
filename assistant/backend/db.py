@@ -41,6 +41,22 @@ async def init_db():
                 completed_at TEXT
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS voice_settings (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                stt_provider TEXT NOT NULL DEFAULT 'webspeech',
+                tts_provider TEXT NOT NULL DEFAULT 'webspeech',
+                stt_api_key_enc BLOB,
+                tts_api_key_enc BLOB,
+                language TEXT NOT NULL DEFAULT 'fr-FR',
+                tts_voice TEXT NOT NULL DEFAULT 'alloy',
+                updated_at TEXT
+            )
+        """)
+        await db.execute("""
+            INSERT OR IGNORE INTO voice_settings (id, stt_provider, tts_provider, language, tts_voice)
+            VALUES (1, 'webspeech', 'webspeech', 'fr-FR', 'alloy')
+        """)
         await db.commit()
 
 
@@ -82,4 +98,39 @@ async def upsert_connection(
 async def delete_connection(id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM connections WHERE id = ?", (id,))
+        await db.commit()
+
+
+async def get_voice_settings() -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM voice_settings WHERE id = 1") as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else {}
+
+
+async def upsert_voice_settings(
+    stt_provider: str,
+    tts_provider: str,
+    stt_api_key_enc: bytes | None,
+    tts_api_key_enc: bytes | None,
+    language: str,
+    tts_voice: str,
+):
+    now = datetime.utcnow().isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            UPDATE voice_settings SET
+                stt_provider = ?,
+                tts_provider = ?,
+                stt_api_key_enc = ?,
+                tts_api_key_enc = ?,
+                language = ?,
+                tts_voice = ?,
+                updated_at = ?
+            WHERE id = 1
+            """,
+            (stt_provider, tts_provider, stt_api_key_enc, tts_api_key_enc, language, tts_voice, now),
+        )
         await db.commit()

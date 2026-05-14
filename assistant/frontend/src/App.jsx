@@ -4,6 +4,7 @@ import ConnectView from './views/ConnectView.jsx';
 import GatewayView from './views/GatewayView.jsx';
 import MemoryView from './views/MemoryView.jsx';
 import SwarmView from './views/SwarmView.jsx';
+import VoiceView from './views/VoiceView.jsx';
 
 const s = {
   layout: {
@@ -101,6 +102,13 @@ export default function App() {
         >
           🤖
         </button>
+        <button
+          style={s.navBtn(view === 'voice')}
+          onClick={() => setView('voice')}
+          title="Voice I/O"
+        >
+          🎙️
+        </button>
       </nav>
       <main style={s.main}>
         {view === 'chat' && <ChatView />}
@@ -108,6 +116,7 @@ export default function App() {
         {view === 'gateway' && <GatewayView />}
         {view === 'memory' && <MemoryView />}
         {view === 'swarm' && <SwarmView />}
+        {view === 'voice' && <VoiceView />}
       </main>
     </div>
   );

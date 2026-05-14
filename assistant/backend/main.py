@@ -6,18 +6,24 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from config import settings
-from db import init_db, get_connections, upsert_connection, delete_connection
+from db import (
+    init_db, get_connections, upsert_connection, delete_connection,
+    get_voice_settings, upsert_voice_settings,
+)
 from auth import get_current_user
-from vault import list_vault, get_vault_token, upsert_vault_token, delete_vault_token
+from vault import encrypt, decrypt, list_vault, get_vault_token, upsert_vault_token, delete_vault_token
 from agent import ReActAgent
 from prompt_engineer import PromptEngineer
 from tools.oria import OriaTools
+from voice.stt import get_stt_provider
+from voice.tts import get_tts_provider
 import swarm as swarm_mod
 
 logging.basicConfig(level=logging.INFO)
@@ -388,6 +394,102 @@ async def _post_oria_trace(
         await oria.post_message(traces_room["id"], "\n".join(lines))
     except Exception as e:
         logger.warning("Failed to post trace to Oria: %s", e)
+
+
+# ── Voice ────────────────────────────────────────────────────────────────────
+
+class VoiceSettingsBody(BaseModel):
+    stt_provider: str = "webspeech"
+    tts_provider: str = "webspeech"
+    stt_api_key: str | None = None
+    tts_api_key: str | None = None
+    language: str = "fr-FR"
+    tts_voice: str = "alloy"
+
+
+@app.get("/voice/settings")
+async def voice_get_settings():
+    vs = await get_voice_settings()
+    return {
+        "stt_provider": vs.get("stt_provider", "webspeech"),
+        "tts_provider": vs.get("tts_provider", "webspeech"),
+        "stt_api_key_set": bool(vs.get("stt_api_key_enc")),
+        "tts_api_key_set": bool(vs.get("tts_api_key_enc")),
+        "language": vs.get("language", "fr-FR"),
+        "tts_voice": vs.get("tts_voice", "alloy"),
+    }
+
+
+@app.post("/voice/settings")
+async def voice_save_settings(body: VoiceSettingsBody):
+    current = await get_voice_settings()
+
+    stt_enc = current.get("stt_api_key_enc")
+    if body.stt_api_key is not None:
+        stt_enc = encrypt(body.stt_api_key) if body.stt_api_key else None
+
+    tts_enc = current.get("tts_api_key_enc")
+    if body.tts_api_key is not None:
+        tts_enc = encrypt(body.tts_api_key) if body.tts_api_key else None
+
+    await upsert_voice_settings(
+        stt_provider=body.stt_provider,
+        tts_provider=body.tts_provider,
+        stt_api_key_enc=stt_enc,
+        tts_api_key_enc=tts_enc,
+        language=body.language,
+        tts_voice=body.tts_voice,
+    )
+    return {"saved": True}
+
+
+@app.post("/voice/transcribe")
+async def voice_transcribe(
+    audio: UploadFile = File(...),
+    language: str = Form(default="fr-FR"),
+):
+    vs = await get_voice_settings()
+    provider = vs.get("stt_provider", "webspeech")
+
+    if provider != "openai_whisper":
+        raise HTTPException(status_code=400, detail="WebSpeech STT is handled client-side")
+
+    key_enc = vs.get("stt_api_key_enc")
+    if not key_enc:
+        raise HTTPException(status_code=400, detail="OpenAI API key not configured for STT")
+
+    api_key = decrypt(key_enc)
+    stt = get_stt_provider("openai_whisper", api_key)
+    audio_data = await audio.read()
+    text = await stt.transcribe(audio_data, audio.content_type or "audio/webm", language)
+    return {"text": text}
+
+
+class SynthesizeBody(BaseModel):
+    text: str
+    voice: str | None = None
+
+
+@app.post("/voice/synthesize")
+async def voice_synthesize(body: SynthesizeBody):
+    if not body.text:
+        raise HTTPException(status_code=400, detail="No text provided")
+
+    vs = await get_voice_settings()
+    provider = vs.get("tts_provider", "webspeech")
+
+    if provider != "openai_tts":
+        raise HTTPException(status_code=400, detail="WebSpeech TTS is handled client-side")
+
+    key_enc = vs.get("tts_api_key_enc")
+    if not key_enc:
+        raise HTTPException(status_code=400, detail="OpenAI API key not configured for TTS")
+
+    api_key = decrypt(key_enc)
+    tts = get_tts_provider("openai_tts", api_key)
+    voice = body.voice or vs.get("tts_voice", "alloy")
+    audio_bytes, content_type = await tts.synthesize(body.text, voice, vs.get("language", "fr-FR"))
+    return Response(content=audio_bytes, media_type=content_type)
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
