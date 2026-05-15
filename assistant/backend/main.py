@@ -12,14 +12,16 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
 from config import settings
 from db import (
-    init_db, get_connections, upsert_connection, delete_connection,
+    database, init_db, get_connections, upsert_connection, delete_connection,
     get_voice_settings, upsert_voice_settings,
     get_proactive_config, upsert_proactive_config,
     get_alerts, mark_alert_read, count_unread_alerts,
 )
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from vault import encrypt, decrypt, list_vault, get_vault_token, upsert_vault_token, delete_vault_token
 from agent import ReActAgent
 from prompt_engineer import PromptEngineer
@@ -28,6 +30,9 @@ from voice.stt import get_stt_provider
 from voice.tts import get_tts_provider
 import swarm as swarm_mod
 import proactive as proactive_mod
+import push as push_mod
+import rag as rag_mod
+import summarizer as summarizer_mod
 from notifiers import inapp as inapp_notifier
 
 logging.basicConfig(level=logging.INFO)
@@ -37,12 +42,21 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    from redis_client import init_redis, close_redis
+    await init_redis()
+    await inapp_notifier.start()
+    await swarm_mod.start_redis_listener()
     proactive_mod.start_scheduler()
     yield
     proactive_mod.stop_scheduler()
+    await inapp_notifier.stop()
+    await close_redis()
+    await database.disconnect()
 
 
 app = FastAPI(title="Assistant Backend", version="2.0.0", lifespan=lifespan)
+
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
 app.add_middleware(
@@ -68,6 +82,7 @@ class ConnectionBody(BaseModel):
 class ChatBody(BaseModel):
     messages: list[dict]
     use_prompt_engineer: bool = False
+    rag_enabled: bool = True
 
 
 class ConfirmUploadBody(BaseModel):
@@ -357,7 +372,9 @@ async def swarm_cancel(task_id: str):
 
 @app.get("/swarm/events")
 async def swarm_events():
+    from metrics import sse_clients_active
     q = swarm_mod.subscribe()
+    sse_clients_active.labels(stream="swarm").inc()
 
     async def generator():
         tasks = await swarm_mod.list_swarm_tasks()
@@ -373,6 +390,7 @@ async def swarm_events():
             pass
         finally:
             swarm_mod.unsubscribe(q)
+            sse_clients_active.labels(stream="swarm").dec()
 
     return EventSourceResponse(generator())
 
@@ -655,7 +673,9 @@ async def proactive_mark_read(alert_id: str):
 
 @app.get("/proactive/alerts/stream")
 async def proactive_alerts_stream():
+    from metrics import sse_clients_active
     q = inapp_notifier.subscribe()
+    sse_clients_active.labels(stream="alerts").inc()
 
     async def generator():
         unread = await count_unread_alerts()
@@ -671,14 +691,139 @@ async def proactive_alerts_stream():
             pass
         finally:
             inapp_notifier.unsubscribe(q)
+            sse_clients_active.labels(stream="alerts").dec()
 
     return EventSourceResponse(generator())
+
+
+# ── WebPush ──────────────────────────────────────────────────────────────────
+
+class PushSubscribeBody(BaseModel):
+    endpoint: str
+    p256dh: str
+    auth: str
+
+
+class PushUnsubscribeBody(BaseModel):
+    endpoint: str
+
+
+@app.get("/push/vapid-public-key")
+async def push_vapid_key():
+    key = await push_mod.get_public_key()
+    if not key:
+        raise HTTPException(status_code=503, detail="WebPush not available")
+    return {"public_key": key}
+
+
+@app.post("/push/subscribe")
+async def push_subscribe(body: PushSubscribeBody):
+    await push_mod.save_subscription(body.endpoint, body.p256dh, body.auth)
+    return {"subscribed": True}
+
+
+@app.post("/push/unsubscribe")
+async def push_unsubscribe(body: PushUnsubscribeBody):
+    await push_mod.delete_subscription(body.endpoint)
+    return {"unsubscribed": True}
+
+
+# ── Conversation Summarizer ───────────────────────────────────────────────────
+
+class SummarizeBody(BaseModel):
+    messages: list[dict]
+    session_id: str = ""
+
+
+@app.post("/conversation/summarize")
+async def summarize_endpoint(body: SummarizeBody, user: dict = Depends(get_current_user)):
+    if not settings.SUMMARIZE_ENABLED:
+        raise HTTPException(status_code=400, detail="Summarizer disabled")
+    if not body.messages:
+        raise HTTPException(status_code=400, detail="No messages provided")
+
+    if settings.AUTH_ENABLED:
+        vault = await list_vault(user["sub"])
+        active = []
+        for entry in vault:
+            token = await get_vault_token(user["sub"], entry["app_type"])
+            if token:
+                active.append({
+                    "id": entry["app_type"],
+                    "name": entry["app_type"].capitalize(),
+                    "app_type": entry["app_type"],
+                    "token": token,
+                    "url": _default_url(entry["app_type"]),
+                    "enabled": True,
+                })
+    else:
+        connections = await get_connections()
+        active = [c for c in connections if c.get("enabled")]
+
+    from openai import AsyncOpenAI
+    llm_client = AsyncOpenAI(
+        base_url=settings.GATEWAY_URL,
+        api_key=settings.GATEWAY_API_KEY,
+    )
+
+    summary = await summarizer_mod.summarize_conversation(body.messages, llm_client)
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    stored = await summarizer_mod.store_summary_in_mempalace(summary, active, date_str)
+
+    return {"summary": summary, "stored": stored}
+
+
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/status")
+async def admin_status(_: dict = Depends(require_admin)):
+    from redis_client import redis_client
+    from proactive import _replica_id, _LEADER_KEY
+    from metrics import sse_clients_active
+
+    redis_info = None
+    pubsub_channels: dict = {}
+    leader_id: str | None = None
+
+    if redis_client:
+        try:
+            info = await redis_client.info()
+            redis_info = {
+                "memory": info.get("used_memory_human"),
+                "connected_clients": info.get("connected_clients"),
+                "ops_per_sec": info.get("instantaneous_ops_per_sec"),
+            }
+            leader_id = await redis_client.get(_LEADER_KEY)
+            channels = await redis_client.pubsub_channels("*")
+            if channels:
+                pubsub_channels = await redis_client.pubsub_numsub(*channels)
+        except Exception as e:
+            logger.warning("Admin Redis stats failed: %s", e)
+
+    sse_stats: dict = {}
+    for stream in ["alerts", "swarm"]:
+        try:
+            sse_stats[stream] = int(sse_clients_active.labels(stream=stream)._value.get())
+        except Exception:
+            sse_stats[stream] = 0
+
+    return {
+        "replica_id": _replica_id,
+        "is_leader": (leader_id == _replica_id) if leader_id else True,
+        "leader_id": leader_id or _replica_id,
+        "auth_warning": not settings.AUTH_ENABLED,
+        "redis": redis_info,
+        "pubsub_channels": pubsub_channels,
+        "sse_clients": sse_stats,
+    }
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
 @app.post("/chat")
 async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
+    from metrics import chat_requests_total
+    chat_requests_total.inc()
     if settings.AUTH_ENABLED:
         vault = await list_vault(user["sub"])
         active = []
@@ -719,6 +864,23 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
         tools_used: list[str] = []
         result_parts: list[str] = []
 
+        # RAG — fetch relevant memories before running the agent
+        rag_context = ""
+        if body.rag_enabled and effective_messages:
+            last_user = next(
+                (m for m in reversed(effective_messages) if m.get("role") == "user"), None
+            )
+            if last_user:
+                rag_context, rag_sources = await rag_mod.fetch_rag_context(
+                    last_user.get("content", ""), active
+                )
+                if rag_sources:
+                    from metrics import rag_injections_total
+                    rag_injections_total.inc(len(rag_sources))
+                    yield json.dumps(
+                        {"type": "rag_sources", "sources": rag_sources}, ensure_ascii=False
+                    )
+
         async def on_chunk(chunk: dict):
             if chunk.get("type") == "tool_start":
                 tools_used.append(chunk["name"])
@@ -728,7 +890,7 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
 
         async def run_agent():
             try:
-                await agent.stream_chat(effective_messages, on_chunk)
+                await agent.stream_chat(effective_messages, on_chunk, rag_context=rag_context)
             except Exception as e:
                 logger.error("Agent error: %s", e)
                 await queue.put({"type": "error", "content": str(e)})

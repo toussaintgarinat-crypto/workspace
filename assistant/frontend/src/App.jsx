@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { isEnabled, getUser, logout } from './services/keycloak.js';
+import { registerServiceWorker, isPushSupported, requestPushPermission } from './services/push.js';
+import InstallBanner from './components/InstallBanner.jsx';
 import ChatView from './views/ChatView.jsx';
 import ConnectView from './views/ConnectView.jsx';
 import GatewayView from './views/GatewayView.jsx';
@@ -7,8 +9,12 @@ import MemoryView from './views/MemoryView.jsx';
 import SwarmView from './views/SwarmView.jsx';
 import VoiceView from './views/VoiceView.jsx';
 import AlertsView from './views/AlertsView.jsx';
+import AdminView from './views/AdminView.jsx';
 
 const API = import.meta.env.VITE_API_URL || '/api';
+
+const isAdmin = () =>
+  !isEnabled() || (getUser()?.realm_access?.roles ?? []).includes('admin');
 
 const s = {
   layout: {
@@ -67,6 +73,14 @@ const s = {
 export default function App() {
   const [view, setView] = useState('chat');
   const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  useEffect(() => {
+    registerServiceWorker().then(reg => {
+      if (reg && isPushSupported() && Notification.permission === 'granted') {
+        requestPushPermission();
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const es = new EventSource(`${API}/proactive/alerts/stream`);
@@ -156,6 +170,15 @@ export default function App() {
             </span>
           )}
         </button>
+        {isAdmin() && (
+          <button
+            style={{ ...s.navBtn(view === 'admin'), marginTop: isEnabled() ? undefined : 'auto' }}
+            onClick={() => setView('admin')}
+            title="Admin"
+          >
+            ⚙
+          </button>
+        )}
         {isEnabled() && (
           <button
             style={{ ...s.navBtn(false), marginTop: 'auto' }}
@@ -174,7 +197,9 @@ export default function App() {
         {view === 'swarm' && <SwarmView />}
         {view === 'voice' && <VoiceView />}
         {view === 'alerts' && <AlertsView />}
+        {view === 'admin' && <AdminView />}
       </main>
+      <InstallBanner />
     </div>
   );
 }
