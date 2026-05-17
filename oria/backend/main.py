@@ -128,7 +128,7 @@ def _seed_resident_agents():
     from database import SessionLocal
     from models.resident_agent import ResidentAgent
     forge_url   = os.getenv("FORGE_URL", "http://localhost:3001")
-    forge_token = os.getenv("FORGE_TOKEN", "sk-forge")
+    forge_token = os.getenv("FORGE_TOKEN", "")
     db = SessionLocal()
     try:
         existing = {a.pole_type for a in db.query(ResidentAgent).all()}

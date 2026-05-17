@@ -31,6 +31,12 @@ services:
       - observability_net
     depends_on:
       - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9121/metrics >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── Postgres Exporter (optionnel — activé si DATABASE_URL set) ─
   postgres-exporter:
@@ -44,6 +50,12 @@ services:
       - postgres
     depends_on:
       - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9187/metrics >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── Grafana — dashboards + Keycloak OIDC ─────────────────────
   grafana:

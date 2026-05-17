@@ -20,6 +20,12 @@ services:
       - ./dynamic:/etc/traefik/dynamic:ro
       - ./users:/etc/traefik/users:ro
       - letsencrypt:/letsencrypt
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/ping >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   letsencrypt:

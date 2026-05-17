@@ -17,3 +17,9 @@ services:
       BRIDGE_PORT:      ${BRIDGE_PORT:-11436}
       BRIDGE_API_KEY:   ${BRIDGE_API_KEY:-}
       ALLOWED_ORIGINS:  ${ALLOWED_ORIGINS:-*}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BRIDGE_PORT:-11436}/api/tags >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

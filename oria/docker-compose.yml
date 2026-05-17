@@ -28,11 +28,12 @@ services:
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-oria-app}
       LIVEKIT_URL: ws://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
-      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-devsecret_oria_local_dev_key_32chars}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Définir LIVEKIT_API_SECRET dans .env (openssl rand -base64 32)}
       MATRIX_HOMESERVER_URL: http://synapse:8008
       MATRIX_SERVER_NAME: ${MATRIX_SERVER_NAME:-oria.local}
-      MATRIX_AS_TOKEN: ${MATRIX_AS_TOKEN:-5c95b040fc487db2901d458463a84b187a521e647e6d2ad14a7fe8d4a4eac097}
-      MATRIX_HS_TOKEN: ${MATRIX_HS_TOKEN:-216582996e3addbb9eba6327a3fa3a3760c11da3226b6aa3f3cce2b2b87445f1}
+      MATRIX_AS_TOKEN: ${MATRIX_AS_TOKEN:?Définir MATRIX_AS_TOKEN dans .env (openssl rand -hex 32)}
+      MATRIX_HS_TOKEN: ${MATRIX_HS_TOKEN:?Définir MATRIX_HS_TOKEN dans .env (openssl rand -hex 32)}
+      FORGE_TOKEN: ${FORGE_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy
@@ -46,7 +47,7 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000
 
   synapse:
-    image: matrixdotorg/synapse:latest
+    image: matrixdotorg/synapse:v1.152.1
     ports:
       - "8008:8008"
     volumes:
@@ -68,7 +69,7 @@ services:
 
   # ── MinIO (S3-compatible object storage) ─────────────────────
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9103"
     ports:
       - "9106:9000"
@@ -102,7 +103,7 @@ services:
     command: npm run dev -- --host
 
   livekit:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:v1.12.0
     ports:
       - "7880:7880"
       - "7881:7881"

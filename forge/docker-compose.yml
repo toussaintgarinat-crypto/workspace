@@ -41,7 +41,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8080' 2>/dev/null"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -50,7 +50,7 @@ services:
 
   # ── Qdrant ──────────────────────────────────────────────────
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.18.0
     ports:
       - "6333:6333"
     volumes:
@@ -143,6 +143,12 @@ services:
       - "10000:10000"
     volumes:
       - netbird_signal_data:/var/lib/netbird
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 10000 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   # ── NetBird Management ──────────────────────────────────────
@@ -162,6 +168,12 @@ services:
       - keycloak
       - netbird-signal
       - coturn
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 33073 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   # ── NetBird Dashboard ───────────────────────────────────────
@@ -181,11 +193,17 @@ services:
       - USE_AUTH0=false
     depends_on:
       - netbird-management
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # ── Coturn (STUN / TURN) ────────────────────────────────────
   coturn:
-    image: coturn/coturn:latest
+    image: coturn/coturn:4.11.0
     ports:
       - "3478:3478/udp"
     volumes:
