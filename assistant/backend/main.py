@@ -83,6 +83,7 @@ class ChatBody(BaseModel):
     messages: list[dict]
     use_prompt_engineer: bool = False
     rag_enabled: bool = True
+    model: str | None = None
 
 
 class ConfirmUploadBody(BaseModel):
@@ -116,6 +117,15 @@ async def health():
     return {"status": "ok", "version": "2.0.0", "auth_enabled": settings.AUTH_ENABLED}
 
 
+@app.get("/models")
+async def list_models(_: dict = Depends(get_current_user)):
+    try:
+        data = await _gw("GET", "/model/info")
+        return [m["model_name"] for m in data.get("data", [])]
+    except Exception:
+        return []
+
+
 @app.get("/auth/config")
 async def auth_config():
     return {
@@ -129,12 +139,12 @@ async def auth_config():
 # ── Global connections (legacy / AUTH_ENABLED=false) ─────────────────────────
 
 @app.get("/connections")
-async def list_connections():
+async def list_connections(_: dict = Depends(get_current_user)):
     return await get_connections()
 
 
 @app.post("/connections")
-async def create_connection(body: ConnectionBody):
+async def create_connection(body: ConnectionBody, _: dict = Depends(get_current_user)):
     return await upsert_connection(
         id=body.id,
         name=body.name,
@@ -146,7 +156,7 @@ async def create_connection(body: ConnectionBody):
 
 
 @app.delete("/connections/{connection_id}")
-async def remove_connection(connection_id: str):
+async def remove_connection(connection_id: str, _: dict = Depends(get_current_user)):
     await delete_connection(connection_id)
     return {"deleted": connection_id}
 
@@ -236,6 +246,8 @@ class GatewayKeyBody(BaseModel):
 
 
 async def _gw(method: str, path: str, body: dict | None = None):
+    if not settings.GATEWAY_MASTER_KEY:
+        raise HTTPException(status_code=503, detail="GATEWAY_MASTER_KEY not configured")
     headers = {"Authorization": f"Bearer {settings.GATEWAY_MASTER_KEY}"}
     async with httpx.AsyncClient(timeout=10) as client:
         url = f"{settings.GATEWAY_URL}{path}"
@@ -249,32 +261,32 @@ async def _gw(method: str, path: str, body: dict | None = None):
 
 
 @app.get("/gateway/models")
-async def gateway_list_models():
+async def gateway_list_models(_: dict = Depends(require_admin)):
     return await _gw("GET", "/model/info")
 
 
 @app.post("/gateway/models")
-async def gateway_add_model(body: GatewayModelBody):
+async def gateway_add_model(body: GatewayModelBody, _: dict = Depends(require_admin)):
     return await _gw("POST", "/model/new", body.model_dump())
 
 
 @app.delete("/gateway/models/{model_id}")
-async def gateway_delete_model(model_id: str):
+async def gateway_delete_model(model_id: str, _: dict = Depends(require_admin)):
     return await _gw("POST", "/model/delete", {"id": model_id})
 
 
 @app.get("/gateway/keys")
-async def gateway_list_keys():
+async def gateway_list_keys(_: dict = Depends(require_admin)):
     return await _gw("GET", "/key/list")
 
 
 @app.post("/gateway/keys")
-async def gateway_add_key(body: GatewayKeyBody):
+async def gateway_add_key(body: GatewayKeyBody, _: dict = Depends(require_admin)):
     return await _gw("POST", "/key/generate", body.model_dump())
 
 
 @app.delete("/gateway/keys/{key}")
-async def gateway_delete_key(key: str):
+async def gateway_delete_key(key: str, _: dict = Depends(require_admin)):
     return await _gw("POST", "/key/delete", {"keys": [key]})
 
 
@@ -493,15 +505,21 @@ async def voice_transcribe(
     vs = await get_voice_settings()
     provider = vs.get("stt_provider", "webspeech")
 
-    if provider != "openai_whisper":
+    if provider == "webspeech":
         raise HTTPException(status_code=400, detail="WebSpeech STT is handled client-side")
 
-    key_enc = vs.get("stt_api_key_enc")
-    if not key_enc:
-        raise HTTPException(status_code=400, detail="OpenAI API key not configured for STT")
+    if provider == "faster_whisper":
+        if not settings.LOCAL_VOICE_ENABLED:
+            raise HTTPException(status_code=503, detail="Local voice not enabled — set LOCAL_VOICE_ENABLED=true")
+        stt = get_stt_provider("faster_whisper")
+    elif provider == "openai_whisper":
+        key_enc = vs.get("stt_api_key_enc")
+        if not key_enc:
+            raise HTTPException(status_code=400, detail="OpenAI API key not configured for STT")
+        stt = get_stt_provider("openai_whisper", decrypt(key_enc))
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown STT provider: {provider}")
 
-    api_key = decrypt(key_enc)
-    stt = get_stt_provider("openai_whisper", api_key)
     audio_data = await audio.read()
     text = await stt.transcribe(audio_data, audio.content_type or "audio/webm", language)
     return {"text": text}
@@ -520,16 +538,23 @@ async def voice_synthesize(body: SynthesizeBody):
     vs = await get_voice_settings()
     provider = vs.get("tts_provider", "webspeech")
 
-    if provider != "openai_tts":
+    if provider == "webspeech":
         raise HTTPException(status_code=400, detail="WebSpeech TTS is handled client-side")
 
-    key_enc = vs.get("tts_api_key_enc")
-    if not key_enc:
-        raise HTTPException(status_code=400, detail="OpenAI API key not configured for TTS")
+    if provider == "kokoro":
+        if not settings.LOCAL_VOICE_ENABLED:
+            raise HTTPException(status_code=503, detail="Local voice not enabled — set LOCAL_VOICE_ENABLED=true")
+        tts = get_tts_provider("kokoro")
+        voice = body.voice or vs.get("tts_voice", settings.KOKORO_VOICE)
+    elif provider == "openai_tts":
+        key_enc = vs.get("tts_api_key_enc")
+        if not key_enc:
+            raise HTTPException(status_code=400, detail="OpenAI API key not configured for TTS")
+        tts = get_tts_provider("openai_tts", decrypt(key_enc))
+        voice = body.voice or vs.get("tts_voice", "alloy")
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown TTS provider: {provider}")
 
-    api_key = decrypt(key_enc)
-    tts = get_tts_provider("openai_tts", api_key)
-    voice = body.voice or vs.get("tts_voice", "alloy")
     audio_bytes, content_type = await tts.synthesize(body.text, voice, vs.get("language", "fr-FR"))
     return Response(content=audio_bytes, media_type=content_type)
 
@@ -638,7 +663,7 @@ async def proactive_get_config():
 
 
 @app.put("/proactive/config")
-async def proactive_put_config(body: ProactiveConfigBody):
+async def proactive_put_config(body: ProactiveConfigBody, _: dict = Depends(get_current_user)):
     await upsert_proactive_config(
         enabled=body.enabled,
         interval_minutes=body.interval_minutes,
@@ -650,7 +675,7 @@ async def proactive_put_config(body: ProactiveConfigBody):
 
 
 @app.post("/proactive/check")
-async def proactive_manual_check():
+async def proactive_manual_check(_: dict = Depends(get_current_user)):
     cfg = await get_proactive_config()
     if not cfg.get("enabled"):
         raise HTTPException(status_code=400, detail="Le mode proactif est désactivé")
@@ -890,7 +915,7 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
 
         async def run_agent():
             try:
-                await agent.stream_chat(effective_messages, on_chunk, rag_context=rag_context)
+                await agent.stream_chat(effective_messages, on_chunk, rag_context=rag_context, model=body.model)
             except Exception as e:
                 logger.error("Agent error: %s", e)
                 await queue.put({"type": "error", "content": str(e)})

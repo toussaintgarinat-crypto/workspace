@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid as _uuid
 from datetime import datetime, timezone, timedelta
 
 import httpx
@@ -11,12 +12,53 @@ from db import (
 from notifiers import inapp as inapp_notifier
 from notifiers import telegram as telegram_notifier
 from notifiers import discord as discord_notifier
+import push as push_mod
+from metrics import proactive_alerts_total
 
 logger = logging.getLogger(__name__)
 
 _scheduler_task: asyncio.Task | None = None
 _last_check: str | None = None
 _enabled_since: datetime | None = None
+
+# Unique ID for this process — used for Redis leader election
+_replica_id = str(_uuid.uuid4())[:8]
+_LEADER_KEY = "assistant:scheduler:leader"
+_LEADER_TTL = 90  # seconds
+
+
+# ── Leader election ──────────────────────────────────────────────────────────
+
+_RENEW_SCRIPT = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('expire', KEYS[1], ARGV[2])
+else
+    return 0
+end
+"""
+
+
+async def _is_leader() -> bool:
+    """Returns True if this replica should run the scheduler.
+    Without Redis: always True (single-instance mode).
+    With Redis: uses SET NX to elect exactly one leader."""
+    from redis_client import redis_client
+    if not redis_client:
+        return True
+    acquired = await redis_client.set(_LEADER_KEY, _replica_id, nx=True, ex=_LEADER_TTL)
+    if acquired:
+        return True
+    renewed = await redis_client.eval(_RENEW_SCRIPT, 1, _LEADER_KEY, _replica_id, str(_LEADER_TTL))
+    return bool(renewed)
+
+
+async def _release_leader():
+    from redis_client import redis_client
+    if not redis_client:
+        return
+    current = await redis_client.get(_LEADER_KEY)
+    if current == _replica_id:
+        await redis_client.delete(_LEADER_KEY)
 
 
 # ── Dispatcher ───────────────────────────────────────────────────────────────
@@ -25,10 +67,10 @@ async def _dispatch(title: str, body: str, source: str, event_type: str, cfg: di
     channels_config: dict = cfg.get("channels_config", {})
     channels_sent = []
 
-    alert_id = await add_alert(source, event_type, title, body, channels_sent)
+    # Collect channels first, then persist the alert with accurate channels_sent
+    proactive_alerts_total.inc()
 
     if channels_config.get("inapp", True):
-        await inapp_notifier.notify(title, body, source, event_type, alert_id)
         channels_sent.append("inapp")
 
     tg = channels_config.get("telegram", {})
@@ -42,6 +84,20 @@ async def _dispatch(title: str, body: str, source: str, event_type: str, cfg: di
         ok = await discord_notifier.notify(title, body, disc["webhook_url"], source)
         if ok:
             channels_sent.append("discord")
+
+    try:
+        n = await push_mod.send_push_to_all({"title": title, "body": body, "tag": f"{source}_{event_type}"})
+        if n > 0:
+            channels_sent.append("webpush")
+    except Exception as e:
+        logger.debug("WebPush send failed: %s", e)
+
+    # Persist alert with the actual channels that were used
+    alert_id = await add_alert(source, event_type, title, body, channels_sent)
+
+    # Send in-app notification after the alert_id is known
+    if "inapp" in channels_sent:
+        await inapp_notifier.notify(title, body, source, event_type, alert_id)
 
     return alert_id, channels_sent
 
@@ -172,15 +228,16 @@ async def _check_mempalace(cfg: dict, connections: list[dict]):
             r = await client.get(f"{base}/api/drawers", headers=headers, params={"limit": 100})
         if r.is_success:
             entries = r.json()
-            stale = [
-                e for e in entries
-                if e.get("created_at", "") < cutoff
-                and e.get("updated_at", e.get("created_at", "")) == e.get("created_at", "x")
-            ]
+            stale = []
+            for e in entries:
+                if not e.get("created_at"):
+                    continue
+                if e.get("created_at", "") < cutoff and e.get("updated_at", e.get("created_at")) == e.get("created_at"):
+                    stale.append(e)
             if stale:
                 await _dispatch(
                     f"MemPalace — {len(stale)} entrée(s) sans suite depuis 7j",
-                    f"Ces entrées n'ont pas été mises à jour depuis plus d'une semaine.",
+                    "Ces entrées n'ont pas été mises à jour depuis plus d'une semaine.",
                     "mempalace", "stale_entries", cfg,
                 )
     except Exception as e:
@@ -214,7 +271,7 @@ async def run_check():
         return
     connections = await get_connections()
     _last_check = datetime.now(timezone.utc).isoformat()
-    logger.info("Proactive check started at %s", _last_check)
+    logger.info("Proactive check started at %s (replica %s)", _last_check, _replica_id)
 
     await asyncio.gather(
         _check_forge(cfg, connections),
@@ -234,6 +291,10 @@ async def run_check():
 async def _scheduler_loop():
     global _enabled_since
     while True:
+        if not await _is_leader():
+            await asyncio.sleep(60)
+            continue
+
         cfg = await get_proactive_config()
         if not cfg.get("enabled"):
             _enabled_since = None
@@ -249,14 +310,23 @@ async def _scheduler_loop():
             logger.error("Proactive scheduler error: %s", e)
 
         interval = cfg.get("interval_minutes", 30) * 60
-        await asyncio.sleep(interval)
+
+        # Sleep in 60s chunks so we keep refreshing the leader lock
+        elapsed = 0
+        while elapsed < interval:
+            chunk = min(60, interval - elapsed)
+            await asyncio.sleep(chunk)
+            elapsed += chunk
+            if not await _is_leader():
+                # Lost leadership mid-sleep, back to top
+                break
 
 
 def start_scheduler():
     global _scheduler_task
     if _scheduler_task is None or _scheduler_task.done():
         _scheduler_task = asyncio.create_task(_scheduler_loop())
-        logger.info("Proactive scheduler started")
+        logger.info("Proactive scheduler started (replica %s)", _replica_id)
 
 
 def stop_scheduler():
@@ -271,4 +341,5 @@ def get_status() -> dict:
         "scheduler_running": _scheduler_task is not None and not _scheduler_task.done(),
         "last_check": _last_check,
         "enabled_since": _enabled_since.isoformat() if _enabled_since else None,
+        "replica_id": _replica_id,
     }

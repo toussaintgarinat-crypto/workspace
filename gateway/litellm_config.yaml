@@ -1,6 +1,6 @@
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
-  database_url: "sqlite:////data/litellm.db"
+  database_url: os.environ/DATABASE_URL
   port: 4000
   ui_access_mode: "all"
 
@@ -23,33 +23,98 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
 
-  - model_name: google/gemini-2.5-flash
+  - model_name: google/gemini-2.5-flash-preview
     litellm_params:
       model: openrouter/google/gemini-2.5-flash-preview
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
 
-  # Ollama sur Mac (modèles lourds) — OLLAMA_MAC_URL = IP NetBird du Mac
+  # AUTO-FREE-MODELS-START — 2026-05-16 14:37 (12 modèles)
+  - model_name: free/openrouter/owl-alpha
+    litellm_params:
+      model: openrouter/openrouter/owl-alpha
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 1048756
+  - model_name: free/deepseek/deepseek-v4-flash
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 1048576
+  - model_name: free/google/lyria-3-pro-preview
+    litellm_params:
+      model: openrouter/google/lyria-3-pro-preview
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 1048576
+  - model_name: free/google/lyria-3-clip-preview
+    litellm_params:
+      model: openrouter/google/lyria-3-clip-preview
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 1048576
+  - model_name: free/qwen/qwen3-coder
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 1048576
+  - model_name: free/nvidia/nemotron-3-super-120b-a12b
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 1000000
+  - model_name: free/google/gemma-4-26b-a4b-it
+    litellm_params:
+      model: openrouter/google/gemma-4-26b-a4b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 262144
+  - model_name: free/google/gemma-4-31b-it
+    litellm_params:
+      model: openrouter/google/gemma-4-31b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 262144
+  - model_name: free/arcee-ai/trinity-large-thinking
+    litellm_params:
+      model: openrouter/arcee-ai/trinity-large-thinking:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 262144
+  - model_name: free/qwen/qwen3-next-80b-a3b-instruct
+    litellm_params:
+      model: openrouter/qwen/qwen3-next-80b-a3b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 262144
+  - model_name: free/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 256000
+  - model_name: free/nvidia/nemotron-3-nano-30b-a3b
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-nano-30b-a3b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 256000
+  # AUTO-FREE-MODELS-END
+
+  # Ollama local — OLLAMA_URL = IP du serveur Ollama (NetBird, LAN, ou localhost)
+  # Ces entrées sont ignorées si OLLAMA_URL est vide
   - model_name: ollama/llama3.2
     litellm_params:
       model: ollama/llama3.2
-      api_base: os.environ/OLLAMA_MAC_URL
+      api_base: os.environ/OLLAMA_URL
 
   - model_name: ollama/llama3.3
     litellm_params:
       model: ollama/llama3.3
-      api_base: os.environ/OLLAMA_MAC_URL
-
-  # Ollama sur HP (modèles légers CPU) — LXC ollama-hp sur 10.10.10.60
-  - model_name: ollama-hp/llama3.2
-    litellm_params:
-      model: ollama/llama3.2
-      api_base: os.environ/OLLAMA_HP_URL
-
-  - model_name: ollama-hp/llama3.2:8b
-    litellm_params:
-      model: ollama/llama3.2:8b
-      api_base: os.environ/OLLAMA_HP_URL
+      api_base: os.environ/OLLAMA_URL
 
 virtual_keys:
   - key: sk-forge
@@ -64,11 +129,9 @@ virtual_keys:
     budget_duration: 1mo
     models:
       - openai/gpt-4o-mini
-      - google/gemini-2.5-flash
+      - google/gemini-2.5-flash-preview
       - ollama/llama3.2
       - ollama/llama3.3
-      - ollama-hp/llama3.2
-      - ollama-hp/llama3.2:8b
 
   - key: sk-assistant
     key_alias: assistant

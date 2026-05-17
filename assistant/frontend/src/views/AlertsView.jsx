@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { isPushSupported, requestPushPermission, unsubscribeFromPush } from '../services/push.js';
+import { apiFetch } from '../services/api.js';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -212,12 +214,14 @@ function ProactiveConfigModal({ onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/proactive/config`)
+    let cancelled = false;
+    apiFetch(`${API}/proactive/config`)
       .then(r => r.json())
       .then(data => {
-        if (data && data.enabled !== undefined) setCfg(data);
+        if (!cancelled && data && data.enabled !== undefined) setCfg(data);
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const update = (path, value) => {
@@ -234,7 +238,7 @@ function ProactiveConfigModal({ onClose, onSaved }) {
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/proactive/config`, {
+      await apiFetch(`${API}/proactive/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cfg),
@@ -380,17 +384,20 @@ export default function AlertsView() {
   const [showConfig, setShowConfig] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [pushPerm, setPushPerm] = useState(() =>
+    isPushSupported() ? Notification.permission : 'unsupported'
+  );
 
   const loadAlerts = async () => {
     try {
-      const r = await fetch(`${API}/proactive/alerts?limit=200`);
+      const r = await apiFetch(`${API}/proactive/alerts?limit=200`);
       if (r.ok) setAlerts(await r.json());
     } catch {}
   };
 
   const loadStatus = async () => {
     try {
-      const r = await fetch(`${API}/proactive/status`);
+      const r = await apiFetch(`${API}/proactive/status`);
       if (r.ok) {
         const d = await r.json();
         setEnabled(d.enabled);
@@ -404,17 +411,29 @@ export default function AlertsView() {
   }, []);
 
   const markRead = async (id) => {
-    await fetch(`${API}/proactive/alerts/${id}/read`, { method: 'POST' });
+    try {
+      await apiFetch(`${API}/proactive/alerts/${id}/read`, { method: 'POST' });
+    } catch {}
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a));
   };
 
   const manualCheck = async () => {
     setChecking(true);
     try {
-      await fetch(`${API}/proactive/check`, { method: 'POST' });
+      await apiFetch(`${API}/proactive/check`, { method: 'POST' });
       setTimeout(loadAlerts, 2000);
     } catch {}
     finally { setChecking(false); }
+  };
+
+  const handlePushToggle = async () => {
+    if (pushPerm === 'granted') {
+      await unsubscribeFromPush();
+      setPushPerm('default');
+    } else {
+      const perm = await requestPushPermission();
+      setPushPerm(perm);
+    }
   };
 
   const filtered = filter === 'all' ? alerts : alerts.filter(a => a.source === filter);
@@ -442,6 +461,15 @@ export default function AlertsView() {
           {enabled && (
             <button style={s.btn()} onClick={manualCheck} disabled={checking}>
               {checking ? '⏳' : '🔍 Vérifier'}
+            </button>
+          )}
+          {pushPerm !== 'unsupported' && pushPerm !== 'denied' && (
+            <button
+              style={s.btn(pushPerm === 'granted' ? 'primary' : 'default')}
+              onClick={handlePushToggle}
+              title={pushPerm === 'granted' ? 'Désactiver les push' : 'Activer les notifications push'}
+            >
+              {pushPerm === 'granted' ? '🔔 Push actif' : '🔔 Push off'}
             </button>
           )}
           <button style={s.btn('primary')} onClick={() => setShowConfig(true)}>⚙️ Config</button>

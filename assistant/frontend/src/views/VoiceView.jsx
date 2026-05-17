@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { loadVoiceSettings, saveVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
 import { getVoiceSettings, saveVoiceSettingsToBackend } from '../services/api.js';
 
@@ -21,6 +21,17 @@ const OPENAI_VOICES = [
   { value: 'onyx', label: 'Onyx — voix grave' },
   { value: 'nova', label: 'Nova — voix féminine' },
   { value: 'shimmer', label: 'Shimmer — voix douce' },
+];
+
+const KOKORO_VOICES = [
+  { value: 'af_heart', label: 'af_heart — féminin (EN)' },
+  { value: 'af_sky', label: 'af_sky — féminin doux (EN)' },
+  { value: 'af_bella', label: 'af_bella — féminin expressif (EN)' },
+  { value: 'af_nicole', label: 'af_nicole — féminin naturel (EN)' },
+  { value: 'am_adam', label: 'am_adam — masculin (EN)' },
+  { value: 'am_michael', label: 'am_michael — masculin chaleureux (EN)' },
+  { value: 'bf_emma', label: 'bf_emma — féminin britannique (EN)' },
+  { value: 'bm_george', label: 'bm_george — masculin britannique (EN)' },
 ];
 
 const s = {
@@ -122,11 +133,14 @@ export default function VoiceView() {
   const [ttsKey, setTtsKey] = useState('');
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     getVoiceSettings().then(vs => {
-      if (vs) setBackendSettings(vs);
+      if (mountedRef.current && vs) setBackendSettings(vs);
     }).catch(() => {});
+    return () => { mountedRef.current = false; };
   }, []);
 
   function setLocal(key, value) {
@@ -149,13 +163,15 @@ export default function VoiceView() {
         tts_voice: localSettings.ttsVoice,
       });
       const fresh = await getVoiceSettings();
-      if (fresh) setBackendSettings(fresh);
+      if (mountedRef.current && fresh) setBackendSettings(fresh);
     } catch (e) {
       console.error('Failed to save voice settings to backend:', e);
     }
 
+    if (!mountedRef.current) return;
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    window.dispatchEvent(new CustomEvent('ws-voice-settings-saved'));
+    setTimeout(() => { if (mountedRef.current) setSaved(false); }, 2000);
   }
 
   async function testSTT() {
@@ -216,6 +232,13 @@ export default function VoiceView() {
             >
               ✦ OpenAI Whisper
             </button>
+            <button
+              style={s.toggleBtn(localSettings.sttProvider === 'faster_whisper')}
+              onClick={() => setLocal('sttProvider', 'faster_whisper')}
+            >
+              <span style={{ color: '#22c55e', marginRight: '4px', fontSize: '10px' }}>●</span>
+              Whisper local
+            </button>
           </div>
         </div>
 
@@ -244,28 +267,43 @@ export default function VoiceView() {
           </>
         )}
 
+        {localSettings.sttProvider === 'faster_whisper' && (
+          <div style={s.hint}>
+            100% local · Aucune clé API · Modèle configurable via{' '}
+            <code style={{ color: '#a78bfa' }}>WHISPER_LOCAL_MODEL</code>
+            {' '}· Nécessite{' '}
+            <code style={{ color: '#a78bfa' }}>LOCAL_VOICE_ENABLED=true</code>
+          </div>
+        )}
+
         <div style={s.row}>
-          <span style={s.label}>Mode micro</span>
+          <span style={s.label}>Mode de conversation</span>
           <div style={s.toggle()}>
+            <button
+              style={s.toggleBtn(localSettings.micMode === 'open_dialogue')}
+              onClick={() => setLocal('micMode', 'open_dialogue')}
+            >
+              💬 Dialogue ouvert
+            </button>
             <button
               style={s.toggleBtn(localSettings.micMode === 'push_to_talk')}
               onClick={() => setLocal('micMode', 'push_to_talk')}
             >
               🔘 Push-to-talk
             </button>
-            <button
-              style={s.toggleBtn(localSettings.micMode === 'auto_silence')}
-              onClick={() => setLocal('micMode', 'auto_silence')}
-            >
-              🎙️ Détection silence
-            </button>
           </div>
         </div>
-        {localSettings.micMode === 'push_to_talk' && (
-          <div style={s.hint}>Cliquer pour démarrer, recliquer pour envoyer</div>
+        {localSettings.micMode === 'open_dialogue' && (
+          <div style={s.hint}>
+            Conversation mains libres · Chaque phrase est envoyée automatiquement ·
+            Micro se rouvre après la réponse TTS
+          </div>
         )}
-        {localSettings.micMode === 'auto_silence' && (
-          <div style={s.hint}>Envoi automatique après détection de silence</div>
+        {localSettings.micMode === 'push_to_talk' && (
+          <div style={s.hint}>
+            Maintenir le bouton 🎙️ pour parler · Relâcher pour envoyer immédiatement ·
+            Adapté mobile : appui long = maintien
+          </div>
         )}
 
         {localSettings.sttProvider === 'webspeech' && (
@@ -297,6 +335,13 @@ export default function VoiceView() {
               onClick={() => setLocal('ttsProvider', 'openai_tts')}
             >
               ✦ OpenAI TTS
+            </button>
+            <button
+              style={s.toggleBtn(localSettings.ttsProvider === 'kokoro')}
+              onClick={() => setLocal('ttsProvider', 'kokoro')}
+            >
+              <span style={{ color: '#22c55e', marginRight: '4px', fontSize: '10px' }}>●</span>
+              Kokoro local
             </button>
           </div>
         </div>
@@ -335,6 +380,28 @@ export default function VoiceView() {
                   <option key={v.value} value={v.value}>{v.label}</option>
                 ))}
               </select>
+            </div>
+          </>
+        )}
+
+        {localSettings.ttsProvider === 'kokoro' && (
+          <>
+            <div style={s.row}>
+              <span style={s.label}>Voix</span>
+              <select
+                style={s.select}
+                value={localSettings.ttsVoice}
+                onChange={e => setLocal('ttsVoice', e.target.value)}
+              >
+                {KOKORO_VOICES.map(v => (
+                  <option key={v.value} value={v.value}>{v.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={s.hint}>
+              100% local · Aucune clé API · 82M params · Apache 2.0
+              · Optimisé anglais · Nécessite{' '}
+              <code style={{ color: '#a78bfa' }}>LOCAL_VOICE_ENABLED=true</code>
             </div>
           </>
         )}

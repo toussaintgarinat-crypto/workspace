@@ -1,7 +1,23 @@
 services:
 
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+      POSTGRES_DB: litellm
+    volumes:
+      - gateway_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   gateway:
     image: ghcr.io/berriai/litellm:main-latest
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
     ports:
       - "4000:4000"
     env_file:
@@ -10,22 +26,31 @@ services:
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - LITELLM_CONFIG=/app/config.yaml
-      # Sur Mac : http://host.docker.internal:11434
-      # Sur HP  : http://NETBIRD_MAC_IP:11434  (IP NetBird du Mac)
-      - OLLAMA_MAC_URL=${OLLAMA_MAC_URL:-http://host.docker.internal:11434}
-      # Sur HP : http://10.10.10.60:11434 (LXC ollama-hp)
-      - OLLAMA_HP_URL=${OLLAMA_HP_URL:-http://host.docker.internal:11434}
+      - DATABASE_URL=postgresql://litellm:litellm@db:5432/litellm
+      # URL du serveur Ollama (ex: http://100.x.x.x:11434 via NetBird, ou http://192.168.1.x:11434 en LAN)
+      # Laisser vide si pas d'Ollama — les modèles ollama/* seront ignorés
+      - OLLAMA_URL=${OLLAMA_URL:-}
     volumes:
       - ./litellm_config.yaml:/app/config.yaml:ro
-      - gateway_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:4000/health || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/4000' 2>/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 30s
+      start_period: 60s
+    networks:
+      - default
+      - proxy_net
     restart: unless-stopped
 
 volumes:
-  gateway_data:
+  gateway_db:
+
+networks:
+  default:
+  proxy_net:
+    external: true
+    name: proxy_net

@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { streamChat } from '../services/api.js';
-import { VoiceManager, loadVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
+import { streamChat, uploadFile, confirmDocument, summarizeConversation, fetchAvailableModels } from '../services/api.js';
+import { VoiceManager, loadVoiceSettings, saveVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
+import Tooltip from '../components/Tooltip.jsx';
 
 // ── Session store ─────────────────────────────────────────────────────────────
 
@@ -15,8 +16,18 @@ function newSession() {
 }
 
 function loadSessions() {
-  try { return JSON.parse(localStorage.getItem('ws_sessions') || '[]'); }
-  catch { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem('ws_sessions') || '[]');
+    // Drop stale pending upload proposals — their file_id is gone after reload
+    return raw.map(s => ({
+      ...s,
+      messages: (s.messages || []).map(m =>
+        m.uploadProposal?.status === 'pending'
+          ? { ...m, uploadProposal: { ...m.uploadProposal, status: 'cancelled' } }
+          : m
+      ),
+    }));
+  } catch { return []; }
 }
 
 function saveSessions(sessions) {
@@ -50,6 +61,24 @@ const SUGGESTIONS = [
   'Créer une tâche Forge',
   'Lister mes mondes Oria',
 ];
+
+const IPCRA_WINGS = ['Input', 'Projet', 'Casquette', 'Ressource', 'Archive'];
+const SUMMARIZE_THRESHOLD = 20;
+const MAX_CONTEXT_MESSAGES = 30;
+
+function stripMarkdownForTTS(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, '')       // code blocks
+    .replace(/`[^`]+`/g, '')              // inline code
+    .replace(/#{1,6}\s+/gm, '')           // headings
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // bold
+    .replace(/\*([^*]+)\*/g, '$1')        // italic
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // links
+    .replace(/^[-*+]\s+/gm, '')           // unordered list
+    .replace(/^\d+\.\s+/gm, '')           // ordered list
+    .replace(/\n{3,}/g, '\n')             // excess newlines
+    .trim();
+}
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -333,7 +362,292 @@ const s = {
     color: '#7c3aed99',
     letterSpacing: '0.05em',
   },
+
+  // RAG chip & panel
+  ragChip: {
+    background: 'none',
+    border: 'none',
+    color: '#22d3ee',
+    cursor: 'pointer',
+    fontSize: '11px',
+    padding: '2px 4px',
+    marginTop: '3px',
+    opacity: 0.65,
+    display: 'inline-block',
+  },
+  ragPanel: {
+    background: '#161616',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    padding: '10px',
+    marginTop: '4px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    maxWidth: '360px',
+    marginLeft: 'auto',
+  },
+  ragEntry: {
+    fontSize: '12px',
+    borderLeft: '2px solid #06b6d444',
+    paddingLeft: '8px',
+  },
+  ragEntryMeta: {
+    color: '#22d3ee',
+    fontSize: '10px',
+    fontWeight: '600',
+    marginBottom: '2px',
+  },
+  ragEntryContent: {
+    color: '#9b9b9b',
+    lineHeight: '1.5',
+    wordBreak: 'break-word',
+  },
+  ragBtn: (active) => ({
+    padding: '0 12px',
+    height: '42px',
+    background: active ? '#06b6d422' : 'transparent',
+    border: `1px solid ${active ? '#06b6d466' : '#333'}`,
+    borderRadius: '10px',
+    color: active ? '#22d3ee' : '#555',
+    cursor: 'pointer',
+    fontSize: '14px',
+    flexShrink: 0,
+    transition: 'all 0.15s ease',
+  }),
+  summarizeBtn: (active) => ({
+    padding: '0 12px',
+    height: '42px',
+    background: active ? '#059669' + '22' : 'transparent',
+    border: `1px solid ${active ? '#059669' + '66' : '#333'}`,
+    borderRadius: '10px',
+    color: active ? '#34d399' : '#555',
+    cursor: 'pointer',
+    fontSize: '14px',
+    flexShrink: 0,
+    transition: 'all 0.15s ease',
+  }),
+  fileBtn: {
+    width: '42px',
+    height: '42px',
+    background: 'transparent',
+    border: '1px solid #333',
+    borderRadius: '10px',
+    color: '#555',
+    cursor: 'pointer',
+    fontSize: '16px',
+    flexShrink: 0,
+    transition: 'all 0.15s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toast: {
+    position: 'fixed',
+    bottom: '80px',
+    right: '20px',
+    background: '#1a1a1a',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    padding: '10px 14px',
+    fontSize: '13px',
+    color: '#e8e8e8',
+    zIndex: 9999,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+    transition: 'opacity 0.3s ease',
+  },
+  uploadCard: {
+    background: '#161616',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    padding: '12px 14px',
+    marginTop: '6px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  uploadCardTitle: {
+    color: '#c4b5fd',
+    fontSize: '13px',
+    fontWeight: '500',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  uploadCardSummary: {
+    color: '#b0b0b0',
+    fontSize: '13px',
+    lineHeight: '1.55',
+  },
+  uploadCardProposal: {
+    color: '#9b9b9b',
+    fontSize: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    flexWrap: 'wrap',
+  },
+  uploadCardWing: { color: '#a78bfa', fontWeight: '600' },
+  uploadCardActions: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
+    marginTop: '2px',
+  },
+  uploadCardBtn: (variant) => ({
+    padding: '5px 12px',
+    borderRadius: '6px',
+    border: variant === 'cancel' ? '1px solid #333' : 'none',
+    cursor: 'pointer',
+    fontSize: '12px',
+    background: variant === 'confirm' ? '#7c3aed' : variant === 'edit' ? '#1a1a1a' : 'transparent',
+    color: variant === 'confirm' ? '#fff' : variant === 'edit' ? '#b0b0b0' : '#555',
+  }),
+  uploadEditRow: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  uploadSelect: {
+    background: '#1a1a1a',
+    border: '1px solid #333',
+    borderRadius: '6px',
+    color: '#e0e0e0',
+    padding: '4px 8px',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  uploadRoomInput: {
+    background: '#1a1a1a',
+    border: '1px solid #333',
+    borderRadius: '6px',
+    color: '#e0e0e0',
+    padding: '4px 8px',
+    fontSize: '12px',
+    flex: 1,
+    outline: 'none',
+    minWidth: '120px',
+  },
+  uploadStatusOk: { fontSize: '12px', color: '#22c55e' },
+  uploadStatusErr: { fontSize: '12px', color: '#ef4444' },
 };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+// ── UploadProposal ────────────────────────────────────────────────────────────
+
+function UploadProposal({ proposal, onConfirm, onCancel }) {
+  const [wing, setWing] = useState(proposal.proposed_wing || 'Ressource');
+  const [room, setRoom] = useState(proposal.proposed_room || 'documents');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  if (proposal.status === 'cancelled') return null;
+
+  if (proposal.status === 'confirmed') {
+    return (
+      <div style={s.uploadCard}>
+        <div style={s.uploadCardTitle}>📄 {proposal.filename}</div>
+        <div style={s.uploadStatusOk}>✓ Classé dans {proposal.final_wing} › {proposal.final_room}</div>
+      </div>
+    );
+  }
+
+  if (proposal.status === 'loading') {
+    return (
+      <div style={s.uploadCard}>
+        <div style={s.uploadCardTitle}>
+          <span className="tool-spin">◐</span> {proposal.filename} — Analyse en cours…
+        </div>
+      </div>
+    );
+  }
+
+  async function handleConfirm() {
+    setSaving(true);
+    setError(null);
+    try {
+      await onConfirm(wing, room);
+    } catch (e) {
+      setError(e.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={s.uploadCard}>
+      <div style={s.uploadCardTitle}>
+        📄 {proposal.filename}
+        {proposal.size ? <span style={{ color: '#555', fontWeight: 400 }}>{formatSize(proposal.size)}</span> : null}
+      </div>
+      {proposal.summary && <div style={s.uploadCardSummary}>{proposal.summary}</div>}
+      <div style={s.uploadCardProposal}>
+        Proposition : <span style={s.uploadCardWing}>{wing}</span> › {room}
+      </div>
+      {editing && (
+        <div style={s.uploadEditRow}>
+          <select style={s.uploadSelect} value={wing} onChange={e => setWing(e.target.value)}>
+            {IPCRA_WINGS.map(w => <option key={w} value={w}>{w}</option>)}
+          </select>
+          <input
+            style={s.uploadRoomInput}
+            value={room}
+            onChange={e => setRoom(e.target.value)}
+            placeholder="sous-catégorie"
+          />
+        </div>
+      )}
+      {error && <div style={s.uploadStatusErr}>✗ {error}</div>}
+      <div style={s.uploadCardActions}>
+        <button style={s.uploadCardBtn('confirm')} onClick={handleConfirm} disabled={saving}>
+          {saving ? 'Enregistrement…' : 'Confirmer'}
+        </button>
+        <button style={s.uploadCardBtn('edit')} onClick={() => setEditing(!editing)}>
+          {editing ? 'Fermer' : 'Modifier'}
+        </button>
+        <button style={s.uploadCardBtn('cancel')} onClick={onCancel} disabled={saving}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── RagChip ───────────────────────────────────────────────────────────────────
+
+function RagChip({ sources }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ textAlign: 'right' }}>
+      <button style={s.ragChip} onClick={() => setOpen(!open)} title="Souvenirs contextuels injectés">
+        🧠 {sources.length}
+      </button>
+      {open && (
+        <div style={s.ragPanel}>
+          {sources.map((src, i) => (
+            <div key={i} style={s.ragEntry}>
+              <div style={s.ragEntryMeta}>
+                {src.wing} › {src.room} · {Math.round(src.score * 100)}%
+              </div>
+              <div style={s.ragEntryContent}>
+                {src.content.length > 200 ? src.content.slice(0, 200) + '…' : src.content}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── ToolCard ──────────────────────────────────────────────────────────────────
 
@@ -386,26 +700,42 @@ function ToolCard({ tool }) {
 
 // ── Message ───────────────────────────────────────────────────────────────────
 
-function Message({ msg }) {
+function Message({ msg, onUploadConfirm, onUploadCancel }) {
   return (
     <div className="msg-enter" style={s.msgWrapper(msg.role)}>
-      <div style={s.bubble(msg.role)}>
-        {msg.role === 'assistant' ? (
-          <div className="markdown-body">
-            <ReactMarkdown>{msg.content || ''}</ReactMarkdown>
-          </div>
-        ) : (
-          <>
-            <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
-            {msg.refined && (
-              <div style={s.refinedBadge}>✦ affiné</div>
-            )}
-          </>
-        )}
-        {msg.tools && msg.tools.length > 0 && (
-          <div style={s.toolsWrapper}>
-            {msg.tools.map((t, i) => <ToolCard key={i} tool={t} />)}
-          </div>
+      <div style={{ maxWidth: '72%' }}>
+        <div style={{ ...s.bubble(msg.role), maxWidth: 'none' }}>
+          {msg.role === 'assistant' ? (
+            <>
+              {msg.content && (
+                <div className="markdown-body">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              )}
+              {msg.uploadProposal && (
+                <UploadProposal
+                  proposal={msg.uploadProposal}
+                  onConfirm={onUploadConfirm}
+                  onCancel={onUploadCancel}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+              {msg.refined && (
+                <div style={s.refinedBadge}>✦ affiné</div>
+              )}
+            </>
+          )}
+          {msg.tools && msg.tools.length > 0 && (
+            <div style={s.toolsWrapper}>
+              {msg.tools.map((t, i) => <ToolCard key={`${t.name}-${i}`} tool={t} />)}
+            </div>
+          )}
+        </div>
+        {msg.role === 'user' && msg.ragSources?.length > 0 && (
+          <RagChip sources={msg.ragSources} />
         )}
       </div>
     </div>
@@ -468,30 +798,101 @@ export default function ChatView() {
   const [promptEngineerEnabled, setPromptEngineerEnabled] = useState(
     () => localStorage.getItem('ws_pe_enabled') === 'true'
   );
+  const [ragEnabled, setRagEnabled] = useState(
+    () => localStorage.getItem('ws_rag_enabled') !== 'false'
+  );
+  const [summarizeEnabled, setSummarizeEnabled] = useState(
+    () => localStorage.getItem('ws_summarize_enabled') !== 'false'
+  );
+  const [toast, setToast] = useState(null);
+  const summarizingRef = useRef(false);
+  const [availableModels, setAvailableModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(
+    () => localStorage.getItem('ws_selected_model') || ''
+  );
 
   // Voice state
   const [isRecording, setIsRecording] = useState(false);
-  const [interimText, setInterimText] = useState('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(
     () => (loadVoiceSettings().ttsEnabled ?? DEFAULT_VOICE_SETTINGS.ttsEnabled)
   );
+  const [micMode, setMicMode] = useState(
+    () => (loadVoiceSettings().micMode ?? DEFAULT_VOICE_SETTINGS.micMode)
+  );
+  const sendMessageRef = useRef(null);
 
   const voiceManager = useMemo(() => {
     const settings = { ...DEFAULT_VOICE_SETTINGS, ...loadVoiceSettings() };
     const vm = new VoiceManager(settings);
     vm.onRecordingChange(setIsRecording);
-    vm.onInterim((text) => setInterimText(text));
+    vm.onSpeakingChange(setIsSpeaking);
+    vm.onInterim((text) => { setInput(text); });
     vm.onTranscript((text) => {
-      setInterimText('');
       setInput(text);
       setTimeout(() => textareaRef.current?.focus(), 50);
+    });
+    vm.onAutoSend((text) => {
+      setInput('');
+      sendMessageRef.current?.(text);
     });
     return vm;
   }, []);
 
+  const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    fetchAvailableModels().then(models => setAvailableModels(models));
+  }, []);
+
+  // Cleanup VoiceManager on unmount
+  useEffect(() => {
+    return () => {
+      voiceManager.stopSpeaking();
+      voiceManager.stopRecording();
+    };
+  }, [voiceManager]);
+
+  // Sync voice settings (mode, TTS) when user saves in VoiceView
+  useEffect(() => {
+    const handler = () => {
+      const saved = loadVoiceSettings();
+      const newMode = saved.micMode ?? DEFAULT_VOICE_SETTINGS.micMode;
+      setMicMode(newMode);
+      const newTts = saved.ttsEnabled ?? DEFAULT_VOICE_SETTINGS.ttsEnabled;
+      setTtsEnabled(newTts);
+      voiceManager.updateSettings(saved);
+    };
+    window.addEventListener('ws-voice-settings-saved', handler);
+    return () => window.removeEventListener('ws-voice-settings-saved', handler);
+  }, [voiceManager]);
+
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const assistantIdxRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const showToast = useCallback((msg, durationMs = 3500) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), durationMs);
+  }, []);
+
+  const triggerSummarize = useCallback(async (msgs) => {
+    if (summarizingRef.current) return;
+    const chatMsgs = (msgs || messages).filter(m => m.role === 'user' || m.role === 'assistant');
+    if (chatMsgs.length < 2) return;
+    summarizingRef.current = true;
+    try {
+      const { summary, stored } = await summarizeConversation(chatMsgs, currentId || '');
+      if (summary) {
+        showToast(stored ? '📝 Résumé sauvegardé dans MemPalace' : '📝 Résumé généré (MemPalace non connecté)');
+      }
+    } catch (e) {
+      // silent — do not block the UI
+    } finally {
+      summarizingRef.current = false;
+    }
+  }, [messages, currentId, showToast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load messages when session switches
   useEffect(() => {
@@ -508,11 +909,20 @@ export default function ChatView() {
       saveSessions(updated);
       return updated;
     });
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, currentId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-summarize every SUMMARIZE_THRESHOLD messages
+  useEffect(() => {
+    if (!summarizeEnabled || isStreaming) return;
+    const chatCount = messages.filter(m => m.role === 'user' || m.role === 'assistant').length;
+    if (chatCount > 0 && chatCount % SUMMARIZE_THRESHOLD === 0) {
+      triggerSummarize(messages);
+    }
+  }, [messages.length, isStreaming, summarizeEnabled, triggerSummarize]);
 
   function adjustTextarea() {
     const el = textareaRef.current;
@@ -556,9 +966,58 @@ export default function ChatView() {
     });
   }
 
+  async function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file || isStreaming || isUploading) return;
+    e.target.value = '';
+    const proposalId = crypto.randomUUID();
+    setIsUploading(true);
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: `📎 **${file.name}**` },
+      { role: 'assistant', content: '', uploadProposal: { _id: proposalId, status: 'loading', filename: file.name } },
+    ]);
+    try {
+      const result = await uploadFile(file);
+      setMessages(prev => prev.map(m =>
+        m.uploadProposal?._id === proposalId
+          ? { ...m, uploadProposal: { _id: proposalId, status: 'pending', ...result } }
+          : m
+      ));
+    } catch (err) {
+      setMessages(prev => prev.map(m =>
+        m.uploadProposal?._id === proposalId
+          ? { ...m, content: `Erreur lors de l'analyse : ${err.message}`, uploadProposal: undefined }
+          : m
+      ));
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function handleUploadConfirm(proposalId, wing, room) {
+    const msg = messages.find(m => m.uploadProposal?._id === proposalId);
+    if (!msg) return;
+    const { file_id, filename, summary } = msg.uploadProposal;
+    await confirmDocument({ file_id, filename, wing, room, summary });
+    setMessages(prev => prev.map(m =>
+      m.uploadProposal?._id === proposalId
+        ? { ...m, uploadProposal: { ...m.uploadProposal, status: 'confirmed', final_wing: wing, final_room: room } }
+        : m
+    ));
+  }
+
+  function handleUploadCancel(proposalId) {
+    setMessages(prev => prev.map(m =>
+      m.uploadProposal?._id === proposalId
+        ? { ...m, uploadProposal: { ...m.uploadProposal, status: 'cancelled' } }
+        : m
+    ));
+  }
+
   async function sendMessage(text) {
     const trimmed = text.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isStreaming || isUploading) return;
 
     // Auto-title from first user message
     const session = sessions.find(s => s.id === currentId);
@@ -582,9 +1041,14 @@ export default function ChatView() {
     assistantIdxRef.current = assistantIdx;
     setMessages(prev => [...prev, { role: 'assistant', content: '', tools: [] }]);
 
+    // Cap history sent to LLM to avoid token bloat on long conversations
+    const contextMessages = newMessages.length > MAX_CONTEXT_MESSAGES
+      ? newMessages.slice(newMessages.length - MAX_CONTEXT_MESSAGES)
+      : newMessages;
+
     try {
       await streamChat(
-        newMessages,
+        contextMessages,
         // onChunk
         (chunk) => {
           setMessages(prev => {
@@ -625,12 +1089,12 @@ export default function ChatView() {
         // onDone
         () => {
           setIsStreaming(false);
-          // TTS: read out the final assistant response
+          // TTS: read out the final assistant response (markdown stripped)
           if (ttsEnabled) {
             setMessages(prev => {
               const lastMsg = prev[assistantIdxRef.current];
               if (lastMsg?.role === 'assistant' && lastMsg.content) {
-                voiceManager.speak(lastMsg.content);
+                voiceManager.speak(stripMarkdownForTTS(lastMsg.content));
               }
               return prev;
             });
@@ -649,6 +1113,21 @@ export default function ChatView() {
             return updated;
           });
         },
+        // useRag
+        ragEnabled,
+        // onRagSources — attach injected memories to the user message
+        (sources) => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const userIdx = assistantIdxRef.current - 1;
+            if (userIdx >= 0) {
+              updated[userIdx] = { ...updated[userIdx], ragSources: sources };
+            }
+            return updated;
+          });
+        },
+        // model — null = default from server config
+        selectedModel || null,
       );
     } catch (err) {
       setMessages(prev => {
@@ -661,12 +1140,20 @@ export default function ChatView() {
     }
   }
 
+  // Keep the ref up-to-date every render so onAutoSend always calls the latest version
+  sendMessageRef.current = sendMessage;
+
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage(input);
     }
   }
+
+  const isPTT = micMode === 'push_to_talk';
+  const micLabel = isPTT
+    ? (isRecording ? 'Relâcher pour envoyer' : 'Maintenir pour parler')
+    : (isRecording ? 'Cliquer pour arrêter' : 'Démarrer le dialogue ouvert');
 
   const currentSession = sessions.find(s => s.id === currentId);
   const isEmpty = messages.length === 0 && !isStreaming;
@@ -683,6 +1170,8 @@ export default function ChatView() {
           onDelete={handleDeleteSession}
         />
       </div>
+
+      {toast && <div style={s.toast}>{toast}</div>}
 
       {/* Chat area */}
       <div style={s.chat}>
@@ -708,7 +1197,18 @@ export default function ChatView() {
           </div>
         ) : (
           <div style={s.messageList}>
-            {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+            {messages.map((msg, i) => (
+              <Message
+                key={i}
+                msg={msg}
+                onUploadConfirm={msg.uploadProposal?.status === 'pending'
+                  ? (wing, room) => handleUploadConfirm(msg.uploadProposal._id, wing, room)
+                  : undefined}
+                onUploadCancel={msg.uploadProposal?.status === 'pending'
+                  ? () => handleUploadCancel(msg.uploadProposal._id)
+                  : undefined}
+              />
+            ))}
             {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && (
               <div style={s.streamingDots}>
                 <span className="streaming-dots">
@@ -720,58 +1220,166 @@ export default function ChatView() {
           </div>
         )}
 
+        {availableModels.length > 0 && (
+          <div style={{ padding: '4px 20px 0', background: '#0f0f0f', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: '#555', flexShrink: 0 }}>Modèle</span>
+            <select
+              value={selectedModel}
+              onChange={e => {
+                setSelectedModel(e.target.value);
+                localStorage.setItem('ws_selected_model', e.target.value);
+              }}
+              style={{
+                background: '#1a1a1a',
+                border: '1px solid #2a2a2a',
+                borderRadius: '6px',
+                color: selectedModel ? '#a78bfa' : '#555',
+                fontSize: '11px',
+                padding: '3px 6px',
+                cursor: 'pointer',
+                maxWidth: '280px',
+                flex: 1,
+              }}
+            >
+              <option value="">Défaut ({'{'}config serveur{'}'}</option>
+              {availableModels.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div style={s.inputArea}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            style={{ display: 'none' }}
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.mp3,.wav,.m4a,.ogg,.webm,.txt,.md"
+            onChange={handleFileSelect}
+          />
+          <Tooltip label="Joindre un fichier" position="top">
+            <button
+              style={s.fileBtn}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming || isUploading}
+            >
+              📎
+            </button>
+          </Tooltip>
           <textarea
             ref={textareaRef}
             style={s.textarea}
-            value={interimText || input}
-            onChange={(e) => { if (!isRecording) { setInput(e.target.value); adjustTextarea(); } }}
+            value={input}
+            onChange={(e) => { setInput(e.target.value); adjustTextarea(); }}
             onKeyDown={handleKeyDown}
-            placeholder={isRecording ? '🎙️ Écoute en cours…' : 'Envoyer un message… (Shift+Entrée pour nouvelle ligne)'}
+            placeholder={
+              isSpeaking ? '🔊 Réponse en cours…' :
+              isRecording && isPTT ? '🎙️ Parlez… (relâchez pour envoyer)' :
+              isRecording ? '🎙️ Écoute… (phrase détectée → envoi auto)' :
+              'Envoyer un message… (Shift+Entrée pour nouvelle ligne)'
+            }
             disabled={isStreaming}
             rows={1}
           />
-          <button
-            style={s.micBtn(isRecording)}
-            className={isRecording ? 'mic-pulse' : ''}
-            onClick={() => voiceManager.startRecording()}
-            title={isRecording ? 'Arrêter l\'enregistrement' : 'Démarrer l\'enregistrement vocal'}
-          >
-            🎙️
-          </button>
-          <button
-            style={s.ttsBtn(ttsEnabled)}
-            onClick={() => {
-              const next = !ttsEnabled;
-              setTtsEnabled(next);
-              voiceManager.updateSettings({ ttsEnabled: next });
-              const saved = loadVoiceSettings();
-              saved.ttsEnabled = next;
-              import('../services/voice/index.js').then(m => m.saveVoiceSettings(saved));
-              if (!next) voiceManager.stopSpeaking();
-            }}
-            title={ttsEnabled ? 'Lecture vocale activée' : 'Lecture vocale désactivée'}
-          >
-            {ttsEnabled ? '🔊' : '🔇'}
-          </button>
-          <button
-            style={s.peBtn(promptEngineerEnabled)}
-            onClick={() => {
-              const next = !promptEngineerEnabled;
-              setPromptEngineerEnabled(next);
-              localStorage.setItem('ws_pe_enabled', String(next));
-            }}
-            title={promptEngineerEnabled ? 'Prompt Architect actif' : 'Prompt Architect inactif'}
-          >
-            ✦
-          </button>
-          <button
-            style={s.sendBtn(!input.trim() || isStreaming)}
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isStreaming}
-          >
-            ↑
-          </button>
+
+          {/* Mic button — PTT = hold to talk, open_dialogue = click toggle */}
+          <Tooltip label={micLabel} position="top">
+            <button
+              className={isRecording ? 'mic-pulse' : ''}
+              {...(isPTT
+                ? {
+                    onPointerDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); voiceManager.startPTT(); },
+                    onPointerUp: () => voiceManager.stopPTT(),
+                    onPointerLeave: () => voiceManager.stopPTT(),
+                  }
+                : { onClick: () => voiceManager.startRecording() }
+              )}
+              style={{
+                ...s.micBtn(isRecording || isSpeaking),
+                ...(isSpeaking && { color: '#7c3aed', borderColor: '#7c3aed66', background: '#7c3aed11' }),
+                ...(isPTT && { userSelect: 'none', touchAction: 'none' }),
+              }}
+            >
+              {isSpeaking ? '🔊' : '🎙️'}
+            </button>
+          </Tooltip>
+
+          <Tooltip label={ttsEnabled ? 'Lecture vocale activée' : 'Lecture vocale désactivée'} position="top">
+            <button
+              style={s.ttsBtn(ttsEnabled)}
+              onClick={() => {
+                const next = !ttsEnabled;
+                setTtsEnabled(next);
+                voiceManager.updateSettings({ ttsEnabled: next });
+                const saved = loadVoiceSettings();
+                saved.ttsEnabled = next;
+                saveVoiceSettings(saved);
+                if (!next) voiceManager.stopSpeaking();
+              }}
+            >
+              {ttsEnabled ? '🔊' : '🔇'}
+            </button>
+          </Tooltip>
+
+          <Tooltip label={ragEnabled ? 'Mémoire RAG activée' : 'Mémoire RAG désactivée'} position="top">
+            <button
+              style={s.ragBtn(ragEnabled)}
+              onClick={() => {
+                const next = !ragEnabled;
+                setRagEnabled(next);
+                localStorage.setItem('ws_rag_enabled', String(next));
+              }}
+            >
+              🧠
+            </button>
+          </Tooltip>
+
+          <Tooltip label={summarizeEnabled ? 'Résumer (clic droit pour désactiver)' : 'Résumé auto désactivé'} position="top">
+            <button
+              style={s.summarizeBtn(summarizeEnabled)}
+              onClick={() => {
+                if (summarizeEnabled) {
+                  triggerSummarize();
+                } else {
+                  const next = true;
+                  setSummarizeEnabled(next);
+                  localStorage.setItem('ws_summarize_enabled', String(next));
+                }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                const next = !summarizeEnabled;
+                setSummarizeEnabled(next);
+                localStorage.setItem('ws_summarize_enabled', String(next));
+              }}
+              disabled={isStreaming}
+            >
+              📝
+            </button>
+          </Tooltip>
+
+          <Tooltip label={promptEngineerEnabled ? 'Prompt Architect actif' : 'Prompt Architect inactif'} position="top">
+            <button
+              style={s.peBtn(promptEngineerEnabled)}
+              onClick={() => {
+                const next = !promptEngineerEnabled;
+                setPromptEngineerEnabled(next);
+                localStorage.setItem('ws_pe_enabled', String(next));
+              }}
+            >
+              ✦
+            </button>
+          </Tooltip>
+
+          <Tooltip label="Envoyer le message" position="top">
+            <button
+              style={s.sendBtn(!input.trim() || isStreaming || isUploading)}
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || isStreaming || isUploading}
+            >
+              ↑
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>

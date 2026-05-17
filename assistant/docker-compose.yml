@@ -1,7 +1,22 @@
 services:
 
+  # ── Redis — pub/sub SSE + leader election scheduler ──────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - default
+      - observability_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   # ── Assistant Backend (FastAPI / ReAct agent) ────────────────
   backend:
+    image: ghcr.io/toussaintgarinat-crypto/workspace/assistant-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -11,18 +26,40 @@ services:
       - path: .env
         required: false
     environment:
-      - GATEWAY_URL=${GATEWAY_URL:-http://host.docker.internal:4000}
+      - GATEWAY_URL=${GATEWAY_URL:-http://localhost:4000}
       - GATEWAY_API_KEY=${GATEWAY_API_KEY:-sk-assistant}
-      - GATEWAY_MASTER_KEY=${GATEWAY_MASTER_KEY:-sk-master-change-this}
+      - GATEWAY_MASTER_KEY=${GATEWAY_MASTER_KEY:-}
       - GATEWAY_MODEL=${GATEWAY_MODEL:-openai/gpt-4o}
       - CORS_ORIGINS=http://localhost:8300,http://localhost:3000
-      - KEYCLOAK_URL=${KEYCLOAK_URL:-http://host.docker.internal:8080}
+      - KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:8080}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
       - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-assistant-app}
       - AUTH_ENABLED=${AUTH_ENABLED:-false}
-      - VAULT_SECRET=${VAULT_SECRET:-change_this_vault_secret_in_production_32chars}
+      - VAULT_SECRET=${VAULT_SECRET:-}
+      - DATABASE_URL=${ASSISTANT_DATABASE_URL:-}
+      - REDIS_URL=${ASSISTANT_REDIS_URL:-redis://redis:6379}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - RAG_ENABLED=${RAG_ENABLED:-true}
+      - RAG_TOP_K=${RAG_TOP_K:-5}
+      - RAG_MIN_SCORE=${RAG_MIN_SCORE:-0.7}
+      - SUMMARIZE_ENABLED=${SUMMARIZE_ENABLED:-true}
+      - SUMMARIZE_THRESHOLD=${SUMMARIZE_THRESHOLD:-20}
+      - LOCAL_VOICE_ENABLED=${LOCAL_VOICE_ENABLED:-false}
+      - WHISPER_LOCAL_MODEL=${WHISPER_LOCAL_MODEL:-base}
+      - KOKORO_VOICE=${KOKORO_VOICE:-af_heart}
+      - KOKORO_LANG=${KOKORO_LANG:-a}
     volumes:
       - assistant_data:/data
+      - model_cache:/root/.cache
+    networks:
+      - default
+      - observability_net
+      - proxy_net
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8200/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -33,6 +70,7 @@ services:
 
   # ── Assistant Frontend (React / Vite → nginx) ────────────────
   frontend:
+    image: ghcr.io/toussaintgarinat-crypto/workspace/assistant-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -51,3 +89,13 @@ services:
 
 volumes:
   assistant_data:
+  model_cache:
+
+networks:
+  default:
+  observability_net:
+    external: true
+    name: observability_net
+  proxy_net:
+    external: true
+    name: proxy_net

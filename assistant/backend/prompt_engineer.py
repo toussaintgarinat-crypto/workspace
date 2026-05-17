@@ -26,7 +26,7 @@ _SYSTEM = (
 class PromptEngineer:
     async def refine(self, prompt: str) -> dict | None:
         client = AsyncOpenAI(
-            base_url=settings.GATEWAY_URL,
+            base_url=f"{settings.GATEWAY_URL}/v1",
             api_key=settings.GATEWAY_API_KEY,
         )
         try:

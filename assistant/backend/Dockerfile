@@ -6,10 +6,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf 
 
 RUN pip install --no-cache-dir setuptools
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ARG LOCAL_VOICE_ENABLED=false
+COPY requirements.txt requirements-voice.txt ./
+RUN pip install --no-cache-dir -r requirements.txt && \
+    if [ "$LOCAL_VOICE_ENABLED" = "true" ]; then pip install --no-cache-dir -r requirements-voice.txt; fi
 
 COPY . .
+
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8200
 

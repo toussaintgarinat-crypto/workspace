@@ -86,6 +86,10 @@ app.use('*', cors({
 // ── Routes publiques ─────────────────────────────────────────
 app.route('/api/health', healthRouter)
 
+// WS et voice-realtime gèrent leur propre auth via query token — avant le middleware global
+app.route('/api/ws',    wsRouter)
+app.route('/api/voice', voiceRealtimeRouter)
+
 // ── Routes protégées ─────────────────────────────────────────
 app.use('/api/*', authMiddleware)
 app.route('/api/auth', authRouter)
@@ -94,7 +98,6 @@ app.route('/api/chat',       chatRouter)
 app.route('/api/agents',     agentsRouter)
 app.route('/api/poles',      polesRouter)
 app.route('/api/llm-config', llmConfigRouter)
-app.route('/api/ws',             wsRouter)
 app.route('/api/command-bridge', commandBridgeRouter)
 app.route('/api',                sprintsRouter)
 app.route('/api',                budgetRouter)
@@ -116,7 +119,6 @@ app.route('/api/netbird',        netbirdRouter)
 app.route('/api/settings/api-keys', apiKeysRouter)
 app.route('/api/orgs',             orgsRouter)
 app.route('/api/voice',            voiceRouter)
-app.route('/api/voice',            voiceRealtimeRouter)
 app.route('/api',                  governorRouter)
 app.route('/api',                  riskEngineRouter)
 app.route('/api',                  injectionGuardRouter)

@@ -1,3 +1,5 @@
+import { apiFetch } from '../api.js';
+
 // ── Web Speech TTS ────────────────────────────────────────────────────────────
 
 export class WebSpeechTTS {
@@ -7,8 +9,8 @@ export class WebSpeechTTS {
     this._utterance = null;
   }
 
-  speak(text) {
-    if (!window.speechSynthesis) return;
+  speak(text, onEnd) {
+    if (!window.speechSynthesis) { onEnd?.(); return; }
     this.stop();
     this._utterance = new SpeechSynthesisUtterance(text);
     this._utterance.lang = this._language;
@@ -19,6 +21,7 @@ export class WebSpeechTTS {
       if (match) this._utterance.voice = match;
     }
 
+    if (onEnd) this._utterance.onend = onEnd;
     window.speechSynthesis.speak(this._utterance);
   }
 
@@ -42,10 +45,10 @@ export class OpenAITTS {
     this._audio = null;
   }
 
-  async speak(text) {
+  async speak(text, onEnd) {
     this.stop();
     try {
-      const res = await fetch('/api/voice/synthesize', {
+      const res = await apiFetch('/api/voice/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: this._voice }),
@@ -54,10 +57,11 @@ export class OpenAITTS {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       this._audio = new Audio(url);
-      this._audio.onended = () => URL.revokeObjectURL(url);
+      this._audio.onended = () => { URL.revokeObjectURL(url); onEnd?.(); };
       await this._audio.play();
     } catch (err) {
       console.error('OpenAI TTS error:', err);
+      onEnd?.();
     }
   }
 

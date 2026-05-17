@@ -2,7 +2,7 @@ import { getToken, refreshIfNeeded } from './keycloak.js';
 
 const BASE_URL = '/api';
 
-async function apiFetch(url, options = {}) {
+export async function apiFetch(url, options = {}) {
   await refreshIfNeeded();
   const token = getToken();
   const headers = { ...(options.headers || {}) };
@@ -224,6 +224,24 @@ export async function confirmDocument({ file_id, filename, wing, room, summary }
   return res.json();
 }
 
+export async function summarizeConversation(messages, sessionId = '') {
+  const res = await apiFetch(`${BASE_URL}/conversation/summarize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, session_id: sessionId }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAvailableModels() {
+  try {
+    const res = await apiFetch(`${BASE_URL}/models`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
 export async function streamChat(
   messages,
   onChunk,
@@ -232,11 +250,16 @@ export async function streamChat(
   onDone,
   usePromptEngineer = false,
   onPromptRefined = null,
+  useRag = true,
+  onRagSources = null,
+  model = null,
 ) {
+  const payload = { messages, use_prompt_engineer: usePromptEngineer, rag_enabled: useRag };
+  if (model) payload.model = model;
   const res = await apiFetch(`${BASE_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, use_prompt_engineer: usePromptEngineer }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -269,6 +292,7 @@ export async function streamChat(
       else if (event.type === 'tool_start') onToolStart(event.name, event.args || {});
       else if (event.type === 'tool_result') onTool(event.name, event.result, event.error || false);
       else if (event.type === 'prompt_refined' && onPromptRefined) onPromptRefined(event.data);
+      else if (event.type === 'rag_sources' && onRagSources) onRagSources(event.sources);
       else if (event.type === 'done') { onDone(); return; }
     }
   }

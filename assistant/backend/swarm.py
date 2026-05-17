@@ -1,15 +1,21 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
-import aiosqlite
 from config import settings
+from db import database
 from agent import ReActAgent
 
 logger = logging.getLogger(__name__)
 
 _running: dict[str, asyncio.Task] = {}
 _subscribers: list[asyncio.Queue] = []
+_listener_task: Optional[asyncio.Task] = None
+_start_lock: asyncio.Lock = asyncio.Lock()
+
+_CHANNEL = "assistant:swarm:events"
 
 ROLE_PROMPTS = {
     "builder":    "Tu es un agent Builder spécialisé dans la création de code, fichiers et structures.",
@@ -20,21 +26,71 @@ ROLE_PROMPTS = {
 }
 
 
+async def _redis_listener():
+    from redis_client import redis_client
+    if redis_client is None:
+        return
+    delay = 1
+    while True:
+        pubsub = redis_client.pubsub()
+        try:
+            await pubsub.subscribe(_CHANNEL)
+            logger.info("swarm Redis listener subscribed to %s", _CHANNEL)
+            delay = 1
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    try:
+                        event = json.loads(message["data"])
+                        for q in list(_subscribers):
+                            await q.put(event)
+                    except Exception as e:
+                        logger.debug("swarm listener parse error: %s", e)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.warning("swarm Redis listener lost connection: %s — retrying in %ds", e, delay)
+        finally:
+            try:
+                await pubsub.unsubscribe(_CHANNEL)
+                await pubsub.aclose()
+            except Exception:
+                pass
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, 60)
+
+
+async def start_redis_listener():
+    global _listener_task
+    from redis_client import redis_client
+    if redis_client and (_listener_task is None or _listener_task.done()):
+        _listener_task = asyncio.create_task(_redis_listener())
+
+
 async def _broadcast(event: dict):
-    for q in list(_subscribers):
-        await q.put(event)
+    from redis_client import redis_client
+    if redis_client:
+        await redis_client.publish(_CHANNEL, json.dumps(event, ensure_ascii=False))
+    else:
+        for q in list(_subscribers):
+            await q.put(event)
+
+
+_ALLOWED_TASK_COLS = frozenset({"status", "log", "started_at", "completed_at"})
 
 
 async def _update_task_db(task_id: str, **kwargs) -> dict:
-    async with aiosqlite.connect(settings.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        fields = ", ".join(f"{k}=?" for k in kwargs)
-        values = list(kwargs.values()) + [task_id]
-        await db.execute(f"UPDATE swarm_tasks SET {fields} WHERE id=?", values)
-        await db.commit()
-        async with db.execute("SELECT * FROM swarm_tasks WHERE id=?", (task_id,)) as cur:
-            row = await cur.fetchone()
-            return dict(row) if row else {}
+    unknown = set(kwargs) - _ALLOWED_TASK_COLS
+    if unknown:
+        raise ValueError(f"Unknown swarm_tasks columns: {unknown}")
+    set_clause = ", ".join(f"{k}=:{k}" for k in kwargs)
+    await database.execute(
+        f"UPDATE swarm_tasks SET {set_clause} WHERE id=:task_id",
+        {**kwargs, "task_id": task_id},
+    )
+    row = await database.fetch_one(
+        "SELECT * FROM swarm_tasks WHERE id=:task_id", {"task_id": task_id}
+    )
+    return dict(row) if row else {}
 
 
 async def _run_worker(task_id: str, instructions: str, role: str):
@@ -86,35 +142,34 @@ async def _run_worker(task_id: str, instructions: str, role: str):
 
 
 async def _maybe_start_next():
-    if len(_running) >= settings.SWARM_MAX_WORKERS:
-        return
-    async with aiosqlite.connect(settings.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with _start_lock:
+        if len(_running) >= settings.SWARM_MAX_WORKERS:
+            return
+        row = await database.fetch_one(
             "SELECT * FROM swarm_tasks WHERE status='backlog' ORDER BY created_at LIMIT 1"
-        ) as cur:
-            row = await cur.fetchone()
+        )
         if not row:
             return
         task_id = row["id"]
         task_dict = dict(row)
-        await db.execute("UPDATE swarm_tasks SET status='ready' WHERE id=?", (task_id,))
-        await db.commit()
-
-    task_dict["status"] = "ready"
-    await _broadcast({"type": "task_update", "task": task_dict})
-    t = asyncio.create_task(_run_worker(task_id, task_dict["instructions"], task_dict["role"]))
-    _running[task_id] = t
+        await database.execute(
+            "UPDATE swarm_tasks SET status='ready' WHERE id=:task_id", {"task_id": task_id}
+        )
+        task_dict["status"] = "ready"
+        await _broadcast({"type": "task_update", "task": task_dict})
+        t = asyncio.create_task(_run_worker(task_id, task_dict["instructions"], task_dict["role"]))
+        _running[task_id] = t
 
 
 async def create_swarm_task(task_id: str, title: str, role: str, instructions: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(settings.DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO swarm_tasks (id, title, role, instructions, status, log, created_at) VALUES (?,?,?,?,?,?,?)",
-            (task_id, title, role, instructions, "backlog", "", now),
-        )
-        await db.commit()
+    await database.execute(
+        """
+        INSERT INTO swarm_tasks (id, title, role, instructions, status, log, created_at)
+        VALUES (:id, :title, :role, :instructions, 'backlog', '', :now)
+        """,
+        {"id": task_id, "title": title, "role": role, "instructions": instructions, "now": now},
+    )
 
     task: dict = {
         "id": task_id, "title": title, "role": role, "instructions": instructions,
@@ -122,14 +177,15 @@ async def create_swarm_task(task_id: str, title: str, role: str, instructions: s
     }
     await _broadcast({"type": "task_update", "task": task})
 
-    if len(_running) < settings.SWARM_MAX_WORKERS:
-        async with aiosqlite.connect(settings.DB_PATH) as db:
-            await db.execute("UPDATE swarm_tasks SET status='ready' WHERE id=?", (task_id,))
-            await db.commit()
-        task["status"] = "ready"
-        await _broadcast({"type": "task_update", "task": task})
-        t = asyncio.create_task(_run_worker(task_id, instructions, role))
-        _running[task_id] = t
+    async with _start_lock:
+        if len(_running) < settings.SWARM_MAX_WORKERS:
+            await database.execute(
+                "UPDATE swarm_tasks SET status='ready' WHERE id=:task_id", {"task_id": task_id}
+            )
+            task["status"] = "ready"
+            await _broadcast({"type": "task_update", "task": task})
+            t = asyncio.create_task(_run_worker(task_id, instructions, role))
+            _running[task_id] = t
 
     return task
 
@@ -149,11 +205,8 @@ async def mark_task_done(task_id: str) -> dict:
 
 
 async def list_swarm_tasks() -> list[dict]:
-    async with aiosqlite.connect(settings.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM swarm_tasks ORDER BY created_at DESC") as cur:
-            rows = await cur.fetchall()
-            return [dict(row) for row in rows]
+    rows = await database.fetch_all("SELECT * FROM swarm_tasks ORDER BY created_at DESC")
+    return [dict(row) for row in rows]
 
 
 def subscribe() -> asyncio.Queue:

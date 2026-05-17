@@ -6,13 +6,18 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: forge
-      POSTGRES_PASSWORD: forge
-      POSTGRES_DB: forge
+      POSTGRES_USER: ${POSTGRES_USER:-forge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forge}
+      POSTGRES_DB: ${POSTGRES_DB:-forge}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # ── Keycloak (SSO / OIDC) ───────────────────────────────────
   keycloak:
@@ -24,16 +29,23 @@ services:
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
       - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://postgres:5432/forge
-      - KC_DB_USERNAME=forge
-      - KC_DB_PASSWORD=forge
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-forge}
+      - KC_DB_USERNAME=${POSTGRES_USER:-forge}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-forge}
       - KC_HTTP_ENABLED=true
       - KC_HOSTNAME_STRICT=false
       - KC_HOSTNAME_STRICT_HTTPS=false
     volumes:
       - ./keycloak:/opt/keycloak/data/import
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8080' 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
     restart: unless-stopped
 
   # ── Qdrant ──────────────────────────────────────────────────
@@ -43,6 +55,11 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # ── Core API (TypeScript / Bun / Hono) ─────────────────────
   core:
@@ -70,7 +87,7 @@ services:
       - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434/api
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-ollama}
       - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-gemma4:e4b}
       - KEYCLOAK_URL=http://keycloak:8080
@@ -84,9 +101,18 @@ services:
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-}
     depends_on:
-      - postgres
-      - qdrant
-      - keycloak
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   # ── ML Module (Python / FastAPI) ────────────────────────────
@@ -100,12 +126,19 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   # ── NetBird Signal ──────────────────────────────────────────
   netbird-signal:
-    image: netbirdio/signal:latest
+    image: netbirdio/signal:0.71.1
     ports:
       - "10000:10000"
     volumes:
@@ -114,7 +147,7 @@ services:
 
   # ── NetBird Management ──────────────────────────────────────
   netbird-management:
-    image: netbirdio/management:latest
+    image: netbirdio/management:0.71.1
     ports:
       - "33073:33073"
     entrypoint: ["/bin/sh", "/etc/netbird/entrypoint.sh"]
@@ -133,7 +166,7 @@ services:
 
   # ── NetBird Dashboard ───────────────────────────────────────
   netbird-dashboard:
-    image: netbirdio/dashboard:latest
+    image: netbirdio/dashboard:0.71.1
     ports:
       - "8088:80"
     environment:
@@ -167,7 +200,14 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - core
+      core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
 volumes:

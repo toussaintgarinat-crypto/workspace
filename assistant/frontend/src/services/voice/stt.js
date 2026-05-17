@@ -1,3 +1,5 @@
+import { apiFetch } from '../api.js';
+
 // ── Web Speech STT ────────────────────────────────────────────────────────────
 
 export class WebSpeechSTT {
@@ -13,9 +15,10 @@ export class WebSpeechSTT {
     this._recognition.onresult = (e) => {
       let interim = '';
       let final = '';
-      for (const result of e.results) {
-        if (result.isFinal) final += result[0].transcript;
-        else interim += result[0].transcript;
+      // Start from e.resultIndex to avoid re-accumulating previous results
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
       }
       if (interim && onInterim) onInterim(interim);
       if (final && onFinal) onFinal(final);
@@ -65,6 +68,7 @@ export class WhisperSTT {
   }
 
   async stopRecording() {
+    if (!this._mediaRecorder) return '';
     return new Promise((resolve) => {
       this._mediaRecorder.onstop = async () => {
         const mimeType = this._mediaRecorder.mimeType || 'audio/webm';
@@ -76,7 +80,7 @@ export class WhisperSTT {
         formData.append('language', this._language);
 
         try {
-          const res = await fetch('/api/voice/transcribe', { method: 'POST', body: formData });
+          const res = await apiFetch('/api/voice/transcribe', { method: 'POST', body: formData });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           resolve(data.text || '');

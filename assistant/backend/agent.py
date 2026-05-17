@@ -60,19 +60,22 @@ class ReActAgent:
             "- Réponds toujours en français sauf demande contraire."
         )
 
-    async def stream_chat(self, messages: list[dict], on_chunk: Callable):
+    async def stream_chat(self, messages: list[dict], on_chunk: Callable, rag_context: str = "", model: str | None = None):
         client = AsyncOpenAI(
-            base_url=settings.GATEWAY_URL,
+            base_url=f"{settings.GATEWAY_URL}/v1",
             api_key=settings.GATEWAY_API_KEY,
         )
 
         tool_names = [t["function"]["name"] for t in self._tools]
-        system_message = {"role": "system", "content": self.build_system_prompt(tool_names)}
+        system_content = self.build_system_prompt(tool_names)
+        if rag_context:
+            system_content += f"\n\n{rag_context}"
+        system_message = {"role": "system", "content": system_content}
         history = [system_message] + list(messages)
 
         for _ in range(MAX_ITERATIONS):
             kwargs: dict = {
-                "model": settings.GATEWAY_MODEL,
+                "model": model or settings.GATEWAY_MODEL,
                 "messages": history,
                 "stream": True,
             }
@@ -148,4 +151,4 @@ class ReActAgent:
                     error = True
 
                 await on_chunk({"type": "tool_result", "name": tool_name, "result": result, "error": error})
-                history.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+                history.append({"role": "tool", "tool_call_id": tc["id"], "content": result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)})

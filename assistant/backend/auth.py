@@ -1,4 +1,5 @@
 import logging
+import time
 
 import httpx
 from jose import jwt, JWTError
@@ -10,17 +11,21 @@ logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 _jwks_cache: dict | None = None
+_jwks_cached_at: float = 0.0
+_JWKS_TTL = 600  # seconds — refresh keys every 10 minutes to handle Keycloak key rotation
 
 
 async def _fetch_jwks() -> dict:
-    global _jwks_cache
-    if _jwks_cache:
+    global _jwks_cache, _jwks_cached_at
+    now = time.monotonic()
+    if _jwks_cache and (now - _jwks_cached_at) < _JWKS_TTL:
         return _jwks_cache
     url = f"{settings.KEYCLOAK_URL}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
     async with httpx.AsyncClient() as client:
         r = await client.get(url, timeout=10)
         r.raise_for_status()
     _jwks_cache = r.json()
+    _jwks_cached_at = time.monotonic()
     return _jwks_cache
 
 

@@ -155,7 +155,7 @@ export const AVAILABLE_PROVIDERS = [
     id: 'gateway', label: 'LiteLLM Gateway',
     models: [
       'openai/gpt-4o', 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4-6',
-      'google/gemini-2.5-flash', 'ollama/llama3.2', 'ollama/llama3.3',
+      'google/gemini-2.5-flash-preview', 'ollama/llama3.2', 'ollama/llama3.3',
     ],
   },
 ]
