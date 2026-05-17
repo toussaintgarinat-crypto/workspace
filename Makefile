@@ -108,8 +108,11 @@ scale-assistant:
 	docker compose -f assistant/docker-compose.yml -p assistant up -d --scale backend=$(N) --no-recreate
 
 # Deploy depuis GHCR (CI/CD) : pull les nouvelles images + recrée les conteneurs
+# En CI : ASSISTANT_IMAGE_TAG=YYYYMMDD-SHA7 make deploy-assistant N=X
 deploy-assistant:
+	ASSISTANT_IMAGE_TAG=$${ASSISTANT_IMAGE_TAG:-latest} \
 	$(_ASSISTANT_ENV) docker compose -f assistant/docker-compose.yml pull
+	ASSISTANT_IMAGE_TAG=$${ASSISTANT_IMAGE_TAG:-latest} \
 	$(_ASSISTANT_ENV) docker compose -f assistant/docker-compose.yml -p assistant up -d --scale backend=$(N)
 
 stop-assistant:
