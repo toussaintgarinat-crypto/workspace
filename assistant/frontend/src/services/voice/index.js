@@ -42,7 +42,7 @@ export class VoiceManager {
 
   _buildTTS() {
     const { ttsProvider, ttsVoice, language } = this._settings;
-    if (ttsProvider === 'openai_tts') return new OpenAITTS({ voice: ttsVoice });
+    if (ttsProvider === 'openai_tts' || ttsProvider === 'kokoro') return new OpenAITTS({ voice: ttsVoice });
     return new WebSpeechTTS({ language, voice: null });
   }
 
