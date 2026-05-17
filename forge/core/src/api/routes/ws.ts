@@ -132,7 +132,7 @@ wsRouter.get(
         if (reactMode) {
           try {
             const result = await runReact(
-              content, sessionId, resolvedProvider, resolvedModel, undefined, skillsContext,
+              content, sessionId, userId!, resolvedProvider, resolvedModel, undefined, skillsContext,
               (step) => ws.send(JSON.stringify({ type: 'react_step', step })),
             )
             await db.insert(messages).values({ sessionId, role: 'assistant', content: result.answer })

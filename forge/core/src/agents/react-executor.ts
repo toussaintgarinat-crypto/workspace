@@ -1,8 +1,12 @@
-import { generateText, tool } from 'ai'
+import { generateText, tool, jsonSchema } from 'ai'
 import { z } from 'zod'
 import { getModel } from '@/llm'
 import { getContext } from '@/memory/retriever'
 import { metrics } from '@/metrics'
+import { db } from '@/db'
+import { mcpServers } from '@/db/schema'
+import { eq, and } from 'drizzle-orm'
+import { listMCPTools, callMCPTool, type MCPServerConfig } from '@/mcp/client'
 
 export interface ReactStep {
   type: 'thought' | 'tool_call' | 'tool_result' | 'answer'
@@ -17,9 +21,42 @@ export interface ReactResult {
   tokensOut: number
 }
 
+function slugify(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+}
+
+async function buildMcpTools(userId: string): Promise<Record<string, any>> {
+  const servers = await db.select().from(mcpServers)
+    .where(and(eq(mcpServers.userId, userId), eq(mcpServers.actif, true)))
+
+  const result: Record<string, any> = {}
+
+  await Promise.all(servers.map(async (server) => {
+    try {
+      const mcpToolList = await listMCPTools(server as MCPServerConfig)
+      const prefix = `mcp__${slugify(server.nom)}`
+      for (const t of mcpToolList) {
+        result[`${prefix}__${t.name}`] = tool({
+          description: `[MCP:${server.nom}] ${t.description}`,
+          parameters: jsonSchema(t.inputSchema as any),
+          execute: async (args) => {
+            metrics.mcp_calls_total++
+            return callMCPTool(server as MCPServerConfig, t.name, args as Record<string, unknown>)
+          },
+        })
+      }
+    } catch {
+      // server unreachable, skip
+    }
+  }))
+
+  return result
+}
+
 export async function runReact(
   input: string,
   sessionId: string,
+  userId: string,
   provider?: string,
   model?: string,
   extraTools?: Record<string, ReturnType<typeof tool>>,
@@ -27,7 +64,10 @@ export async function runReact(
   onStep?: (step: ReactStep) => void,
 ): Promise<ReactResult> {
   const steps: ReactStep[] = []
-  const ragContext = await getContext(input, sessionId)
+  const [ragContext, mcpTools] = await Promise.all([
+    getContext(input, sessionId),
+    buildMcpTools(userId),
+  ])
 
   const push = (step: ReactStep) => {
     steps.push(step)
@@ -80,6 +120,7 @@ export async function runReact(
         }
       },
     }),
+    ...mcpTools,
     ...(extraTools || {}),
   }
 
