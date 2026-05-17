@@ -137,7 +137,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
         payload = jwt.decode(
             token, jwks,
             algorithms=["RS256"],
-            options={"verify_aud": False, "verify_at_hash": False},
+            options={"verify_at_hash": False, "audience": KEYCLOAK_CLIENT_ID},
         )
     except JWTError as exc:
         raise HTTPException(status_code=401, detail=f"Token invalide: {exc}")

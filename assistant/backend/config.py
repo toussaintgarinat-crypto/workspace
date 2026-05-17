@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     KEYCLOAK_URL: str = "http://localhost:8080"
     KEYCLOAK_REALM: str = "forge"
     KEYCLOAK_CLIENT_ID: str = "assistant-app"
+    KEYCLOAK_AUDIENCE: str = ""  # Multi-tenant: valeur = client_id Keycloak (ex: assistant-app). Vide = verify_aud désactivé.
     AUTH_ENABLED: bool = False
     VAULT_SECRET: str = ""  # Required — set a random 32+ char secret; empty default forces explicit config
     SWARM_MAX_WORKERS: int = 3

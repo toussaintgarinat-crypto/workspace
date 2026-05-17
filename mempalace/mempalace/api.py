@@ -40,8 +40,9 @@ ADMIN_TOKEN     = os.environ.get("MEMPALACE_ADMIN_TOKEN", "")
 CORS_ORIGINS    = os.environ.get("CORS_ORIGINS",
                     "http://localhost:3000,http://localhost:8080").split(",")
 # Keycloak dual-auth (optional)
-KEYCLOAK_URL    = os.environ.get("KEYCLOAK_URL", "")
-KEYCLOAK_REALM  = os.environ.get("KEYCLOAK_REALM", "forge")
+KEYCLOAK_URL      = os.environ.get("KEYCLOAK_URL", "")
+KEYCLOAK_REALM    = os.environ.get("KEYCLOAK_REALM", "forge")
+KEYCLOAK_AUDIENCE = os.environ.get("KEYCLOAK_AUDIENCE", "")  # Multi-tenant: valeur = client_id Keycloak. Vide = verify_aud désactivé.
 
 _jwks_cache: dict | None = None
 
@@ -247,7 +248,9 @@ async def _current_user(token: str = Depends(oauth2_scheme)) -> dict:
     if KEYCLOAK_URL:
         try:
             jwks = await _fetch_jwks()
-            payload = jwt.decode(token, jwks, algorithms=["RS256"], options={"verify_aud": False})
+            decode_opts = ({"audience": KEYCLOAK_AUDIENCE}
+                           if KEYCLOAK_AUDIENCE else {"verify_aud": False})
+            payload = jwt.decode(token, jwks, algorithms=["RS256"], options=decode_opts)
             user_id = payload.get("sub")
             if user_id:
                 username = payload.get("preferred_username") or payload.get("nom") or user_id
