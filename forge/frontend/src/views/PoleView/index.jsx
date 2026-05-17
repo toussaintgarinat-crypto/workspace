@@ -22,6 +22,8 @@ import AgentAutonomyPanel from './panels/AgentAutonomyPanel'
 import AutomatePanel from './panels/AutomatePanel'
 import GovernancePanel from './panels/GovernancePanel'
 import DevPoleView from '../DevPoleView'
+import DevTeamPanel from './panels/DevTeamPanel'
+import DAGPanel from './panels/DAGPanel'
 import styles from './PoleView.module.css'
 
 // Outils communs — disponibles sur tous les pôles, regroupés en dropdown
@@ -77,8 +79,8 @@ const DEDICATED_BY_TYPE = {
   },
   dev: {
     inbox:      { label: 'Inbox Inter-Pôles', icon: '📥', component: DevPoleView },
-    devteam:    { label: 'Kanban Dev',        icon: '🗂️', component: null },
-    dag:        { label: 'DAG Tâches',        icon: '🕸️', component: null },
+    devteam:    { label: 'Kanban Dev',        icon: '🗂️', component: DevTeamPanel },
+    dag:        { label: 'DAG Tâches',        icon: '🕸️', component: DAGPanel },
     autonomy:   { label: 'Autonomie agents',  icon: '🧠', component: AgentAutonomyPanel },
     sentinel:   { label: 'RGPD',             icon: '🛡️', component: SentinelPanel },
   },

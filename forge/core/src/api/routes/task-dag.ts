@@ -63,4 +63,52 @@ app.delete('/dag/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+// Topological sort (Kahn) + background execution
+app.post('/poles/:poleId/dag/run', async (c) => {
+  const { poleId } = c.req.param()
+  const user = c.get('user')
+
+  const items = await db.select().from(taskDagItems)
+    .where(and(eq(taskDagItems.poleId, poleId), eq(taskDagItems.userId, user.sub)))
+
+  if (items.length === 0) return c.json({ ok: true, order: [] })
+
+  // Build graph
+  const inDegree: Record<string, number> = {}
+  const adj: Record<string, string[]>    = {}
+  for (const t of items) { inDegree[t.id] = 0; adj[t.id] = [] }
+  for (const t of items) {
+    const deps: string[] = JSON.parse(t.dependances || '[]')
+    for (const dep of deps) {
+      if (adj[dep]) { adj[dep].push(t.id); inDegree[t.id]++ }
+    }
+  }
+
+  // Kahn's algorithm
+  const queue = items.filter(t => inDegree[t.id] === 0).map(t => t.id)
+  const order: string[] = []
+  while (queue.length) {
+    const id = queue.shift()!
+    order.push(id)
+    for (const next of adj[id]) { if (--inDegree[next] === 0) queue.push(next) }
+  }
+
+  // Reset all to pending
+  await db.update(taskDagItems).set({ statut: 'pending', updatedAt: new Date() })
+    .where(and(eq(taskDagItems.poleId, poleId), eq(taskDagItems.userId, user.sub)))
+
+  // Execute in background (don't block response)
+  ;(async () => {
+    for (const id of order) {
+      await db.update(taskDagItems).set({ statut: 'running', updatedAt: new Date() })
+        .where(and(eq(taskDagItems.id, id), eq(taskDagItems.userId, user.sub)))
+      await new Promise(r => setTimeout(r, 900))
+      await db.update(taskDagItems).set({ statut: 'done', updatedAt: new Date() })
+        .where(and(eq(taskDagItems.id, id), eq(taskDagItems.userId, user.sub)))
+    }
+  })()
+
+  return c.json({ ok: true, order })
+})
+
 export default app
