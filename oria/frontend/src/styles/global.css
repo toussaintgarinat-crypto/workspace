@@ -3427,4 +3427,85 @@ input  { font-family: inherit; }
 .conductor-call-form button { background: #5865F2; border: none; border-radius: 6px; color: #fff; padding: 6px 12px; font-size: 13px; cursor: pointer; }
 .conductor-call-form button:disabled { opacity: .5; cursor: not-allowed; }
 .conductor-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; color: #96989d; padding: 60px 20px; font-size: 14px; }
+
+/* ── Feed tabs (S48) ─────────────────────────────────────────── */
+.feed-tabs { display: flex; gap: 4px; margin-top: 12px; }
+.feed-tab {
+  background: none; border: none;
+  color: #72767d; font-size: 13px; font-weight: 600;
+  padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.feed-tab:hover { background: #383a40; color: #dcddde; }
+.feed-tab.actif { background: #4e5058; color: #fff; }
+.feed-tab-count {
+  background: #5865F2; color: #fff;
+  font-size: 10px; font-weight: 700;
+  padding: 1px 5px; border-radius: 8px; line-height: 1.4;
+}
+
+/* ── Social user list ────────────────────────────────────────── */
+.social-list {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 8px 0; overflow-y: auto; flex: 1;
+}
+.user-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  transition: background 0.12s;
+}
+.user-row:hover { background: #383a40; }
+.user-row-avatar { font-size: 22px; flex-shrink: 0; }
+.user-row-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.user-row-nom { font-size: 14px; font-weight: 600; color: #f2f3f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-row-bio { font-size: 12px; color: #72767d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Feed card owner avatar clickable ────────────────────────── */
+.feed-owner-avatar-btn {
+  background: none; border: none; padding: 0;
+  font-size: 14px; cursor: pointer; line-height: 1;
+  border-radius: 4px; transition: transform 0.1s;
+}
+.feed-owner-avatar-btn:hover { transform: scale(1.2); }
+
+/* ── Follow button loading state ─────────────────────────────── */
+.follow-btn-loading { font-size: 12px; color: #72767d; padding: 2px 6px; }
+
+/* ── Public profile modal ────────────────────────────────────── */
+.profile-modal { width: 480px; max-width: 94vw; position: relative; }
+.modal-close {
+  position: absolute; top: 12px; right: 12px;
+  background: none; border: none;
+  color: #72767d; font-size: 16px; cursor: pointer; padding: 4px 6px;
+  border-radius: 4px; line-height: 1;
+}
+.modal-close:hover { color: #dcddde; background: #383a40; }
+.profile-loading { display: flex; align-items: center; justify-content: center; min-height: 120px; }
+.profile-header {
+  display: flex; align-items: flex-start; gap: 14px;
+  margin-bottom: 20px; padding-right: 28px;
+}
+.profile-avatar { font-size: 48px; flex-shrink: 0; line-height: 1; }
+.profile-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.profile-nom { font-size: 20px; font-weight: 700; color: #fff; }
+.profile-bio { font-size: 13px; color: #949ba4; line-height: 1.5; }
+.profile-worlds h4 { font-size: 12px; font-weight: 700; color: #72767d; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px; }
+.profile-worlds-list { display: flex; flex-direction: column; gap: 6px; }
+.profile-world-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  background: #2b2d31; border: 1px solid #3c3f44;
+  transition: background 0.12s;
+}
+.profile-world-card:hover { background: #35373c; }
+.profile-world-banner {
+  width: 36px; height: 36px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.profile-world-body { display: flex; flex-direction: column; min-width: 0; }
+.profile-world-nom { font-size: 14px; font-weight: 600; color: #f2f3f5; }
+.profile-world-desc { font-size: 12px; color: #72767d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.profile-no-worlds { color: #72767d; font-size: 13px; text-align: center; padding: 20px 0; }
 .conductor-empty span { font-size: 40px; }

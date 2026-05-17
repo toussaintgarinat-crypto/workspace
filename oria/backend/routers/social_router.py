@@ -149,3 +149,32 @@ def mark_all_read(db: Session = Depends(get_db), user=Depends(get_current_user))
     db.query(Notification).filter_by(user_id=user["id"], read=False).update({"read": True})
     db.commit()
     return {"ok": True}
+
+
+# ── Public profile ───────────────────────────────────────────────
+
+@router.get("/profile/{user_id}")
+def get_profile(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    target = db.query(User).filter_by(id=user_id).first()
+    if not target:
+        raise HTTPException(404, "Utilisateur introuvable")
+    worlds = (db.query(World)
+              .filter_by(owner_id=user_id, is_public=True, is_garden=False)
+              .order_by(World.created_at.desc())
+              .limit(20).all())
+    return {
+        "id":           target.id,
+        "nom":          target.nom,
+        "avatar_emoji": target.avatar_emoji,
+        "bio":          target.bio or "",
+        "worlds": [
+            {
+                "id":          w.id,
+                "nom":         w.nom,
+                "emoji":       w.emoji,
+                "couleur":     w.couleur,
+                "description": w.description or "",
+            }
+            for w in worlds
+        ],
+    }
