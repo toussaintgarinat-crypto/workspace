@@ -15,7 +15,8 @@ class Document(Base):
     taille          = Column(Integer, default=0)
     file_path       = Column(String, nullable=False)      # chemin stockage brut
     content_md      = Column(Text, default="")            # contenu converti Markitdown
-    indexe_memory   = Column(Boolean, default=False)      # indexé dans MemPalace
-    memory_chunk_ids = Column(Text, default="")           # JSON list des IDs MemPalace
-    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    indexe_memory    = Column(Boolean, default=False)      # indexé dans MemPalace
+    memory_chunk_ids = Column(Text, default="")            # JSON list des IDs MemPalace
+    partage_reseau   = Column(Boolean, default=False)      # visible par les worlds liés
+    created_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

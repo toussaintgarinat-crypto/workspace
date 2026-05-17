@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from database import engine, Base
+from sqlalchemy import text
 import models.world, models.building, models.user, models.quartier, models.dm, models.network
 import models.abonnement
 import models.vote
@@ -25,6 +26,18 @@ from routers.conductor_router import router as conductor_router
 import os
 
 Base.metadata.create_all(bind=engine)
+
+# Migrations manuelles pour colonnes ajoutées après création initiale
+_MIGRATIONS = [
+    "ALTER TABLE documents ADD COLUMN partage_reseau BOOLEAN DEFAULT FALSE",
+]
+with engine.connect() as _conn:
+    for _sql in _MIGRATIONS:
+        try:
+            _conn.execute(text(_sql))
+            _conn.commit()
+        except Exception:
+            _conn.rollback()
 
 app = FastAPI(title="Oria API", version="2.0.0")
 

@@ -168,6 +168,9 @@ export default function ChannelPanel({
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('reseau-docs')}>
             <span>🏘</span> Réseau
           </button>
+          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('shared-zones')}>
+            <span>🔗</span> Zones
+          </button>
           {estProprietaire && (
             <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('llm-config')}>
               <span>🤖</span> Config IA
