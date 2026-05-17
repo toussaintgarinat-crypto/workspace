@@ -1,17 +1,54 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../services/api.js'
+import keycloak from '../keycloak'
+
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export default function NotificationBell() {
   const [count, setCount]     = useState(0)
   const [open, setOpen]       = useState(false)
   const [notifs, setNotifs]   = useState([])
   const panelRef              = useRef(null)
+  const esRef                 = useRef(null)
+  const fallbackRef           = useRef(null)
 
   useEffect(() => {
-    fetchCount()
-    const id = setInterval(fetchCount, 30000)
-    return () => clearInterval(id)
+    startStream()
+    return () => {
+      esRef.current?.close()
+      clearInterval(fallbackRef.current)
+    }
   }, [])
+
+  function startStream() {
+    const token = keycloak.token
+    if (!token) {
+      // Pas encore authentifié — polling classique
+      fetchCount()
+      fallbackRef.current = setInterval(fetchCount, 30000)
+      return
+    }
+    const url = `${BASE}/api/social/notifs/stream?token=${encodeURIComponent(token)}`
+    const es = new EventSource(url)
+    esRef.current = es
+
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (typeof data.count === 'number') setCount(data.count)
+      } catch {}
+    }
+
+    es.onerror = () => {
+      es.close()
+      esRef.current = null
+      // Fallback polling si SSE échoue
+      if (!fallbackRef.current) {
+        fetchCount()
+        fallbackRef.current = setInterval(fetchCount, 30000)
+      }
+    }
+  }
 
   useEffect(() => {
     if (!open) return

@@ -8,11 +8,15 @@ version: '3.9'
 
 services:
 
+  redis:
+    ports: []    # interne uniquement
+
   backend:
     environment:
       KEYCLOAK_URL: "http://10.10.10.10:8080"
       KEYCLOAK_REALM: "oria"
       KEYCLOAK_CLIENT_ID: "oria-app"
+      REDIS_URL: "redis://redis:6379"
       ALLOWED_ORIGINS: "https://oria.${DOMAIN}"
       MATRIX_SERVER_NAME: "matrix.${DOMAIN}"
     volumes:

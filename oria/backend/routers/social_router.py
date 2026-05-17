@@ -1,22 +1,32 @@
 """
 Réseau social : follow/unfollow, fil d'activité, notifications.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
-from routers.auth import get_current_user
+from routers.auth import get_current_user, _get_jwks, KEYCLOAK_CLIENT_ID
 from models.social import UserFollow, Notification
 from models.user import User
 from models.world import World
-import json, uuid
+from sse_starlette.sse import EventSourceResponse
+from jose import jwt, JWTError
+import asyncio, json, uuid, os
 
 router = APIRouter()
+
+_NOTIF_CHANNEL = "notifs:{user_id}"
+
+
+async def _publish_notif(user_id: str, count: int):
+    from redis_client import redis_client
+    if redis_client:
+        await redis_client.publish(_NOTIF_CHANNEL.format(user_id=user_id), json.dumps({"count": count}))
 
 
 # ── Follow ───────────────────────────────────────────────────────
 
 @router.post("/follow/{user_id}")
-def follow_user(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def follow_user(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if user_id == user["id"]:
         raise HTTPException(400, "Tu ne peux pas te suivre toi-même")
     if db.query(UserFollow).filter_by(follower_id=user["id"], followed_id=user_id).first():
@@ -35,6 +45,8 @@ def follow_user(user_id: str, db: Session = Depends(get_db), user=Depends(get_cu
         }),
     ))
     db.commit()
+    count = db.query(Notification).filter_by(user_id=user_id, read=False).count()
+    await _publish_notif(user_id, count)
     return {"ok": True}
 
 
@@ -132,6 +144,59 @@ def get_notifs(db: Session = Depends(get_db), user=Depends(get_current_user)):
 def unread_count(db: Session = Depends(get_db), user=Depends(get_current_user)):
     count = db.query(Notification).filter_by(user_id=user["id"], read=False).count()
     return {"count": count}
+
+
+@router.get("/notifs/stream")
+async def notifs_stream(request: Request, token: str = "", db: Session = Depends(get_db)):
+    # Valide le JWT depuis le query param (EventSource ne supporte pas les headers)
+    if not token:
+        raise HTTPException(401, "Token manquant")
+    try:
+        jwks = _get_jwks()
+        payload = jwt.decode(token, jwks, algorithms=["RS256"],
+                             options={"verify_at_hash": False, "audience": KEYCLOAK_CLIENT_ID})
+    except JWTError as exc:
+        raise HTTPException(401, f"Token invalide: {exc}")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(401, "Token invalide (sub manquant)")
+
+    from redis_client import redis_client
+
+    async def generator():
+        # Envoie le count actuel au démarrage
+        count = db.query(Notification).filter_by(user_id=user_id, read=False).count()
+        yield json.dumps({"count": count})
+
+        if redis_client:
+            channel = _NOTIF_CHANNEL.format(user_id=user_id)
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(channel)
+            try:
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        msg = await asyncio.wait_for(pubsub.get_message(ignore_subscribe_messages=True), timeout=25)
+                        if msg and msg.get("type") == "message":
+                            yield msg["data"]
+                        else:
+                            yield json.dumps({"type": "ping"})
+                    except asyncio.TimeoutError:
+                        yield json.dumps({"type": "ping"})
+            finally:
+                await pubsub.unsubscribe(channel)
+                await pubsub.aclose()
+        else:
+            # Fallback sans Redis : polling toutes les 30s
+            while True:
+                if await request.is_disconnected():
+                    break
+                await asyncio.sleep(30)
+                count = db.query(Notification).filter_by(user_id=user_id, read=False).count()
+                yield json.dumps({"count": count})
+
+    return EventSourceResponse(generator())
 
 
 @router.patch("/notifs/{notif_id}/read")

@@ -1,5 +1,13 @@
 version: "3.9"
 services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   db:
     image: postgres:16-alpine
     environment:
@@ -34,8 +42,11 @@ services:
       MATRIX_AS_TOKEN: ${MATRIX_AS_TOKEN:?Définir MATRIX_AS_TOKEN dans .env (openssl rand -hex 32)}
       MATRIX_HS_TOKEN: ${MATRIX_HS_TOKEN:?Définir MATRIX_HS_TOKEN dans .env (openssl rand -hex 32)}
       FORGE_TOKEN: ${FORGE_TOKEN:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       livekit:
         condition: service_started

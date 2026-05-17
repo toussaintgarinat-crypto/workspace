@@ -114,6 +114,7 @@ async def conductor_ws(websocket: WebSocket):
 
 # ── Seeding des 5 agents résidents pôle ────────────────────────
 from contextlib import asynccontextmanager
+from redis_client import init_redis, close_redis
 
 _POLE_AGENTS = [
     ("Finance",   "💰", "Expert financier — budgets, P&L, trésorerie, reporting CFO."),
@@ -148,6 +149,15 @@ def _seed_resident_agents():
 
 
 _seed_resident_agents()
+
+
+@asynccontextmanager
+async def lifespan(app):
+    await init_redis()
+    yield
+    await close_redis()
+
+app.router.lifespan_context = lifespan
 
 
 @app.get("/")
