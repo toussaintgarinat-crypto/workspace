@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { streamChat, uploadFile, confirmDocument, summarizeConversation, fetchAvailableModels, syncConversation, searchConversations, deleteConversationCloud, addMempalaceDrawer, mempalaceSearch } from '../services/api.js';
 import { VoiceManager, loadVoiceSettings, saveVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
 import Tooltip from '../components/Tooltip.jsx';
+import ComparePanel from './ComparePanel.jsx';
 
 // ── Session store ─────────────────────────────────────────────────────────────
 
@@ -906,6 +907,9 @@ export default function ChatView() {
   const [selectedModel, setSelectedModel] = useState(
     () => localStorage.getItem('ws_selected_model') || ''
   );
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareTriggerKey, setCompareTriggerKey] = useState(0);
+  const [compareUserText, setCompareUserText] = useState('');
 
   // Voice state
   const [isRecording, setIsRecording] = useState(false);
@@ -1209,6 +1213,14 @@ export default function ChatView() {
     const trimmed = text.trim();
     if (!trimmed || isStreaming || isUploading) return;
 
+    if (compareMode) {
+      setInput('');
+      if (textareaRef.current) textareaRef.current.style.height = '42px';
+      setCompareUserText(trimmed);
+      setCompareTriggerKey(k => k + 1);
+      return;
+    }
+
     // Auto-title from first user message
     const session = sessions.find(s => s.id === currentId);
     if (session && session.title === 'Nouvelle conversation') {
@@ -1330,6 +1342,15 @@ export default function ChatView() {
     }
   }
 
+  function handleUseResponse(userText, content) {
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: userText },
+      { role: 'assistant', content, tools: [] },
+    ]);
+    setCompareUserText('');
+  }
+
   // Keep the ref up-to-date every render so onAutoSend always calls the latest version
   sendMessageRef.current = sendMessage;
 
@@ -1381,9 +1402,41 @@ export default function ChatView() {
           <span style={s.sessionTitleDisplay}>
             {currentSession?.title || 'Conversation'}
           </span>
+          <Tooltip label={compareMode ? 'Désactiver la comparaison' : 'Comparer des modèles côte-à-côte'} position="bottom">
+            <button
+              style={{
+                marginLeft: 'auto',
+                background: compareMode ? '#7c3aed22' : 'none',
+                border: `1px solid ${compareMode ? '#7c3aed66' : '#2a2a2a'}`,
+                borderRadius: '6px',
+                color: compareMode ? '#a78bfa' : '#6b6b6b',
+                cursor: 'pointer',
+                padding: '4px 10px',
+                fontSize: '13px',
+                lineHeight: 1,
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+              onClick={() => {
+                setCompareMode(m => !m);
+                setCompareUserText('');
+                setCompareTriggerKey(0);
+              }}
+            >
+              ⚖
+            </button>
+          </Tooltip>
         </div>
 
-        {isEmpty ? (
+        {compareMode ? (
+          <ComparePanel
+            messages={messages}
+            availableModels={availableModels}
+            triggerKey={compareTriggerKey}
+            userText={compareUserText}
+            onUseResponse={handleUseResponse}
+          />
+        ) : isEmpty ? (
           <div style={s.emptyState}>
             <p style={s.emptyTitle}>Bonjour, comment puis-je vous aider ?</p>
             <div style={s.suggestions}>
@@ -1419,7 +1472,7 @@ export default function ChatView() {
           </div>
         )}
 
-        {availableModels.length > 0 && (
+        {!compareMode && availableModels.length > 0 && (
           <div style={{ padding: '4px 20px 0', background: '#0f0f0f', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '11px', color: '#555', flexShrink: 0 }}>Modèle</span>
             <select
@@ -1475,6 +1528,7 @@ export default function ChatView() {
               isSpeaking ? '🔊 Réponse en cours…' :
               isRecording && isPTT ? '🎙️ Parlez… (relâchez pour envoyer)' :
               isRecording ? '🎙️ Écoute… (phrase détectée → envoi auto)' :
+              compareMode ? '⚖ Comparer ce message sur tous les modèles…' :
               'Envoyer un message… (Shift+Entrée pour nouvelle ligne)'
             }
             disabled={isStreaming}
