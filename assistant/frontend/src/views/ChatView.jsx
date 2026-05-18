@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { streamChat, uploadFile, confirmDocument, summarizeConversation, fetchAvailableModels } from '../services/api.js';
+import { streamChat, uploadFile, confirmDocument, summarizeConversation, fetchAvailableModels, syncConversation, searchConversations, deleteConversationCloud, addMempalaceDrawer, mempalaceSearch } from '../services/api.js';
 import { VoiceManager, loadVoiceSettings, saveVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
 import Tooltip from '../components/Tooltip.jsx';
 
@@ -115,6 +115,55 @@ const s = {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
+  },
+  searchBox: {
+    margin: '8px 8px 4px',
+    position: 'relative',
+  },
+  searchInput: {
+    width: '100%',
+    padding: '5px 8px 5px 26px',
+    background: '#1a1a1a',
+    border: '1px solid #2a2a2a',
+    borderRadius: '6px',
+    color: '#e0e0e0',
+    fontSize: '12px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: '7px',
+    top: '6px',
+    color: '#555',
+    fontSize: '13px',
+    pointerEvents: 'none',
+  },
+  storageBar: {
+    display: 'flex',
+    gap: '4px',
+    padding: '8px 8px',
+    borderTop: '1px solid #1c1c1c',
+    flexShrink: 0,
+  },
+  storageBtn: (active) => ({
+    flex: 1,
+    padding: '4px 2px',
+    background: active ? '#7c3aed33' : 'transparent',
+    border: `1px solid ${active ? '#7c3aed66' : '#222'}`,
+    borderRadius: '6px',
+    color: active ? '#c4b5fd' : '#555',
+    cursor: 'pointer',
+    fontSize: '13px',
+    textAlign: 'center',
+  }),
+  snippetText: {
+    fontSize: '11px',
+    color: '#555',
+    marginTop: '2px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   sessionList: { flex: 1, overflowY: 'auto', padding: '8px 6px' },
   sessionItem: (active) => ({
@@ -744,7 +793,19 @@ function Message({ msg, onUploadConfirm, onUploadCancel }) {
 
 // ── SessionPanel ──────────────────────────────────────────────────────────────
 
-function SessionPanel({ sessions, currentId, onSelect, onNew, onDelete }) {
+const STORAGE_MODES = [
+  { value: 'local', icon: '💾', title: 'Local' },
+  { value: 'cloud', icon: '☁️', title: 'Cloud' },
+  { value: 'mempalace', icon: '🧠', title: 'MemPalace' },
+];
+
+function SessionPanel({
+  sessions, currentId, onSelect, onNew, onDelete,
+  searchQuery, onSearchChange, searchResults, searchLoading,
+  storageMode, onStorageModeChange,
+}) {
+  const listToShow = searchResults !== null ? searchResults : [...sessions].reverse();
+
   return (
     <div style={s.panelInner}>
       <div style={s.panelHeader}>
@@ -752,27 +813,62 @@ function SessionPanel({ sessions, currentId, onSelect, onNew, onDelete }) {
           <span>＋</span> Nouvelle conversation
         </button>
       </div>
+
+      <div style={s.searchBox}>
+        <span style={s.searchIcon}>{searchLoading ? '…' : '⌕'}</span>
+        <input
+          style={s.searchInput}
+          value={searchQuery}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder="Rechercher…"
+        />
+      </div>
+
       <div style={s.sessionList}>
-        {[...sessions].reverse().map(session => (
+        {listToShow.map(session => (
           <div
             key={session.id}
             style={s.sessionItem(session.id === currentId)}
-            onClick={() => onSelect(session.id)}
+            onClick={() => session.id && onSelect(session.id)}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={s.sessionTitle(session.id === currentId)}>
                 {session.title}
               </div>
-              <div style={s.sessionDate}>{relativeDate(session.createdAt)}</div>
+              {session.snippet ? (
+                <div style={s.snippetText}>{session.snippet}</div>
+              ) : (
+                <div style={s.sessionDate}>{relativeDate(session.createdAt || session.updated_at)}</div>
+              )}
             </div>
-            <button
-              style={s.deleteBtn}
-              onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
-              title="Supprimer"
-            >
-              ×
-            </button>
+            {searchResults === null && (
+              <button
+                style={s.deleteBtn}
+                onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
+                title="Supprimer"
+              >
+                ×
+              </button>
+            )}
           </div>
+        ))}
+        {searchResults !== null && searchResults.length === 0 && (
+          <div style={{ padding: '16px 10px', color: '#444', fontSize: '12px', textAlign: 'center' }}>
+            Aucun résultat
+          </div>
+        )}
+      </div>
+
+      <div style={s.storageBar}>
+        {STORAGE_MODES.map(m => (
+          <button
+            key={m.value}
+            style={s.storageBtn(storageMode === m.value)}
+            title={m.title}
+            onClick={() => onStorageModeChange(m.value)}
+          >
+            {m.icon}
+          </button>
         ))}
       </div>
     </div>
@@ -840,10 +936,79 @@ export default function ChatView() {
   }, []);
 
   const [isUploading, setIsUploading] = useState(false);
+  const [storageMode, setStorageMode] = useState(
+    () => localStorage.getItem('ws_storage_mode') || 'local'
+  );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const cloudSyncRef = useRef(null);
 
   useEffect(() => {
     fetchAvailableModels().then(models => setAvailableModels(models));
   }, []);
+
+  // Cloud sync — debounced 2s after session changes
+  useEffect(() => {
+    if (storageMode !== 'cloud' || !currentId || isStreaming) return;
+    const session = sessions.find(s => s.id === currentId);
+    if (!session || session.messages.length === 0) return;
+    clearTimeout(cloudSyncRef.current);
+    cloudSyncRef.current = setTimeout(() => {
+      syncConversation(session).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(cloudSyncRef.current);
+  }, [sessions, storageMode, currentId, isStreaming]);
+
+  // Search — debounced 300ms, mode-aware
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        if (storageMode === 'local') {
+          const q = searchQuery.toLowerCase();
+          const results = sessions
+            .filter(s =>
+              s.title.toLowerCase().includes(q) ||
+              s.messages.some(m => (m.content || '').toLowerCase().includes(q))
+            )
+            .map(s => {
+              const matchMsg = s.messages.find(m => (m.content || '').toLowerCase().includes(q));
+              const content = matchMsg?.content || '';
+              const idx = content.toLowerCase().indexOf(q);
+              const start = Math.max(0, idx - 60);
+              const end = Math.min(content.length, idx + q.length + 60);
+              const snippet = (start > 0 ? '…' : '') + content.slice(start, end) + (end < content.length ? '…' : '');
+              return { id: s.id, title: s.title, snippet, createdAt: s.createdAt };
+            });
+          setSearchResults(results);
+        } else if (storageMode === 'cloud') {
+          const data = await searchConversations(searchQuery);
+          setSearchResults((data.results || []).map(r => ({ ...r, createdAt: r.updated_at })));
+        } else if (storageMode === 'mempalace') {
+          const data = await mempalaceSearch(searchQuery, 'Input', 20);
+          const results = (data?.results || [])
+            .filter(r => r.metadata?.room === 'conversations')
+            .map(r => ({
+              id: r.metadata?.session_id || null,
+              title: r.metadata?.title || 'Conversation',
+              snippet: (r.content || '').slice(0, 120),
+              createdAt: r.metadata?.added_at,
+            }));
+          setSearchResults(results);
+        }
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, storageMode, sessions]);
 
   // Cleanup VoiceManager on unmount
   useEffect(() => {
@@ -931,7 +1096,27 @@ export default function ChatView() {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }
 
+  function pushSessionToMempalace(session) {
+    if (!session || session.messages.length < 2) return;
+    const lines = [`# ${session.title}`, `Date: ${session.createdAt}`, ''];
+    for (const msg of session.messages) {
+      if (msg.role === 'user' || msg.role === 'assistant') {
+        lines.push(`**${msg.role === 'user' ? 'Vous' : 'Assistant'}:** ${msg.content || ''}`);
+        lines.push('');
+      }
+    }
+    addMempalaceDrawer(lines.join('\n'), 'Input', 'conversations', {
+      session_id: session.id,
+      title: session.title,
+      message_count: String(session.messages.length),
+    }).catch(() => {});
+  }
+
   function handleNewSession() {
+    if (storageMode === 'mempalace') {
+      const current = sessions.find(s => s.id === currentId);
+      if (current && current.messages.length > 0) pushSessionToMempalace(current);
+    }
     const session = newSession();
     setSessions(prev => {
       const updated = [...prev, session];
@@ -940,14 +1125,19 @@ export default function ChatView() {
     });
     setCurrentId(session.id);
     setMessages([]);
+    setSearchQuery('');
   }
 
   function handleSelectSession(id) {
     if (id === currentId) return;
     setCurrentId(id);
+    setSearchQuery('');
   }
 
   function handleDeleteSession(id) {
+    if (storageMode === 'cloud') {
+      deleteConversationCloud(id).catch(() => {});
+    }
     setSessions(prev => {
       const updated = prev.filter(s => s.id !== id);
       if (!updated.length) {
@@ -1168,6 +1358,15 @@ export default function ChatView() {
           onSelect={handleSelectSession}
           onNew={handleNewSession}
           onDelete={handleDeleteSession}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchResults={searchResults}
+          searchLoading={searchLoading}
+          storageMode={storageMode}
+          onStorageModeChange={(mode) => {
+            setStorageMode(mode);
+            localStorage.setItem('ws_storage_mode', mode);
+          }}
         />
       </div>
 
@@ -1254,7 +1453,7 @@ export default function ChatView() {
             ref={fileInputRef}
             type="file"
             style={{ display: 'none' }}
-            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.mp3,.wav,.m4a,.ogg,.webm,.txt,.md"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp,.mp3,.wav,.m4a,.ogg,.webm,.txt,.md,.csv,.html"
             onChange={handleFileSelect}
           />
           <Tooltip label="Joindre un fichier" position="top">

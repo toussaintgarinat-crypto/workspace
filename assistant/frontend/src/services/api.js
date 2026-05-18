@@ -234,6 +234,49 @@ export async function summarizeConversation(messages, sessionId = '') {
   return res.json();
 }
 
+// ── Conversations (S59 — Cloud storage mode) ──────────────────────────────────
+
+export async function syncConversation(session) {
+  const res = await apiFetch(`${BASE_URL}/conversations/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: session.id,
+      title: session.title,
+      messages: session.messages,
+      created_at: session.createdAt || new Date().toISOString(),
+    }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function searchConversations(query, limit = 20) {
+  const res = await apiFetch(`${BASE_URL}/conversations/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, limit }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteConversationCloud(id) {
+  const res = await apiFetch(`${BASE_URL}/conversations/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function addMempalaceDrawer(content, wing = 'Input', room = 'conversations', metadata = {}) {
+  const res = await apiFetch(`${BASE_URL}/mempalace/drawers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, wing, room, metadata }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function fetchAvailableModels() {
   try {
     const res = await apiFetch(`${BASE_URL}/models`);

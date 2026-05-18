@@ -20,6 +20,7 @@ from db import (
     get_voice_settings, upsert_voice_settings,
     get_proactive_config, upsert_proactive_config,
     get_alerts, mark_alert_read, count_unread_alerts,
+    upsert_conversation, list_conversations, delete_conversation_db, search_conversations,
 )
 from auth import get_current_user, require_admin
 from vault import encrypt, decrypt, list_vault, get_vault_token, upsert_vault_token, delete_vault_token
@@ -349,6 +350,68 @@ async def mempalace_entries(wing: str, limit: int = 50, user: dict = Depends(get
     if not r.is_success:
         raise HTTPException(status_code=r.status_code, detail=r.text)
     return r.json()
+
+
+class MempalaceDrawerBody(BaseModel):
+    content: str
+    wing: str = "Input"
+    room: str = "conversations"
+    metadata: dict | None = None
+
+
+@app.post("/mempalace/drawers", status_code=201)
+async def mempalace_add_drawer(body: MempalaceDrawerBody, user: dict = Depends(get_current_user)):
+    url, token = await _get_mempalace_creds(user)
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(
+            f"{url}/api/drawers",
+            json={"content": body.content, "wing": body.wing, "room": body.room,
+                  "metadata": body.metadata or {}},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    if not r.is_success:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json()
+
+
+# ── Conversations (S59 — Cloud storage mode) ──────────────────────────────────
+
+class ConversationSyncBody(BaseModel):
+    id: str
+    title: str
+    messages: list[dict]
+    created_at: str = ""
+
+
+class ConversationSearchBody(BaseModel):
+    query: str
+    limit: int = 20
+
+
+@app.post("/conversations/sync")
+async def conversations_sync(body: ConversationSyncBody, user: dict = Depends(get_current_user)):
+    user_sub = user.get("sub", "anonymous")
+    return await upsert_conversation(body.id, user_sub, body.title, body.messages)
+
+
+@app.get("/conversations")
+async def conversations_list(user: dict = Depends(get_current_user)):
+    user_sub = user.get("sub", "anonymous")
+    return await list_conversations(user_sub)
+
+
+@app.post("/conversations/search")
+async def conversations_search(body: ConversationSearchBody, user: dict = Depends(get_current_user)):
+    user_sub = user.get("sub", "anonymous")
+    results = await search_conversations(body.query, user_sub, body.limit)
+    return {"results": results}
+
+
+@app.delete("/conversations/{conversation_id}")
+async def conversations_delete(conversation_id: str, user: dict = Depends(get_current_user)):
+    user_sub = user.get("sub", "anonymous")
+    await delete_conversation_db(conversation_id, user_sub)
+    return {"deleted": conversation_id}
 
 
 # ── Swarm ────────────────────────────────────────────────────────────────────

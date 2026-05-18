@@ -17,24 +17,48 @@ IPCRA_WINGS = ["Input", "Projet", "Casquette", "Ressource", "Archive"]
 async def extract_text(content: bytes, filename: str, mime_type: str | None) -> str:
     mime = mime_type or mimetypes.guess_type(filename)[0] or ""
 
+    # Image + audio: LLM-based extraction is higher quality
+    if mime.startswith("image/"):
+        return await _extract_image(content, filename, mime)
+    if mime.startswith("audio/") or filename.lower().endswith(
+        (".mp3", ".wav", ".m4a", ".ogg", ".webm")
+    ):
+        return await _extract_audio(content, filename)
+
+    # Try MarkItDown first (covers PDF, Word, Excel, PowerPoint, HTML, CSV…)
+    text = _try_markitdown(content, filename)
+    if text:
+        return text
+
+    # Fallbacks for environments without MarkItDown
     if mime == "application/pdf" or filename.lower().endswith(".pdf"):
         return _extract_pdf(content)
-
     if mime in (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/msword",
     ) or filename.lower().endswith((".docx", ".doc")):
         return _extract_docx(content)
 
-    if mime.startswith("image/"):
-        return await _extract_image(content, filename, mime)
-
-    if mime.startswith("audio/") or filename.lower().endswith(
-        (".mp3", ".wav", ".m4a", ".ogg", ".webm")
-    ):
-        return await _extract_audio(content, filename)
-
     return content.decode("utf-8", errors="replace")
+
+
+def _try_markitdown(content: bytes, filename: str) -> str | None:
+    try:
+        from markitdown import MarkItDown
+        suffix = os.path.splitext(filename)[1] or ".bin"
+        tmp_path = None
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            result = MarkItDown().convert(tmp_path)
+            text = (result.text_content or "").strip()
+            return text if text else None
+        finally:
+            if tmp_path:
+                os.unlink(tmp_path)
+    except Exception:
+        return None
 
 
 def _extract_pdf(content: bytes) -> str:

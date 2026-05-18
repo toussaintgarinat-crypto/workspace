@@ -16,6 +16,23 @@ async def init_db():
     await database.connect()
 
     await database.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY,
+            user_sub TEXT NOT NULL DEFAULT 'anonymous',
+            title TEXT NOT NULL DEFAULT 'Conversation',
+            messages TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    await database.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_user_sub ON conversations (user_sub)"
+    )
+    await database.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations (updated_at)"
+    )
+
+    await database.execute("""
         CREATE TABLE IF NOT EXISTS connections (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -246,3 +263,68 @@ async def mark_alert_read(alert_id: str):
 async def count_unread_alerts() -> int:
     row = await database.fetch_one("SELECT COUNT(*) as cnt FROM proactive_alerts WHERE read = 0")
     return row["cnt"] if row else 0
+
+
+# ── Conversations (S59 — Cloud storage mode) ──────────────────────────────────
+
+async def upsert_conversation(id: str, user_sub: str, title: str, messages: list) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    messages_json = json.dumps(messages, ensure_ascii=False)
+    await database.execute(
+        """
+        INSERT INTO conversations (id, user_sub, title, messages, created_at, updated_at)
+        VALUES (:id, :user_sub, :title, :messages, :now, :now)
+        ON CONFLICT (id) DO UPDATE SET
+            title = excluded.title,
+            messages = excluded.messages,
+            updated_at = excluded.updated_at
+        """,
+        {"id": id, "user_sub": user_sub, "title": title, "messages": messages_json, "now": now},
+    )
+    return {"id": id, "user_sub": user_sub, "title": title, "updated_at": now}
+
+
+async def list_conversations(user_sub: str) -> list[dict]:
+    rows = await database.fetch_all(
+        "SELECT id, title, created_at, updated_at FROM conversations WHERE user_sub = :user_sub ORDER BY updated_at DESC",
+        {"user_sub": user_sub},
+    )
+    return [dict(r) for r in rows]
+
+
+async def delete_conversation_db(id: str, user_sub: str):
+    await database.execute(
+        "DELETE FROM conversations WHERE id = :id AND user_sub = :user_sub",
+        {"id": id, "user_sub": user_sub},
+    )
+
+
+async def search_conversations(query: str, user_sub: str, limit: int = 20) -> list[dict]:
+    like = f"%{query}%"
+    rows = await database.fetch_all(
+        """
+        SELECT id, title, created_at, updated_at, messages
+        FROM conversations
+        WHERE user_sub = :user_sub AND (title LIKE :q OR messages LIKE :q)
+        ORDER BY updated_at DESC
+        LIMIT :limit
+        """,
+        {"user_sub": user_sub, "q": like, "limit": limit},
+    )
+    results = []
+    q_lower = query.lower()
+    for row in rows:
+        d = dict(row)
+        msgs = json.loads(d.pop("messages", "[]"))
+        snippet = ""
+        for msg in msgs:
+            content = msg.get("content") or ""
+            if q_lower in content.lower():
+                idx = content.lower().index(q_lower)
+                start = max(0, idx - 60)
+                end = min(len(content), idx + len(query) + 60)
+                snippet = ("…" if start > 0 else "") + content[start:end] + ("…" if end < len(content) else "")
+                break
+        d["snippet"] = snippet
+        results.append(d)
+    return results
