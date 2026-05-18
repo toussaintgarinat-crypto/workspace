@@ -6,7 +6,7 @@ from database import get_db
 from models.world import World, Member
 from models.abonnement import MembreAbonnement
 from models.user import User
-from routers.auth import get_current_user, _get_jwks
+from routers.auth import get_current_user, _get_jwks, KEYCLOAK_CLIENT_ID
 from jose import jwt, JWTError
 import uuid
 import services.matrix_service as matrix
@@ -50,7 +50,7 @@ def get_current_user_optional(authorization: str = Header(None)):
         payload = jwt.decode(
             authorization[7:], jwks,
             algorithms=["RS256"],
-            options={"verify_aud": False, "verify_at_hash": False},
+            options={"verify_at_hash": False, "audience": KEYCLOAK_CLIENT_ID},
         )
         user_id = payload.get("sub")
         nom = payload.get("nom") or payload.get("preferred_username") or payload.get("name")
