@@ -633,6 +633,25 @@ export const taskDagItems = pgTable('task_dag_items', {
   dependances: text('dependances').default('[]'),
   statut:      text('statut', { enum: ['pending', 'running', 'done', 'error'] }).default('pending'),
   criticite:   text('criticite', { enum: ['faible', 'normale', 'haute', 'critique'] }).default('normale'),
+  nodeType:    text('node_type', { enum: ['agent', 'prompt'] }).default('agent'),
+  posX:        real('pos_x').default(0),
+  posY:        real('pos_y').default(0),
+  promptText:  text('prompt_text').default(''),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ── Pipeline Templates ────────────────────────────────────────
+export const pipelineTemplates = pgTable('pipeline_templates', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  userId:      text('user_id'),
+  nom:         text('nom').notNull(),
+  description: text('description').default(''),
+  icon:        text('icon').default('🔄'),
+  categorie:   text('categorie').default(''),
+  nodes:       text('nodes').default('[]'),
+  edges:       text('edges').default('[]'),
+  isPublic:    boolean('is_public').default(false),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
   updatedAt:   timestamp('updated_at').defaultNow().notNull(),
 })

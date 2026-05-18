@@ -71,6 +71,7 @@ import hitlRouter from '@/api/routes/hitl'
 import repetitionRouter from '@/api/routes/repetition'
 import metricsRouter from '@/api/routes/metrics'
 import { conseilRouter } from '@/api/routes/conseil'
+import pipelineTemplatesRouter from '@/api/routes/pipeline-templates'
 
 export const app = new Hono()
 
@@ -157,4 +158,5 @@ app.route('/api',                  skillsRouter)
 app.route('/api',                  hitlRouter)
 app.route('/api',                  repetitionRouter)
 app.route('/api/conseil',          conseilRouter)
+app.route('/api',                  pipelineTemplatesRouter)
 app.route('/',                     metricsRouter)

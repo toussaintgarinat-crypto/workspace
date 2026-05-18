@@ -23,6 +23,10 @@ app.post('/poles/:poleId/dag', zValidator('json', z.object({
   agentOwner:  z.string().optional(),
   dependances: z.array(z.string()).optional(),
   criticite:   z.enum(['faible', 'normale', 'haute', 'critique']).optional(),
+  nodeType:    z.enum(['agent', 'prompt']).optional(),
+  posX:        z.number().optional(),
+  posY:        z.number().optional(),
+  promptText:  z.string().optional(),
 })), async (c) => {
   const { poleId } = c.req.param()
   const user = c.get('user')
@@ -33,6 +37,10 @@ app.post('/poles/:poleId/dag', zValidator('json', z.object({
     agentOwner: body.agentOwner ?? '',
     dependances: JSON.stringify(body.dependances ?? []),
     criticite: body.criticite ?? 'normale',
+    nodeType:  body.nodeType ?? 'agent',
+    posX:      body.posX ?? 0,
+    posY:      body.posY ?? 0,
+    promptText: body.promptText ?? '',
   }).returning()
   return c.json(item, 201)
 })
@@ -43,6 +51,10 @@ app.patch('/dag/:id', zValidator('json', z.object({
   agentOwner:  z.string().optional(),
   dependances: z.array(z.string()).optional(),
   criticite:   z.enum(['faible', 'normale', 'haute', 'critique']).optional(),
+  nodeType:    z.enum(['agent', 'prompt']).optional(),
+  posX:        z.number().optional(),
+  posY:        z.number().optional(),
+  promptText:  z.string().optional(),
 })), async (c) => {
   const { id } = c.req.param()
   const user = c.get('user')
