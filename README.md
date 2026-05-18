@@ -48,10 +48,13 @@ Suite de services open-source pour déployer votre propre assistant IA, mémoire
 cp .env.example .env
 # Éditer .env — au minimum : OPENROUTER_API_KEY et les secrets (voir ci-dessous)
 
-# 2. Démarrer tous les services
+# 2. Générer les .env des sous-services (traduction des préfixes ORIA_* / MEMPALACE_*)
+make seed-envs
+
+# 3. Démarrer tous les services
 make start
 
-# 3. Vérifier
+# 4. Vérifier
 make logs-gateway   # gateway prêt sur :4000
 make logs-assistant # assistant prêt sur :8200 / :8300
 ```
