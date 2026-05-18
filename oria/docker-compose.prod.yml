@@ -11,7 +11,18 @@ services:
   redis:
     ports: []    # interne uniquement
 
+  synapse_db:
+    restart: unless-stopped
+    ports: []
+
+  synapse:
+    restart: unless-stopped
+
+  livekit:
+    restart: unless-stopped
+
   backend:
+    restart: unless-stopped
     environment:
       KEYCLOAK_URL: "http://10.10.10.10:8080"
       KEYCLOAK_REALM: "oria"
@@ -24,6 +35,7 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
@@ -38,12 +50,15 @@ services:
     ports:
       - "3000:80"
     volumes: []    # pas de hot-reload en prod
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   db:
     ports: []    # interne uniquement
-
-  synapse_db:
-    ports: []
 
 volumes:
   uploads_data:

@@ -173,6 +173,10 @@ async def lifespan(app):
 app.router.lifespan_context = lifespan
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.get("/")
 def root():
     return {"app": "Oria", "status": "ok", "version": "3.0.0"}
