@@ -2,7 +2,7 @@ services:
 
   # ── Prometheus — scrape backend + redis ──────────────────────
   prometheus:
-    image: prom/prometheus:v2.53.0
+    image: prom/prometheus:v2.55.1
     restart: unless-stopped
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -23,7 +23,7 @@ services:
 
   # ── Redis Exporter ────────────────────────────────────────────
   redis-exporter:
-    image: oliver006/redis_exporter:v1.62.0
+    image: oliver006/redis_exporter:v1.83.0
     restart: unless-stopped
     environment:
       - REDIS_ADDR=redis://redis:6379
@@ -40,7 +40,7 @@ services:
 
   # ── Postgres Exporter (optionnel — activé si DATABASE_URL set) ─
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:v0.19.1
     restart: unless-stopped
     environment:
       - DATA_SOURCE_NAME=${ASSISTANT_DATABASE_URL:-}
@@ -59,7 +59,7 @@ services:
 
   # ── Grafana — dashboards + Keycloak OIDC ─────────────────────
   grafana:
-    image: grafana/grafana:11.1.0
+    image: grafana/grafana:11.6.14+security-04
     restart: unless-stopped
     ports:
       - "3100:3000"
