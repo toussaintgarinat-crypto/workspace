@@ -85,3 +85,6 @@ Bun.serve({ fetch: handler, port: PORT, hostname: '0.0.0.0' })
 console.log(`[ollama-bridge] Écoute sur http://0.0.0.0:${PORT}`)
 console.log(`[ollama-bridge] → Ollama: ${OLLAMA_URL}`)
 console.log(`[ollama-bridge] Auth: ${API_KEY ? '🔒 clé API active' : '🔓 ouverte (pas de clé)'}`)
+if (ALLOWED_ORIGINS.includes('*') && !API_KEY) {
+  console.warn('[ollama-bridge] ⚠  ALLOWED_ORIGINS=* sans BRIDGE_API_KEY — acceptable en LAN/NetBird uniquement, pas en prod publique')
+}

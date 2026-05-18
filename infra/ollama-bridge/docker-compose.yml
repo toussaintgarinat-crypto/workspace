@@ -16,6 +16,9 @@ services:
       OLLAMA_URL:       ${OLLAMA_URL:-http://localhost:11434}
       BRIDGE_PORT:      ${BRIDGE_PORT:-11436}
       BRIDGE_API_KEY:   ${BRIDGE_API_KEY:-}
+      # SÉCURITÉ : remplacer '*' par les origines exactes si le bridge est exposé hors LAN/NetBird
+      # Exemple : ALLOWED_ORIGINS=http://192.168.1.10:3000,https://app.example.com
+      # '*' est acceptable uniquement si le bridge est isolé (réseau local ou VPN NetBird uniquement)
       ALLOWED_ORIGINS:  ${ALLOWED_ORIGINS:-*}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BRIDGE_PORT:-11436}/api/tags >/dev/null 2>&1 || exit 1"]
