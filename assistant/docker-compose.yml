@@ -2,7 +2,7 @@ services:
 
   # ── Redis — pub/sub SSE + leader election scheduler ──────────
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.9-alpine
     restart: unless-stopped
     networks:
       - default
@@ -32,7 +32,7 @@ services:
       - GATEWAY_API_KEY=${GATEWAY_API_KEY:-sk-assistant}
       - GATEWAY_MASTER_KEY=${GATEWAY_MASTER_KEY:-}
       - GATEWAY_MODEL=${GATEWAY_MODEL:-openai/gpt-4o}
-      - CORS_ORIGINS=http://localhost:8300,http://localhost:3000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8300,http://localhost:3000}
       - KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:8080}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
       - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-assistant-app}
