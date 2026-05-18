@@ -67,7 +67,7 @@ app.post('/brief/generate', async (c) => {
     const orgId    = c.req.header('X-Org-ID') ?? undefined
     const preset   = await resolveLlmConfig({ ventureId: body.ventureId, orgId })
     const provider = preset?.provider ?? process.env.DEFAULT_LLM_PROVIDER ?? 'ollama'
-    const modelId  = preset?.model    ?? process.env.DEFAULT_LLM_MODEL    ?? 'gemma4:e4b'
+    const modelId  = preset?.model    ?? process.env.DEFAULT_LLM_MODEL    ?? 'llama3.2'
 
     const prompt = `Tu es l'assistant IA de Forge, OS d'entreprise autonome.
 Le fondateur commence sa journée. Génère un brief matinal concis en français (300 mots max) pour ${scope}.

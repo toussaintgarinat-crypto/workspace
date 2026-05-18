@@ -2,7 +2,7 @@ services:
 
   # ── PostgreSQL pour Keycloak ─────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine
     environment:
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_secret}
@@ -19,7 +19,7 @@ services:
   # ── Keycloak (realms forge + oria) ──────────────────────────
   # Importe automatiquement forge-realm.json et oria-realm.json au 1er lancement
   keycloak:
-    image: quay.io/keycloak/keycloak:26.2
+    image: quay.io/keycloak/keycloak:26.2.5
     command: start-dev --import-realm
     ports:
       - "8080:8080"
