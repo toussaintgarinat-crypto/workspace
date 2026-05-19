@@ -55,6 +55,8 @@ services:
     volumes:
       - assistant_data:/data
       - model_cache:/root/.cache
+      - shared_data:/shared
+      - storage_data:/storage
     networks:
       - default
       - observability_net
@@ -89,9 +91,40 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # ── Updater sidecar — déclenche docker compose pull+up sans SSH ──────────────
+  # Démarrage : docker compose --profile sidecars up -d
+  updater:
+    profiles: [sidecars]
+    build:
+      context: ./sidecars/updater
+    environment:
+      - COMPOSE_DIR=${COMPOSE_DIR:-/opt/assistant}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - shared_data:/shared
+      - ${COMPOSE_DIR:-/opt/assistant}:/workspace:ro
+    networks:
+      - default
+    restart: unless-stopped
+
+  # ── Disk collector sidecar — usage disque sans SSH ────────────────────────
+  # Démarrage : docker compose --profile sidecars up -d
+  disk_collector:
+    profiles: [sidecars]
+    build:
+      context: ./sidecars/disk-collector
+    environment:
+      - STORAGE_PATH=${STORAGE_PATH:-/host/opt/assistant/storage}
+    volumes:
+      - /:/host:ro
+      - storage_data:/storage
+    restart: unless-stopped
+
 volumes:
   assistant_data:
   model_cache:
+  shared_data:
+  storage_data:
 
 networks:
   default:

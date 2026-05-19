@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import os
+import re
 import uuid as _uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -908,6 +910,76 @@ async def admin_status(_: dict = Depends(require_admin)):
         "pubsub_channels": pubsub_channels,
         "sse_clients": sse_stats,
     }
+
+
+# ── Admin — Updater + Disk ───────────────────────────────────────────────────
+
+_SHARED_DIR = "/shared"
+_STORAGE_DIR = "/storage"
+_TAG_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
+
+
+class UpdateBody(BaseModel):
+    target_tag: str = "latest"
+
+
+@app.post("/admin/update")
+async def admin_update(body: UpdateBody, _: dict = Depends(require_admin)):
+    if not _TAG_RE.match(body.target_tag):
+        raise HTTPException(status_code=400, detail="Format de tag invalide")
+    if not os.path.isdir(_SHARED_DIR):
+        raise HTTPException(status_code=503, detail="Module updater non installé")
+
+    status_file = os.path.join(_SHARED_DIR, "update-status")
+    request_file = os.path.join(_SHARED_DIR, "update-request")
+
+    if os.path.exists(status_file):
+        os.remove(status_file)
+
+    with open(request_file, "w") as fh:
+        json.dump({"target_tag": body.target_tag}, fh)
+
+    return {"accepted": True, "target_tag": body.target_tag}
+
+
+@app.get("/admin/update/stream")
+async def admin_update_stream(_: dict = Depends(require_admin)):
+    if not os.path.isdir(_SHARED_DIR):
+        raise HTTPException(status_code=503, detail="Module updater non installé")
+
+    async def generator():
+        status_file = os.path.join(_SHARED_DIR, "update-status")
+        timeout = 180
+        elapsed = 0
+
+        while elapsed < timeout:
+            if os.path.exists(status_file):
+                try:
+                    with open(status_file) as fh:
+                        data = json.load(fh)
+                    yield json.dumps(data, ensure_ascii=False)
+                    if data.get("status") in ("done", "error"):
+                        return
+                except Exception:
+                    pass
+            await asyncio.sleep(1)
+            elapsed += 1
+
+        yield json.dumps({"status": "error", "message": "Timeout dépassé.", "progress": 0})
+
+    return EventSourceResponse(generator())
+
+
+@app.get("/admin/disk")
+async def admin_disk(_: dict = Depends(require_admin)):
+    disk_file = os.path.join(_STORAGE_DIR, "disk-info.json")
+    if not os.path.exists(disk_file):
+        raise HTTPException(status_code=503, detail="Module disk-collector non installé")
+    try:
+        with open(disk_file) as fh:
+            return json.load(fh)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
