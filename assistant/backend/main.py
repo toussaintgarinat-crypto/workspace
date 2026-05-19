@@ -34,6 +34,8 @@ import proactive as proactive_mod
 import push as push_mod
 import rag as rag_mod
 import summarizer as summarizer_mod
+import persona as persona_mod
+import scheduled as scheduled_mod
 from notifiers import inapp as inapp_notifier
 
 logging.basicConfig(level=logging.INFO)
@@ -48,7 +50,9 @@ async def lifespan(app: FastAPI):
     await inapp_notifier.start()
     await swarm_mod.start_redis_listener()
     proactive_mod.start_scheduler()
+    scheduled_mod.start_scheduler()
     yield
+    scheduled_mod.stop_scheduler()
     proactive_mod.stop_scheduler()
     await inapp_notifier.stop()
     await close_redis()
@@ -945,6 +949,9 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
                     {"role": "user", "content": refined_data["refined_prompt"]}
                 ]
 
+    persona = await persona_mod.get_persona(user.get("sub", "anonymous"))
+    persona_context = persona_mod.build_persona_context(persona)
+
     agent = ReActAgent(active)
 
     async def event_generator():
@@ -978,7 +985,11 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
 
         async def run_agent():
             try:
-                await agent.stream_chat(effective_messages, on_chunk, rag_context=rag_context, model=body.model)
+                await agent.stream_chat(
+                    effective_messages, on_chunk,
+                    rag_context=rag_context, model=body.model,
+                    persona_context=persona_context,
+                )
             except Exception as e:
                 logger.error("Agent error: %s", e)
                 await queue.put({"type": "error", "content": str(e)})
@@ -997,6 +1008,14 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
                     asyncio.create_task(_post_oria_trace(
                         active, raw_prompt, refined_data, tools_used, "".join(result_parts)
                     ))
+                from openai import AsyncOpenAI
+                llm = AsyncOpenAI(
+                    base_url=f"{settings.GATEWAY_URL}/v1",
+                    api_key=settings.GATEWAY_API_KEY,
+                )
+                asyncio.create_task(
+                    persona_mod.infer_from_conversation(effective_messages, user.get("sub", "anonymous"), llm)
+                )
                 yield json.dumps({"type": "done"}, ensure_ascii=False)
                 break
             yield json.dumps(item, ensure_ascii=False)
@@ -1004,6 +1023,85 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
         await task
 
     return EventSourceResponse(event_generator())
+
+
+# ── Persona (S66) ────────────────────────────────────────────────────────────
+
+class PersonaBody(BaseModel):
+    display_name: str | None = None
+    role: str | None = None
+    expertise_domains: list[str] | None = None
+    tone: str | None = None
+    language: str | None = None
+    custom_instructions: str | None = None
+
+
+@app.get("/persona")
+async def get_persona_endpoint(user: dict = Depends(get_current_user)):
+    return await persona_mod.get_persona(user.get("sub", "anonymous"))
+
+
+@app.post("/persona")
+async def save_persona_endpoint(body: PersonaBody, user: dict = Depends(get_current_user)):
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    persona = await persona_mod.upsert_persona(user.get("sub", "anonymous"), **fields)
+    connections = await get_connections()
+    active = [c for c in connections if c.get("enabled")]
+    asyncio.create_task(persona_mod.sync_to_mempalace(persona, active))
+    return persona
+
+
+# ── Scheduled Prompts (S69) ───────────────────────────────────────────────────
+
+class ScheduledBody(BaseModel):
+    title: str
+    prompt: str
+    schedule: str
+
+
+class ScheduledUpdateBody(BaseModel):
+    title: str | None = None
+    prompt: str | None = None
+    schedule: str | None = None
+    active: bool | None = None
+
+
+@app.get("/scheduled")
+async def scheduled_list(_: dict = Depends(get_current_user)):
+    return await scheduled_mod.list_scheduled()
+
+
+@app.post("/scheduled", status_code=201)
+async def scheduled_create(body: ScheduledBody, _: dict = Depends(get_current_user)):
+    return await scheduled_mod.create_scheduled(body.title, body.prompt, body.schedule)
+
+
+@app.get("/scheduled/{prompt_id}")
+async def scheduled_get(prompt_id: str, _: dict = Depends(get_current_user)):
+    row = await scheduled_mod.get_scheduled(prompt_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    return row
+
+
+@app.patch("/scheduled/{prompt_id}")
+async def scheduled_update(prompt_id: str, body: ScheduledUpdateBody, _: dict = Depends(get_current_user)):
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    row = await scheduled_mod.update_scheduled(prompt_id, **fields)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    return row
+
+
+@app.delete("/scheduled/{prompt_id}")
+async def scheduled_delete(prompt_id: str, _: dict = Depends(get_current_user)):
+    await scheduled_mod.delete_scheduled(prompt_id)
+    return {"deleted": prompt_id}
+
+
+@app.post("/scheduled/{prompt_id}/run")
+async def scheduled_run_now(prompt_id: str, _: dict = Depends(get_current_user)):
+    return await scheduled_mod.run_now(prompt_id)
 
 
 def _default_url(app_type: str) -> str:

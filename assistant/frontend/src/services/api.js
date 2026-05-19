@@ -285,6 +285,64 @@ export async function fetchAvailableModels() {
   } catch { return []; }
 }
 
+// ── Persona (S66) ─────────────────────────────────────────────────────────────
+
+export async function getPersona() {
+  const res = await apiFetch(`${BASE_URL}/persona`);
+  if (!res.ok) return {};
+  return res.json();
+}
+
+export async function savePersona(data) {
+  const res = await apiFetch(`${BASE_URL}/persona`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── Scheduled Prompts (S69) ───────────────────────────────────────────────────
+
+export async function listScheduled() {
+  const res = await apiFetch(`${BASE_URL}/scheduled`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createScheduled(data) {
+  const res = await apiFetch(`${BASE_URL}/scheduled`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function updateScheduled(id, data) {
+  const res = await apiFetch(`${BASE_URL}/scheduled/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteScheduled(id) {
+  const res = await apiFetch(`${BASE_URL}/scheduled/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function runScheduled(id) {
+  const res = await apiFetch(`${BASE_URL}/scheduled/${id}/run`, { method: 'POST' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function streamChat(
   messages,
   onChunk,

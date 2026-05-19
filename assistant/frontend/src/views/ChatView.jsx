@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { streamChat, uploadFile, confirmDocument, summarizeConversation, fetchAvailableModels, syncConversation, searchConversations, deleteConversationCloud, addMempalaceDrawer, mempalaceSearch } from '../services/api.js';
+import { streamChat, uploadFile, confirmDocument, summarizeConversation, fetchAvailableModels, syncConversation, searchConversations, deleteConversationCloud, addMempalaceDrawer, mempalaceSearch, swarmCreateTask } from '../services/api.js';
 import { VoiceManager, loadVoiceSettings, saveVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
 import Tooltip from '../components/Tooltip.jsx';
 import ComparePanel from './ComparePanel.jsx';
+import ArtifactPanel from '../components/ArtifactPanel.jsx';
 
 // ── Session store ─────────────────────────────────────────────────────────────
 
@@ -61,6 +62,13 @@ const SUGGESTIONS = [
   'Classer une note',
   'Créer une tâche Forge',
   'Lister mes mondes Oria',
+];
+
+const SLASH_COMMANDS = [
+  { cmd: '/search', label: '/search <requête>', desc: 'Chercher dans MemPalace' },
+  { cmd: '/save', label: '/save <contenu>', desc: 'Sauvegarder dans MemPalace' },
+  { cmd: '/task', label: '/task <titre>', desc: 'Créer une tâche Swarm' },
+  { cmd: '/summarize', label: '/summarize', desc: 'Résumer la conversation' },
 ];
 
 const IPCRA_WINGS = ['Input', 'Projet', 'Casquette', 'Ressource', 'Archive'];
@@ -205,7 +213,7 @@ const s = {
   },
 
   // Chat area
-  chat: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  chat: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' },
   header: {
     padding: '10px 16px',
     borderBottom: '1px solid #1e1e1e',
@@ -750,7 +758,11 @@ function ToolCard({ tool }) {
 
 // ── Message ───────────────────────────────────────────────────────────────────
 
-function Message({ msg, onUploadConfirm, onUploadCancel }) {
+function hasCodeBlock(content) {
+  return /```[\s\S]*?```/.test(content || '');
+}
+
+function Message({ msg, onUploadConfirm, onUploadCancel, onOpenArtifact }) {
   return (
     <div className="msg-enter" style={s.msgWrapper(msg.role)}>
       <div style={{ maxWidth: '72%' }}>
@@ -761,6 +773,24 @@ function Message({ msg, onUploadConfirm, onUploadCancel }) {
                 <div className="markdown-body">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
+              )}
+              {msg.content && hasCodeBlock(msg.content) && (
+                <button
+                  style={{
+                    marginTop: '8px',
+                    background: '#7c3aed22',
+                    border: '1px solid #7c3aed44',
+                    borderRadius: '6px',
+                    color: '#a78bfa',
+                    cursor: 'pointer',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                  }}
+                  onClick={() => onOpenArtifact(msg.content)}
+                >
+                  ◻ Ouvrir le canvas
+                </button>
               )}
               {msg.uploadProposal && (
                 <UploadProposal
@@ -910,6 +940,9 @@ export default function ChatView() {
   const [compareMode, setCompareMode] = useState(false);
   const [compareTriggerKey, setCompareTriggerKey] = useState(0);
   const [compareUserText, setCompareUserText] = useState('');
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashMenuIdx, setSlashMenuIdx] = useState(0);
+  const [artifactContent, setArtifactContent] = useState(null);
 
   // Voice state
   const [isRecording, setIsRecording] = useState(false);
@@ -1212,6 +1245,7 @@ export default function ChatView() {
   async function sendMessage(text) {
     const trimmed = text.trim();
     if (!trimmed || isStreaming || isUploading) return;
+    setShowSlashMenu(false);
 
     if (compareMode) {
       setInput('');
@@ -1219,6 +1253,61 @@ export default function ChatView() {
       setCompareUserText(trimmed);
       setCompareTriggerKey(k => k + 1);
       return;
+    }
+
+    // ── Slash commands ────────────────────────────────────────────────────────
+    if (trimmed.startsWith('/')) {
+      const parts = trimmed.slice(1).split(' ');
+      const cmd = parts[0].toLowerCase();
+      const arg = parts.slice(1).join(' ').trim();
+      setInput('');
+      if (textareaRef.current) textareaRef.current.style.height = '42px';
+
+      if (cmd === 'summarize') {
+        triggerSummarize();
+        return;
+      }
+      if (cmd === 'search') {
+        if (!arg) { setToast({ msg: 'Usage : /search <requête>', type: 'error' }); setTimeout(() => setToast(null), 3000); return; }
+        const userMsg = { role: 'user', content: trimmed };
+        setMessages(prev => [...prev, userMsg]);
+        try {
+          const results = await mempalaceSearch(arg, null, 8);
+          const items = results?.results || results || [];
+          const reply = items.length
+            ? `**Résultats MemPalace pour « ${arg} »**\n\n` + items.map((r, i) => `${i + 1}. ${r.content?.slice(0, 200) || JSON.stringify(r)}`).join('\n\n')
+            : `Aucun résultat pour « ${arg} ».`;
+          setMessages(prev => [...prev, { role: 'assistant', content: reply, tools: [] }]);
+        } catch {
+          setMessages(prev => [...prev, { role: 'assistant', content: 'Erreur lors de la recherche.', tools: [] }]);
+        }
+        return;
+      }
+      if (cmd === 'save') {
+        if (!arg) { setToast({ msg: 'Usage : /save <contenu>', type: 'error' }); setTimeout(() => setToast(null), 3000); return; }
+        const userMsg = { role: 'user', content: trimmed };
+        setMessages(prev => [...prev, userMsg]);
+        try {
+          await addMempalaceDrawer(arg, 'Input', 'notes', { source: 'slash_command' });
+          setMessages(prev => [...prev, { role: 'assistant', content: `Sauvegardé dans MemPalace : « ${arg.slice(0, 80)}${arg.length > 80 ? '…' : ''} »`, tools: [] }]);
+        } catch {
+          setMessages(prev => [...prev, { role: 'assistant', content: 'Erreur lors de la sauvegarde.', tools: [] }]);
+        }
+        return;
+      }
+      if (cmd === 'task') {
+        if (!arg) { setToast({ msg: 'Usage : /task <titre>', type: 'error' }); setTimeout(() => setToast(null), 3000); return; }
+        const userMsg = { role: 'user', content: trimmed };
+        setMessages(prev => [...prev, userMsg]);
+        try {
+          await swarmCreateTask(arg, 'assistant', `Tâche créée via /task : ${arg}`);
+          setMessages(prev => [...prev, { role: 'assistant', content: `Tâche créée : **${arg}**`, tools: [] }]);
+        } catch {
+          setMessages(prev => [...prev, { role: 'assistant', content: 'Erreur lors de la création de tâche.', tools: [] }]);
+        }
+        return;
+      }
+      // Unknown command — fall through to LLM
     }
 
     // Auto-title from first user message
@@ -1355,6 +1444,18 @@ export default function ChatView() {
   sendMessageRef.current = sendMessage;
 
   function handleKeyDown(e) {
+    if (showSlashMenu) {
+      const filtered = SLASH_COMMANDS.filter(c => c.cmd.startsWith(input.split(' ')[0]));
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSlashMenuIdx(i => (i + 1) % filtered.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSlashMenuIdx(i => (i - 1 + filtered.length) % filtered.length); return; }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        const chosen = filtered[slashMenuIdx];
+        if (chosen) { setInput(chosen.cmd + ' '); setShowSlashMenu(false); }
+        return;
+      }
+      if (e.key === 'Escape') { setShowSlashMenu(false); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage(input);
@@ -1370,6 +1471,7 @@ export default function ChatView() {
   const isEmpty = messages.length === 0 && !isStreaming;
 
   return (
+    <>
     <div style={s.root}>
       {/* Sessions panel */}
       <div style={s.panel(showPanel)}>
@@ -1459,6 +1561,7 @@ export default function ChatView() {
                 onUploadCancel={msg.uploadProposal?.status === 'pending'
                   ? () => handleUploadCancel(msg.uploadProposal._id)
                   : undefined}
+                onOpenArtifact={setArtifactContent}
               />
             ))}
             {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && (
@@ -1501,6 +1604,44 @@ export default function ChatView() {
           </div>
         )}
 
+        {showSlashMenu && (() => {
+          const filtered = SLASH_COMMANDS.filter(c => c.cmd.startsWith(input.split(' ')[0]));
+          return filtered.length > 0 ? (
+            <div style={{
+              position: 'absolute',
+              bottom: '80px',
+              left: '20px',
+              background: '#1a1a1a',
+              border: '1px solid #2a2a2a',
+              borderRadius: '10px',
+              padding: '6px',
+              zIndex: 100,
+              minWidth: '260px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            }}>
+              {filtered.map((c, i) => (
+                <div
+                  key={c.cmd}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '7px',
+                    background: i === slashMenuIdx ? '#7c3aed22' : 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                  onMouseEnter={() => setSlashMenuIdx(i)}
+                  onClick={() => { setInput(c.cmd + ' '); setShowSlashMenu(false); textareaRef.current?.focus(); }}
+                >
+                  <span style={{ fontSize: '13px', color: '#a78bfa', fontFamily: 'monospace' }}>{c.cmd}</span>
+                  <span style={{ fontSize: '12px', color: '#6b6b6b' }}>{c.desc}</span>
+                </div>
+              ))}
+            </div>
+          ) : null;
+        })()}
+
         <div style={s.inputArea}>
           <input
             ref={fileInputRef}
@@ -1522,7 +1663,14 @@ export default function ChatView() {
             ref={textareaRef}
             style={s.textarea}
             value={input}
-            onChange={(e) => { setInput(e.target.value); adjustTextarea(); }}
+            onChange={(e) => {
+              const val = e.target.value;
+              setInput(val);
+              adjustTextarea();
+              const word = val.split(' ')[0];
+              setShowSlashMenu(val.startsWith('/') && !val.includes(' '));
+              setSlashMenuIdx(0);
+            }}
             onKeyDown={handleKeyDown}
             placeholder={
               isSpeaking ? '🔊 Réponse en cours…' :
@@ -1636,5 +1784,12 @@ export default function ChatView() {
         </div>
       </div>
     </div>
+    {artifactContent && (
+      <ArtifactPanel
+        content={artifactContent}
+        onClose={() => setArtifactContent(null)}
+      />
+    )}
+    </>
   );
 }

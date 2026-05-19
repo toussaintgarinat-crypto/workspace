@@ -46,9 +46,9 @@ class ReActAgent:
     def build_tools(self) -> list[dict]:
         return self._tools
 
-    def build_system_prompt(self, tool_names: list[str]) -> str:
+    def build_system_prompt(self, tool_names: list[str], persona_context: str = "") -> str:
         tools_section = "\n".join(f"- {n}" for n in tool_names) if tool_names else "Aucun outil disponible."
-        return (
+        base = (
             "Tu es un assistant personnel intelligent connecté aux apps de ton utilisateur.\n\n"
             "Outils disponibles :\n"
             f"{tools_section}\n\n"
@@ -59,15 +59,18 @@ class ReActAgent:
             "- Si un outil échoue, informe l'utilisateur et continue sans lui.\n"
             "- Réponds toujours en français sauf demande contraire."
         )
+        if persona_context:
+            base += persona_context
+        return base
 
-    async def stream_chat(self, messages: list[dict], on_chunk: Callable, rag_context: str = "", model: str | None = None):
+    async def stream_chat(self, messages: list[dict], on_chunk: Callable, rag_context: str = "", model: str | None = None, persona_context: str = ""):
         client = AsyncOpenAI(
             base_url=f"{settings.GATEWAY_URL}/v1",
             api_key=settings.GATEWAY_API_KEY,
         )
 
         tool_names = [t["function"]["name"] for t in self._tools]
-        system_content = self.build_system_prompt(tool_names)
+        system_content = self.build_system_prompt(tool_names, persona_context)
         if rag_context:
             system_content += f"\n\n{rag_context}"
         system_message = {"role": "system", "content": system_content}

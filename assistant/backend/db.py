@@ -123,6 +123,11 @@ async def init_db():
         )
     """)
 
+    from persona import init_persona_table
+    from scheduled import init_scheduled_table
+    await init_persona_table()
+    await init_scheduled_table()
+
 
 async def get_connections() -> list[dict]:
     rows = await database.fetch_all("SELECT * FROM connections ORDER BY created_at")

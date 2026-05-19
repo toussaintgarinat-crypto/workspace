@@ -10,6 +10,8 @@ import SwarmView from './views/SwarmView.jsx';
 import VoiceView from './views/VoiceView.jsx';
 import AlertsView from './views/AlertsView.jsx';
 import AdminView from './views/AdminView.jsx';
+import PersonaView from './views/PersonaView.jsx';
+import ScheduledView from './views/ScheduledView.jsx';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -170,6 +172,20 @@ export default function App() {
             </span>
           )}
         </button>
+        <button
+          style={s.navBtn(view === 'persona')}
+          onClick={() => setView('persona')}
+          title="Mon profil"
+        >
+          🎭
+        </button>
+        <button
+          style={s.navBtn(view === 'scheduled')}
+          onClick={() => setView('scheduled')}
+          title="Prompts planifiés"
+        >
+          ⏰
+        </button>
         {isAdmin() && (
           <button
             style={{ ...s.navBtn(view === 'admin'), marginTop: isEnabled() ? undefined : 'auto' }}
@@ -198,6 +214,8 @@ export default function App() {
         {view === 'voice' && <VoiceView />}
         {view === 'alerts' && <AlertsView />}
         {view === 'admin' && <AdminView />}
+        {view === 'persona' && <PersonaView />}
+        {view === 'scheduled' && <ScheduledView />}
       </main>
       <InstallBanner />
     </div>
