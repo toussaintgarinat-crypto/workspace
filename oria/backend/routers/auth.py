@@ -158,6 +158,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
 class MiseAJourProfil(BaseModel):
     nom: Optional[str] = None
     avatar_emoji: Optional[str] = None
+    bio: Optional[str] = None
+    is_public: Optional[bool] = None
+    documents_partageables_par_defaut: Optional[bool] = None
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
@@ -166,7 +169,16 @@ class MiseAJourProfil(BaseModel):
 def get_me(user=Depends(get_current_user), db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.id == user["id"]).first()
     return {
-        "user": user,
+        "user": {
+            **user,
+            "bio": db_user.bio or "" if db_user else "",
+            "is_public": db_user.is_public if db_user else True,
+            "documents_partageables_par_defaut": db_user.documents_partageables_par_defaut if db_user else False,
+            "setup_completed_at": (
+                db_user.setup_completed_at.isoformat()
+                if (db_user and db_user.setup_completed_at) else None
+            ),
+        },
         "matrix_user_id":      db_user.matrix_user_id if db_user else None,
         "matrix_access_token": db_user.matrix_access_token if db_user else None,
     }
@@ -187,9 +199,45 @@ def update_profil(data: MiseAJourProfil, user=Depends(get_current_user), db: Ses
         db_user.nom = data.nom.strip()
     if data.avatar_emoji is not None:
         db_user.avatar_emoji = data.avatar_emoji
+    if data.bio is not None:
+        db_user.bio = data.bio
+    if data.is_public is not None:
+        db_user.is_public = data.is_public
+    if data.documents_partageables_par_defaut is not None:
+        db_user.documents_partageables_par_defaut = data.documents_partageables_par_defaut
     db.commit()
     db.refresh(db_user)
-    return {"user": {"id": db_user.id, "nom": db_user.nom, "avatar_emoji": db_user.avatar_emoji}}
+    return {
+        "user": {
+            "id": db_user.id, "nom": db_user.nom, "avatar_emoji": db_user.avatar_emoji,
+            "bio": db_user.bio or "", "is_public": db_user.is_public,
+            "documents_partageables_par_defaut": db_user.documents_partageables_par_defaut,
+            "setup_completed_at": (
+                db_user.setup_completed_at.isoformat() if db_user.setup_completed_at else None
+            ),
+        }
+    }
+
+
+@router.post("/me/setup-complete")
+def mark_setup_complete(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    from datetime import datetime, timezone
+    db_user = db.query(User).filter(User.id == user["id"]).first()
+    if not db_user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    db_user.setup_completed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"setup_completed_at": db_user.setup_completed_at.isoformat()}
+
+
+@router.delete("/me/setup-complete")
+def reset_setup(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.id == user["id"]).first()
+    if not db_user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    db_user.setup_completed_at = None
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/me/2fa-status")

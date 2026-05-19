@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import MainLayout from './components/MainLayout.jsx'
+import EasySetupWizard from './components/EasySetupWizard.jsx'
 import { initMatrixClient, startMatrixClient, stopMatrixClient } from './services/matrixClient.js'
 
 function AppInner() {
-  const { user, loading, logout, matrixCreds } = useAuth()
+  const { user, loading, logout, matrixCreds, refreshUser } = useAuth()
 
   useEffect(() => {
     if (!matrixCreds?.userId || !matrixCreds?.accessToken) return
@@ -23,7 +24,11 @@ function AppInner() {
 
   if (!user) return null // Keycloak redirige automatiquement via login-required
 
-  return <MainLayout moi={user} onMoiUpdate={() => {}} onDeconnexion={logout} />
+  if (!user.setup_completed_at) {
+    return <EasySetupWizard user={user} onComplete={refreshUser} />
+  }
+
+  return <MainLayout moi={user} onMoiUpdate={refreshUser} onDeconnexion={logout} />
 }
 
 export default function App() {

@@ -150,6 +150,21 @@ export default function SettingsModal({ moi, onSauvegarde, onDeconnexion, onFerm
             )}
           </div>
 
+          {/* Tour de découverte */}
+          <div style={{ marginTop: 20, borderTop: '1px solid #383a40', paddingTop: 16 }}>
+            <p style={{ fontSize: 11, color: '#72767d', margin: '0 0 8px' }}>Onboarding</p>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={async () => {
+                await api.del('/auth/me/setup-complete')
+                window.location.reload()
+              }}
+            >
+              🧭 Refaire le tour de bienvenue
+            </button>
+          </div>
+
           {/* RGPD */}
           <div style={{ marginTop: 20, borderTop: '1px solid #383a40', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <p style={{ fontSize: 11, color: '#72767d', margin: '0 0 8px' }}>Données personnelles (RGPD)</p>

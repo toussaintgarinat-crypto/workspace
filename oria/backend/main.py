@@ -30,6 +30,10 @@ Base.metadata.create_all(bind=engine)
 # Migrations manuelles pour colonnes ajoutées après création initiale
 _MIGRATIONS = [
     "ALTER TABLE documents ADD COLUMN partage_reseau BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE users ADD COLUMN setup_completed_at TIMESTAMP",
+    "ALTER TABLE users ADD COLUMN documents_partageables_par_defaut BOOLEAN DEFAULT FALSE",
+    # Backfill : les comptes créés avant S72 sont considérés comme ayant déjà fait le tour
+    "UPDATE users SET setup_completed_at = created_at WHERE setup_completed_at IS NULL",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:

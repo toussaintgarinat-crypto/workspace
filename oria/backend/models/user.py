@@ -24,3 +24,6 @@ class User(Base):
     mempalace_url        = Column(String, default="http://localhost:8765")
     # Jardin secret
     jardin_world_id      = Column(String, nullable=True)
+    # Onboarding
+    setup_completed_at              = Column(DateTime, nullable=True)
+    documents_partageables_par_defaut = Column(Boolean, default=False)

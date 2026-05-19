@@ -114,6 +114,26 @@ def update_world_meta(
     return {"ok": True}
 
 
+# ── Utilisateurs publics (suggestions onboarding) ───────────────
+
+@router.get("/users")
+def list_public_users(
+    limit: int = Query(5, le=20),
+    exclude: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    import random as _random
+    query = db.query(User).filter(User.is_public == True)
+    if exclude:
+        query = query.filter(User.id != exclude)
+    users = query.all()
+    sample = _random.sample(users, min(limit, len(users)))
+    return [
+        {"id": u.id, "nom": u.nom, "avatar_emoji": u.avatar_emoji, "bio": u.bio or ""}
+        for u in sample
+    ]
+
+
 # ── Profils publics ──────────────────────────────────────────────
 
 @router.get("/profile/{user_id}")
