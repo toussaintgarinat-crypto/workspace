@@ -1,9 +1,9 @@
 """
 Forge — ML Module
 FastAPI service exposant les fonctionnalités ML au module core TypeScript.
+Service interne S2S uniquement (appelé par core via ML_MODULE_URL) — pas de CORS.
 """
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from embeddings import router as embeddings_router
@@ -15,13 +15,6 @@ app = FastAPI(
     title="Forge ML Module",
     description="Embeddings, ingestion pipeline, fine-tuning",
     version="0.1.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3001"],
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 app.include_router(embeddings_router, prefix="/embeddings", tags=["embeddings"])
