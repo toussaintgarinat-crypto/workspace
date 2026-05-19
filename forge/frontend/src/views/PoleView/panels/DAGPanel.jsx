@@ -96,6 +96,8 @@ function itemsToFlow(items) {
   return { nodes, edges }
 }
 
+const DOZZLE_URL = import.meta.env.VITE_DOZZLE_URL || 'http://localhost:9998'
+
 // ── Main component ───────────────────────────────────────────
 export default function DAGPanel({ poleId }) {
   const [tab, setTab] = useState('editor')
@@ -357,9 +359,16 @@ export default function DAGPanel({ poleId }) {
                 <div style={{ color: STATUT_COLOR[selected.statut], marginBottom: 4 }}>{selected.statut} · {selected.criticite}</div>
                 {selected.agentOwner && <div style={{ color: '#aaa', fontSize: 12, marginBottom: 4 }}>Agent : {selected.agentOwner}</div>}
                 {selected.promptText && <div style={{ color: '#ccc', fontSize: 11, marginBottom: 8, background: '#1e2124', padding: '4px 6px', borderRadius: 4, maxHeight: 60, overflowY: 'auto' }}>{selected.promptText}</div>}
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button onClick={() => resetTask(selected.id)} style={btnStyle('#4f545c')}>↺ Reset</button>
                   <button onClick={() => deleteTask(selected.id)} style={btnStyle('#ED4245')}>✕ Suppr.</button>
+                  {selected.nodeType === 'agent' && selected.agentOwner && (
+                    <button
+                      onClick={() => window.open(`${DOZZLE_URL}/container/${selected.agentOwner}`, '_blank')}
+                      style={btnStyle('#2b5a2e')}
+                      title="Voir les logs Docker"
+                    >🪵 Logs</button>
+                  )}
                 </div>
               </div>
             )}
@@ -424,10 +433,17 @@ export default function DAGPanel({ poleId }) {
               {tasks.map(t => (
                 <div key={t.id} onClick={() => setSelected(t)} style={{ background: selected?.id === t.id ? '#383a40' : '#2b2d31', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderLeft: `3px solid ${STATUT_COLOR[t.statut]}` }}>
                   <div style={{ fontWeight: 500, color: '#fff' }}>{t.nom}</div>
-                  <div style={{ color: '#aaa', display: 'flex', gap: 8, marginTop: 2 }}>
+                  <div style={{ color: '#aaa', display: 'flex', gap: 8, marginTop: 2, alignItems: 'center' }}>
                     <span style={{ color: STATUT_COLOR[t.statut] }}>{t.statut}</span>
                     <span>{t.criticite}</span>
                     <span style={{ color: t.nodeType === 'agent' ? '#5865F2' : '#57F287' }}>{t.nodeType === 'agent' ? '⚙️' : '💬'}</span>
+                    {t.nodeType === 'agent' && t.agentOwner && (
+                      <button
+                        onClick={e => { e.stopPropagation(); window.open(`${DOZZLE_URL}/container/${t.agentOwner}`, '_blank') }}
+                        style={{ ...btnStyle('#2b5a2e'), marginLeft: 'auto', fontSize: 10, padding: '2px 6px' }}
+                        title="Logs Docker"
+                      >🪵</button>
+                    )}
                   </div>
                 </div>
               ))}

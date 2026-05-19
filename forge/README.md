@@ -113,6 +113,16 @@ Pour enrichir le RAG Forge avec la mémoire MemPalace.
 | `ELEVENLABS_API_KEY` | Text-to-Speech (voix réalistes) | [elevenlabs.io](https://elevenlabs.io) — 10k char/mois gratuit |
 
 
+## Logs containers (Dozzle)
+
+Dozzle est un visualiseur de logs Docker embarqué, exposé en **LAN-only** par défaut.
+
+- **URL locale** : `http://localhost:9998`
+- Accessible depuis les pôles **Dev** : bouton 🪵 dans le header, dans le Kanban Dev et dans les nœuds DAG de type agent.
+
+> **Sécurité** : Dozzle bind sur `127.0.0.1:9998` — jamais exposé sur `0.0.0.0`. En production derrière Traefik, protéger l'accès avec un forward-auth Keycloak avant toute exposition externe. Les boutons Stop/Restart sont désactivés (`DOZZLE_ENABLE_ACTIONS=false`).
+
+
 ## Administration Keycloak
 
 Keycloak gère l'authentification. Interface admin : `http://localhost:8080`

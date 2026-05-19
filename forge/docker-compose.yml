@@ -216,6 +216,24 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # ── Dozzle (log viewer — LAN-only) ─────────────────────────
+  dozzle:
+    image: amir20/dozzle:v10.0
+    ports:
+      - "127.0.0.1:9998:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - DOZZLE_ENABLE_ACTIONS=false
+      - DOZZLE_ENABLE_SHELL=false
+      - DOZZLE_NO_ANALYTICS=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # ── Frontend (React / Vite) ─────────────────────────────────
   frontend:
     build:

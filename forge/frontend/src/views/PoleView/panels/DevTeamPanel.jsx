@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { token } from '../../../services/api'
 import styles from './Panel.module.css'
 
+const DOZZLE_URL = import.meta.env.VITE_DOZZLE_URL || 'http://localhost:9998'
+
 async function req(path, opts = {}) {
   const t = token.get()
   const res = await fetch(path, {
@@ -84,6 +86,11 @@ export default function DevTeamPanel({ poleId }) {
           {showForm ? '✕ Annuler' : '+ Nouvelle tâche'}
         </button>
         <span style={{ color: '#6b6b80', fontSize: 12 }}>{tasks.length} tâche{tasks.length !== 1 ? 's' : ''}</span>
+        <button
+          onClick={() => window.open(DOZZLE_URL, '_blank')}
+          title="Logs containers (Dozzle)"
+          style={{ marginLeft: 'auto', background: '#1e1e3a', border: '1px solid #2a2a3e', borderRadius: 6, color: '#a0a0c0', cursor: 'pointer', padding: '4px 10px', fontSize: 13 }}
+        >🪵 Logs</button>
       </div>
 
       {error && <div style={{ color: '#ef4444', fontSize: 13 }}>{error}</div>}

@@ -26,6 +26,8 @@ import DevTeamPanel from './panels/DevTeamPanel'
 import DAGPanel from './panels/DAGPanel'
 import styles from './PoleView.module.css'
 
+const DOZZLE_URL = import.meta.env.VITE_DOZZLE_URL || 'http://localhost:9998'
+
 // Outils communs — disponibles sur tous les pôles, regroupés en dropdown
 const COMMON = {
   sprint:        { label: 'Sprints',        icon: '⚡', component: SprintPanel },
@@ -191,6 +193,13 @@ export default function PoleView() {
             navigate(`/workspace/${s.id}`)
           }}
         >💬</button>
+        {pole.type === 'dev' && (
+          <button
+            className={styles.chatBtn}
+            title="Logs containers (Dozzle)"
+            onClick={() => window.open(DOZZLE_URL, '_blank')}
+          >🪵</button>
+        )}
         <button
           className={styles.repConfigBtn}
           title="Paramètres de détection répétition"
