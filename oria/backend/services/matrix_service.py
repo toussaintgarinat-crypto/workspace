@@ -12,7 +12,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-MATRIX_URL      = os.getenv("MATRIX_HOMESERVER_URL", "http://synapse:8008")
+MATRIX_URL      = os.getenv("MATRIX_HOMESERVER_URL", "http://dendrite:8008")
 SERVER_NAME     = os.getenv("MATRIX_SERVER_NAME", "oria.local")
 AS_TOKEN        = os.getenv("MATRIX_AS_TOKEN", "")
 HS_TOKEN        = os.getenv("MATRIX_HS_TOKEN", "")
@@ -216,11 +216,15 @@ def send_message(matrix_room_id: str, sender_mxid: str, text: str) -> bool:
 
 # ─── Health check ─────────────────────────────────────────────────────────────
 
-def is_synapse_available() -> bool:
-    """Vérifie que Synapse est joignable."""
+def is_matrix_available() -> bool:
+    """Vérifie que le homeserver Matrix (Dendrite) est joignable."""
     try:
         with httpx.Client(timeout=3) as client:
             resp = client.get(f"{MATRIX_URL}/_matrix/client/versions")
             return resp.status_code == 200
     except Exception:
         return False
+
+
+# Alias pour la compatibilité avec le code existant
+is_synapse_available = is_matrix_available
