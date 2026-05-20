@@ -50,5 +50,6 @@ while true; do
       write_status "error" "Erreur lors du pull." 0
     fi
   fi
+  touch /tmp/updater_last_run
   sleep 2
 done
