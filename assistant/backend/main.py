@@ -26,7 +26,7 @@ from db import (
 )
 from auth import get_current_user, require_admin
 from vault import encrypt, decrypt, list_vault, get_vault_token, upsert_vault_token, delete_vault_token
-from agent import ReActAgent
+from agent import ReActAgent, init_kiwix
 from prompt_engineer import PromptEngineer
 from tools.oria import OriaTools
 from voice.stt import get_stt_provider
@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await init_kiwix()
     from redis_client import init_redis, close_redis
     await init_redis()
     await inapp_notifier.start()

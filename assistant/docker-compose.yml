@@ -91,6 +91,24 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # ── Kiwix — Wikipedia offline (connaissance LAN) ───────────────────────────
+  # Télécharger un ZIM : bash scripts/download_zim.sh fr_mini
+  # Démarrage sans ZIM : kiwix démarre, catalog vide, tool renvoie []
+  kiwix:
+    image: ghcr.io/kiwix/kiwix-serve:latest
+    command: ["--library", "/data/"]
+    volumes:
+      - ${ZIM_PATH:-/opt/assistant/zim}:/data
+    ports:
+      - "127.0.0.1:8090:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
   # ── Updater sidecar — déclenche docker compose pull+up sans SSH ──────────────
   # Démarrage : docker compose --profile sidecars up -d
   updater:

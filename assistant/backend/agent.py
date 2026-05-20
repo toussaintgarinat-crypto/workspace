@@ -4,14 +4,33 @@ from typing import Callable
 
 from openai import AsyncOpenAI
 
+import httpx
+
 from config import settings
 from tools.mempalace import MemPalaceTools
 from tools.forge import ForgeTools
 from tools.oria import OriaTools
+from tools.kiwix import KiwixTools
 
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 5
+
+_kiwix_handler: KiwixTools | None = None
+
+
+async def init_kiwix() -> None:
+    global _kiwix_handler
+    if not settings.KIWIX_URL:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{settings.KIWIX_URL}/")
+        if resp.status_code < 500:
+            _kiwix_handler = KiwixTools(settings.KIWIX_URL)
+            logger.info("Kiwix tool enabled: %s", settings.KIWIX_URL)
+    except Exception as e:
+        logger.warning("Kiwix unreachable at startup, tool disabled: %s", e)
 
 
 class ReActAgent:
@@ -42,6 +61,11 @@ class ReActAgent:
                     self._tool_handlers[tool["function"]["name"]] = handler
             except Exception as e:
                 logger.error("Failed to init tools for %s (%s): %s", conn.get("name"), app_type, e)
+
+        if _kiwix_handler is not None:
+            for tool in _kiwix_handler.get_tools():
+                self._tools.append(tool)
+                self._tool_handlers[tool["function"]["name"]] = _kiwix_handler
 
     def build_tools(self) -> list[dict]:
         return self._tools

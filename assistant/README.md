@@ -157,3 +157,40 @@ make deploy-assistant N=3
 ## Connexion aux autres services
 
 L'assistant peut se connecter à Forge, MemPalace et Oria via l'interface **Connexions** (onglet paramètres dans l'UI). Aucune configuration `.env` requise — les URLs et tokens sont gérés directement dans l'UI.
+
+
+## Connaissance offline (Kiwix)
+
+Le service `kiwix` expose Wikipedia en local, accessible même sans internet. Le tool `search_kiwix` est activé automatiquement si Kiwix répond au démarrage du backend.
+
+### Activer Kiwix
+
+```bash
+# Dans assistant/.env
+KIWIX_URL=http://kiwix:8080
+ZIM_PATH=/opt/assistant/zim   # chemin host des fichiers ZIM
+```
+
+### Télécharger Wikipedia
+
+```bash
+# Mini (~50 Mo, recommandé pour tester)
+bash scripts/download_zim.sh fr_mini
+
+# Wikipedia FR complet sans images (~5 Go)
+bash scripts/download_zim.sh fr
+
+# Redémarrer kiwix après téléchargement
+docker compose restart kiwix
+```
+
+### Comportement
+
+| État | Tool LLM | Résultat |
+|---|---|---|
+| Kiwix sain, aucun ZIM | désactivé | — |
+| Kiwix sain + ZIM chargé | `search_kiwix` activé | 5 résultats max |
+| Kiwix KO au démarrage | désactivé | — |
+
+- Port local : `http://localhost:8090`
+- Les ZIM sont montés depuis `ZIM_PATH` (`/opt/assistant/zim` par défaut)

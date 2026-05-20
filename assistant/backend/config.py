@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     LOCAL_VOICE_ENABLED: bool = False
     KOKORO_VOICE: str = "af_heart"
 
+    # Kiwix offline knowledge base (Wikipedia LAN)
+    KIWIX_URL: str = ""  # http://kiwix:8080 — vide = désactivé
+
+    # OCR provider for scanned PDFs (doc_intelligence)
+    # mistral = Mistral OCR API (recommended, handles PDF natively)
+    # llm     = vision via gateway model (any multimodal model, page-by-page)
+    # tesseract = local Tesseract (no API key needed)
+    OCR_PROVIDER: str = "tesseract"
+    MISTRAL_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
 
