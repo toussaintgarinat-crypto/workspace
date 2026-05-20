@@ -18,9 +18,14 @@ DC := docker compose --env-file $(ENV_FILE)
         start-assistant stop-assistant logs-assistant scale-assistant deploy-assistant \
         start-mempalace stop-mempalace logs-mempalace \
         start-oria stop-oria logs-oria \
-        observability-network start-observability stop-observability logs-observability
+        observability-network start-observability stop-observability logs-observability \
+        backup restore
 
 help:
+	@echo ""
+	@echo "  make backup                   — sauvegarder PostgreSQL + Qdrant + MinIO + Dendrite"
+	@echo "  make restore                  — lister les backups disponibles"
+	@echo "  make restore BACKUP=<ts>      — restaurer un backup (ex: BACKUP=2025-01-15_120000)"
 	@echo ""
 	@echo "  make seed-envs                — générer <service>/.env depuis .env racine (onboarding)"
 	@echo "  make start                    — démarrer tous les services"
@@ -216,3 +221,12 @@ stop-observability:
 
 logs-observability:
 	docker compose -f observability/docker-compose.yml -p observability logs -f
+
+# ── BACKUP ────────────────────────────────────────────────────
+
+backup:
+	@bash backup/backup.sh
+
+BACKUP ?=
+restore:
+	@bash backup/restore.sh $(BACKUP)
