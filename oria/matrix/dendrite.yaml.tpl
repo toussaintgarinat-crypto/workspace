@@ -9,7 +9,7 @@ global:
     connection_string: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/dendrite?sslmode=disable
     max_open_conns: 10
     max_idle_conns: 2
-    conn_max_lifetime: -1s
+    conn_max_lifetime: 0
 
   jetstream:
     storage_path: /var/dendrite/nats
@@ -29,7 +29,7 @@ app_service_api:
     - /etc/dendrite/appservice.yaml
 
 client_api:
-  registration_disabled: ${MATRIX_REGISTRATION_DISABLED:-true}
+  registration_disabled: ${MATRIX_REGISTRATION_DISABLED}
   registration_shared_secret: ${MATRIX_REGISTRATION_SHARED_SECRET}
 
 media_api:
