@@ -66,5 +66,5 @@ watchfiles==1.1.1
 websockets==16.0
 yarl==1.23.0
 markitdown[pdf,docx,pptx,xlsx]==0.1.5
-pdf2image
-pytesseract
+pdf2image==1.17.0
+pytesseract==0.3.13
