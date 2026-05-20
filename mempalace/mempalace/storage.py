@@ -21,6 +21,7 @@ API identique à chromadb.Collection :
 from __future__ import annotations
 
 import os
+import re
 import uuid
 import hashlib
 from pathlib import Path
@@ -32,6 +33,41 @@ QDRANT_URL = os.environ.get("MEMPALACE_QDRANT_URL", "")
 
 _embed_model = None
 
+_CTRL_RE = re.compile(r"[\x00\x01-\x08\x0B\x0C\x0E-\x1F\x7F\uD800-\uDFFF]")
+
+
+def _sanitize_text(s: str) -> str:
+    return _CTRL_RE.sub("", s)
+
+
+def _chunk_text(text: str, target_tokens: int = 400) -> list[str]:
+    """Split text into overlapping chunks. Token estimate: 2 chars/token."""
+    target_chars = target_tokens * 2
+    overlap_chars = 50 * 2  # 50-token overlap
+
+    if len(text) <= target_chars:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(start + target_chars, len(text))
+        if end == len(text):
+            chunks.append(text[start:])
+            break
+        search_from = start + int(target_chars * 0.8)
+        break_at = text.rfind("\n", search_from, end)
+        if break_at == -1:
+            break_at = text.rfind(". ", search_from, end)
+            if break_at != -1:
+                break_at += 2
+        if break_at <= start:
+            break_at = end
+        chunks.append(text[start:break_at])
+        start = max(break_at - overlap_chars, 0)
+
+    return chunks or [text]
+
 
 def _get_embedder():
     global _embed_model
@@ -41,8 +77,17 @@ def _get_embedder():
     return _embed_model
 
 
-def _embed(texts: list[str]) -> list[list[float]]:
+def _embed_docs(texts: list[str]) -> list[list[float]]:
     return [v.tolist() for v in _get_embedder().embed(texts)]
+
+
+def _embed_query(text: str) -> list[float]:
+    # fastembed query_embed adds the BGE instruction-tuned prefix automatically
+    return next(_get_embedder().query_embed([text])).tolist()
+
+
+def _embed(texts: list[str]) -> list[list[float]]:
+    return _embed_docs(texts)
 
 
 def _str_id(s: str) -> str:
@@ -75,13 +120,21 @@ class QdrantCollection:
 
     def add(self, ids: list, documents: list, metadatas: list) -> None:
         from qdrant_client.models import PointStruct
-        vectors = _embed(documents)
         points = []
-        for sid, doc, meta, vec in zip(ids, documents, metadatas, vectors):
-            payload = dict(meta)
-            payload["_text"] = doc
-            payload["_original_id"] = sid
-            points.append(PointStruct(id=_str_id(sid), vector=vec, payload=payload))
+        for sid, doc, meta in zip(ids, documents, metadatas):
+            clean = _sanitize_text(doc)
+            chunks = _chunk_text(clean) if len(clean) > 800 else [clean]
+            chunk_vecs = _embed_docs(chunks)
+            multi = len(chunks) > 1
+            for i, (chunk, vec) in enumerate(zip(chunks, chunk_vecs)):
+                chunk_id = f"{sid}__c{i}" if multi else sid
+                payload = dict(meta)
+                payload["_text"] = chunk
+                payload["_original_id"] = sid
+                if multi:
+                    payload["parent_id"] = sid
+                    payload["chunk_index"] = i
+                points.append(PointStruct(id=_str_id(chunk_id), vector=vec, payload=payload))
         self._client.upsert(collection_name=self._name, points=points)
 
     # ── get ───────────────────────────────────────────────────────
@@ -148,7 +201,7 @@ class QdrantCollection:
         where: dict | None = None,
         include: list | None = None,
     ) -> dict:
-        vec = _embed([query_texts[0]])[0]
+        vec = _embed_query(query_texts[0])
         qfilter = _chroma_where_to_qdrant(where)
 
         from qdrant_client.models import Query
