@@ -17,8 +17,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
-from fastapi.responses import Response
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks, Query
+from fastapi.responses import Response, StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -573,6 +573,101 @@ def download_document(doc_id: str, user: dict = Depends(_current_user)):
         media_type=mime_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.get("/api/export")
+def export_drawers(
+    format: str = Query("json", regex="^(json|markdown)$"),
+    user: dict = Depends(_current_user),
+):
+    col = get_palace_storage(_palace(user["id"]))
+    if not col:
+        items = []
+    else:
+        res   = col.get(include=["documents", "metadatas"])
+        ids   = res.get("ids", [])
+        docs  = res.get("documents", [])
+        metas = res.get("metadatas", [])
+        items = [
+            {
+                "id":       oid,
+                "content":  doc,
+                "wing":     meta.get("wing", ""),
+                "room":     meta.get("room", "general"),
+                "added_at": meta.get("added_at", ""),
+            }
+            for oid, doc, meta in zip(ids, docs, metas)
+            if not meta.get("parent_id")  # skip sub-chunks
+        ]
+
+    if format == "markdown":
+        import io
+        from collections import defaultdict
+        grouped: dict[str, list] = defaultdict(list)
+        for item in items:
+            grouped[item["wing"] or "general"].append(item)
+        lines = [f"# MemPalace export — {datetime.utcnow().strftime('%Y-%m-%d')}\n"]
+        for wing, entries in sorted(grouped.items()):
+            lines.append(f"\n## {wing}\n")
+            for e in entries:
+                lines.append(f"### {e['room']} · {e['added_at'][:10] if e['added_at'] else ''}\n")
+                lines.append(e["content"])
+                lines.append("\n---\n")
+        content = "\n".join(lines)
+        return StreamingResponse(
+            iter([content]),
+            media_type="text/markdown",
+            headers={"Content-Disposition": 'attachment; filename="mempalace_export.md"'},
+        )
+
+    import json as _json
+    content = _json.dumps(items, ensure_ascii=False, indent=2)
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="mempalace_export.json"'},
+    )
+
+
+class ImportBody(BaseModel):
+    entries: list[dict]
+
+
+@app.post("/api/import")
+def import_drawers(body: ImportBody, user: dict = Depends(_current_user)):
+    col = get_palace_storage(_palace(user["id"]), create=True)
+    if not col:
+        raise HTTPException(status_code=503, detail="Storage unavailable")
+
+    existing_ids: set[str] = set()
+    try:
+        res = col.get(include=[])
+        existing_ids = set(res.get("ids", []))
+    except Exception:
+        pass
+
+    added, skipped = 0, 0
+    now = datetime.utcnow().isoformat()
+    for entry in body.entries:
+        content = str(entry.get("content", "")).strip()
+        if not content:
+            skipped += 1
+            continue
+        drawer_id = hashlib.sha256(content.encode()).hexdigest()[:16]
+        if drawer_id in existing_ids:
+            skipped += 1
+            continue
+        meta = {
+            "wing":     entry.get("wing", "Input"),
+            "room":     entry.get("room", "general"),
+            "added_at": entry.get("added_at", now),
+            "id":       drawer_id,
+        }
+        col.add(ids=[drawer_id], documents=[content], metadatas=[meta])
+        existing_ids.add(drawer_id)
+        added += 1
+
+    return {"added": added, "skipped": skipped, "total": len(body.entries)}
 
 
 @app.delete("/api/documents/{doc_id}", status_code=204)

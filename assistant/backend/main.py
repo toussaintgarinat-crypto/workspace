@@ -381,6 +381,45 @@ async def mempalace_add_drawer(body: MempalaceDrawerBody, user: dict = Depends(g
     return r.json()
 
 
+@app.get("/mempalace/export")
+async def mempalace_export(format: str = "json", user: dict = Depends(get_current_user)):
+    from fastapi.responses import StreamingResponse as SR
+    url, token = await _get_mempalace_creds(user)
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(
+            f"{url}/api/export",
+            params={"format": format},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    if not r.is_success:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    media_type = "text/markdown" if format == "markdown" else "application/json"
+    filename   = f"mempalace_export.{'md' if format == 'markdown' else 'json'}"
+    return SR(
+        iter([r.content]),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class MempalaceImportBody(BaseModel):
+    entries: list[dict]
+
+
+@app.post("/mempalace/import")
+async def mempalace_import(body: MempalaceImportBody, user: dict = Depends(get_current_user)):
+    url, token = await _get_mempalace_creds(user)
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.post(
+            f"{url}/api/import",
+            json={"entries": body.entries},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    if not r.is_success:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json()
+
+
 # ── Conversations (S59 — Cloud storage mode) ──────────────────────────────────
 
 class ConversationSyncBody(BaseModel):
@@ -988,7 +1027,9 @@ async def admin_disk(_: dict = Depends(require_admin)):
 @app.post("/chat")
 async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
     from metrics import chat_requests_total
+    from quota import check_quota
     chat_requests_total.inc()
+    await check_quota(user)
     if settings.AUTH_ENABLED:
         vault = await list_vault(user["sub"])
         active = []

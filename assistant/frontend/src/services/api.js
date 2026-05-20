@@ -139,6 +139,28 @@ export async function mempalaceEntries(wing, limit = 50) {
   return res.json();
 }
 
+export async function mempalaceExport(format = 'json') {
+  const res = await apiFetch(`${BASE_URL}/mempalace/export?format=${format}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mempalace_export.${format === 'markdown' ? 'md' : 'json'}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function mempalaceImport(entries) {
+  const res = await apiFetch(`${BASE_URL}/mempalace/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 // ── Swarm ─────────────────────────────────────────────────────────────────────
 
 export async function swarmListTasks() {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { mempalaceWings, mempalaceEntries, mempalaceSearch } from '../services/api.js';
+import { mempalaceWings, mempalaceEntries, mempalaceSearch, mempalaceExport, mempalaceImport } from '../services/api.js';
 
 const IPCRA = [
   { key: 'Input',     icon: '📥', color: '#3b82f6', bg: '#1d3a5c' },
@@ -197,6 +197,81 @@ const s = {
     background: '#555',
     animation: 'pulse 1.2s infinite',
   },
+  exportBtn: {
+    background: 'none',
+    border: '1px solid #2a2a2a',
+    borderRadius: '6px',
+    padding: '4px 10px',
+    color: '#888',
+    fontSize: '12px',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  importBtn: {
+    background: 'none',
+    border: '1px solid #2a2a2a',
+    borderRadius: '6px',
+    padding: '4px 10px',
+    color: '#888',
+    fontSize: '12px',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  modal: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+  },
+  modalBox: {
+    background: '#1a1a1a',
+    border: '1px solid #2a2a2a',
+    borderRadius: '12px',
+    padding: '24px',
+    width: '400px',
+    maxWidth: '90vw',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+  },
+  modalTitle: {
+    fontSize: '15px',
+    fontWeight: 600,
+    color: '#f0f0f0',
+    margin: 0,
+  },
+  modalSub: {
+    fontSize: '12px',
+    color: '#666',
+    margin: 0,
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '8px',
+    justifyContent: 'flex-end',
+    marginTop: '4px',
+  },
+  modalCancel: {
+    background: 'none',
+    border: '1px solid #333',
+    borderRadius: '6px',
+    padding: '6px 14px',
+    color: '#888',
+    cursor: 'pointer',
+    fontSize: '13px',
+  },
+  modalConfirm: {
+    background: '#7c3aed',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '6px 14px',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '13px',
+  },
 };
 
 export default function MemoryView() {
@@ -209,7 +284,13 @@ export default function MemoryView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null); // null = not searching
   const [searching, setSearching] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importModal, setImportModal] = useState(false);
+  const [importPreview, setImportPreview] = useState(null); // {entries, filename}
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
 
   // Build wings list merging IPCRA template + real counts
   const buildWingsList = (raw) => {
@@ -276,6 +357,51 @@ export default function MemoryView() {
     }
   };
 
+  const handleExport = async (format) => {
+    setExporting(true);
+    try { await mempalaceExport(format); } catch { /* ignore */ }
+    setExporting(false);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        const arr = Array.isArray(parsed) ? parsed : parsed.entries || [];
+        setImportPreview({ entries: arr, filename: file.name });
+        setImportResult(null);
+      } catch {
+        setImportPreview({ entries: null, filename: file.name });
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importPreview?.entries?.length) return;
+    setImporting(true);
+    try {
+      const res = await mempalaceImport(importPreview.entries);
+      setImportResult(res);
+      // Refresh wing counts
+      const data = await mempalaceWings();
+      if (data) setWings(buildWingsList(data));
+    } catch (err) {
+      setImportResult({ error: err.message });
+    }
+    setImporting(false);
+  };
+
+  const closeImport = () => {
+    setImportModal(false);
+    setImportPreview(null);
+    setImportResult(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
   const displayItems = searchResults !== null
     ? searchResults.map(r => ({ ...r, isSearch: true }))
     : entries.map(e => ({ content: e.content, metadata: e.metadata, id: e.id }));
@@ -308,8 +434,27 @@ export default function MemoryView() {
   return (
     <div style={s.root}>
       <div style={s.header}>
-        <p style={s.title}>
-          <span>🧠</span> Mémoire
+        <p style={{ ...s.title, justifyContent: 'space-between' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🧠</span> Mémoire
+          </span>
+          <span style={{ display: 'flex', gap: '6px' }}>
+            <button
+              style={s.importBtn}
+              onClick={() => setImportModal(true)}
+              title="Importer un fichier JSON"
+            >
+              📥 Import
+            </button>
+            <button
+              style={s.exportBtn}
+              onClick={() => handleExport('json')}
+              disabled={exporting}
+              title="Exporter en JSON"
+            >
+              {exporting ? '…' : '📤 Export'}
+            </button>
+          </span>
         </p>
         <div style={s.searchRow}>
           <input
@@ -325,6 +470,51 @@ export default function MemoryView() {
           </button>
         </div>
       </div>
+
+      {importModal && (
+        <div style={s.modal} onClick={closeImport}>
+          <div style={s.modalBox} onClick={e => e.stopPropagation()}>
+            <p style={s.modalTitle}>📥 Importer des mémoires</p>
+            <p style={s.modalSub}>
+              Sélectionnez un fichier JSON exporté depuis MemPalace.<br />
+              Les entrées en double (même contenu) seront ignorées.
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".json"
+              style={{ fontSize: '13px', color: '#aaa' }}
+              onChange={handleFileChange}
+            />
+            {importPreview && !importResult && (
+              <p style={{ fontSize: '13px', color: importPreview.entries ? '#10b981' : '#ef4444', margin: 0 }}>
+                {importPreview.entries
+                  ? `${importPreview.entries.length} entrée${importPreview.entries.length !== 1 ? 's' : ''} détectée${importPreview.entries.length !== 1 ? 's' : ''} dans ${importPreview.filename}`
+                  : `Fichier invalide : ${importPreview.filename}`}
+              </p>
+            )}
+            {importResult && (
+              <p style={{ fontSize: '13px', color: importResult.error ? '#ef4444' : '#10b981', margin: 0 }}>
+                {importResult.error
+                  ? `Erreur : ${importResult.error}`
+                  : `✅ ${importResult.added} ajoutée${importResult.added !== 1 ? 's' : ''}, ${importResult.skipped} ignorée${importResult.skipped !== 1 ? 's' : ''}`}
+              </p>
+            )}
+            <div style={s.modalActions}>
+              <button style={s.modalCancel} onClick={closeImport}>Fermer</button>
+              {!importResult && (
+                <button
+                  style={{ ...s.modalConfirm, opacity: importPreview?.entries?.length ? 1 : 0.4 }}
+                  disabled={!importPreview?.entries?.length || importing}
+                  onClick={handleImportConfirm}
+                >
+                  {importing ? 'Import…' : 'Importer'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={s.body}>
         <div style={s.wingsPanel}>
