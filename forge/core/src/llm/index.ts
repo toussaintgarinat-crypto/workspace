@@ -15,7 +15,7 @@ const ollamaProvider = createOllama({
 
 const deepseekProvider = createOpenAI({
   baseURL: 'https://api.deepseek.com',
-  apiKey: process.env.DEEPSEEK_API_KEY || 'no-key',
+  apiKey: process.env.DEEPSEEK_API_KEY ?? '',
 })
 
 const lmstudioProvider = createOpenAI({
@@ -25,7 +25,7 @@ const lmstudioProvider = createOpenAI({
 
 const openrouterProvider = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY || 'no-key',
+  apiKey: process.env.OPENROUTER_API_KEY ?? '',
 })
 
 const gatewayProvider = createOpenAI({
@@ -46,9 +46,15 @@ export function getModel(provider?: string, model?: string): LanguageModelV1 {
     case 'groq':      return groq(m     || 'llama-3.3-70b-versatile') as LanguageModelV1
     case 'gemini':    return google(m   || 'gemini-2.0-flash') as unknown as LanguageModelV1
     case 'mistral':   return mistral(m  || 'mistral-large-latest') as unknown as LanguageModelV1
-    case 'deepseek':   return deepseekProvider(m || 'deepseek-chat') as LanguageModelV1
+    case 'deepseek':
+      if (!process.env.DEEPSEEK_API_KEY)
+        throw new Error('DEEPSEEK_API_KEY non défini — ajoute-le dans .env pour utiliser DeepSeek')
+      return deepseekProvider(m || 'deepseek-chat') as LanguageModelV1
     case 'lmstudio':   return lmstudioProvider(m || 'local-model') as LanguageModelV1
-    case 'openrouter': return openrouterProvider(m || 'openai/gpt-4o') as LanguageModelV1
+    case 'openrouter':
+      if (!process.env.OPENROUTER_API_KEY)
+        throw new Error('OPENROUTER_API_KEY non défini — ajoute-le dans .env pour utiliser OpenRouter')
+      return openrouterProvider(m || 'openai/gpt-4o') as LanguageModelV1
     case 'gateway':    return gatewayProvider(m || 'openai/gpt-4o') as LanguageModelV1
     case 'ollama':
     default:           return ollamaProvider(m) as LanguageModelV1

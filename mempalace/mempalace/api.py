@@ -30,6 +30,11 @@ from mempalace.document_storage import get_storage_backend, StorageBackend
 
 # ── Config ───────────────────────────────────────────────────────
 JWT_SECRET      = os.environ.get("JWT_SECRET", "change_this_in_production")
+if os.environ.get("ENV", "").lower() == "production" and JWT_SECRET == "change_this_in_production":
+    raise RuntimeError(
+        "[FATAL] JWT_SECRET doit être défini en production. "
+        "Génère-en un : openssl rand -base64 32"
+    )
 JWT_ALGORITHM   = "HS256"
 JWT_EXPIRE_MIN  = int(os.environ.get("JWT_EXPIRE_MINUTES", "1440"))
 PALACE_BASE     = os.environ.get("MEMPALACE_PALACE_BASE",

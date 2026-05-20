@@ -15,6 +15,9 @@ const OLLAMA_URL   = process.env.OLLAMA_URL    || 'http://localhost:11434'
 const PORT         = Number(process.env.BRIDGE_PORT)    || 11436
 const API_KEY      = process.env.BRIDGE_API_KEY || ''
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*').split(',').map(s => s.trim())
+if (ALLOWED_ORIGINS.includes('*')) {
+  console.warn('[WARN] ALLOWED_ORIGINS=* — toutes les origines sont autorisées. Restreindre en production via ALLOWED_ORIGINS=https://votre-domaine.com')
+}
 
 function corsHeaders(origin: string | null): Record<string, string> {
   const allow = ALLOWED_ORIGINS.includes('*') ? '*' : (ALLOWED_ORIGINS.includes(origin ?? '') ? origin! : '')

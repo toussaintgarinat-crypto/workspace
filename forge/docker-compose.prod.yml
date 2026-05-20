@@ -19,6 +19,7 @@ services:
 
   core:
     environment:
+      - NODE_ENV=production
       - FRONTEND_URL=https://forge.${DOMAIN}
       - OLLAMA_BASE_URL=http://${MACBOOK_NETBIRD_IP}:11434/api
     volumes: []

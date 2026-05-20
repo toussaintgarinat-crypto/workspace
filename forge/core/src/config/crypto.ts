@@ -3,8 +3,22 @@
 const ALGO = 'AES-GCM'
 const KEY_LEN = 256
 
+const _DEV_KEY = 'forge-default-dev-key-32chars!!'
+
+// Fail-fast : refuse de démarrer en prod sans clé explicite
+const _MASTER_KEY = (() => {
+  const key = process.env.ENCRYPTION_KEY
+  if (process.env.NODE_ENV === 'production' && (!key || key === _DEV_KEY)) {
+    throw new Error(
+      '[FATAL] ENCRYPTION_KEY doit être défini en production (jamais la clé dev par défaut). ' +
+      'Génère-en une : openssl rand -base64 32'
+    )
+  }
+  return key || _DEV_KEY
+})()
+
 function getMasterKey(): string {
-  return process.env.ENCRYPTION_KEY || 'forge-default-dev-key-32chars!!'
+  return _MASTER_KEY
 }
 
 async function deriveKey(secret: string): Promise<CryptoKey> {
