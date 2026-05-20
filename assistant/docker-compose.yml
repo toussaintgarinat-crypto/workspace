@@ -95,7 +95,7 @@ services:
   # Télécharger un ZIM : bash scripts/download_zim.sh fr_mini
   # Démarrage sans ZIM : kiwix démarre, catalog vide, tool renvoie []
   kiwix:
-    image: ghcr.io/kiwix/kiwix-serve:latest
+    image: ghcr.io/kiwix/kiwix-serve:3.8.2
     command: ["--library", "/data/"]
     volumes:
       - ${ZIM_PATH:-/opt/assistant/zim}:/data

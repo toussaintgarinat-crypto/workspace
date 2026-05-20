@@ -3,6 +3,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import tempfile
 
 from openai import AsyncOpenAI
@@ -12,6 +13,12 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 IPCRA_WINGS = ["Input", "Projet", "Casquette", "Ressource", "Archive"]
+
+_CTRL_RE = re.compile(r"[\x00\x01-\x08\x0B\x0C\x0E-\x1F\x7F\uD800-\uDFFF]")
+
+
+def _sanitize_text(s: str) -> str:
+    return _CTRL_RE.sub("", s)
 
 
 async def extract_text(content: bytes, filename: str, mime_type: str | None) -> str:
@@ -28,18 +35,21 @@ async def extract_text(content: bytes, filename: str, mime_type: str | None) -> 
     # Try MarkItDown first (covers PDF, Word, Excel, PowerPoint, HTML, CSV…)
     text = _try_markitdown(content, filename)
     if text:
-        return text
+        return _sanitize_text(text)
 
     # Fallbacks for environments without MarkItDown
     if mime == "application/pdf" or filename.lower().endswith(".pdf"):
-        return _extract_pdf(content)
+        text = _extract_pdf_text(content)
+        if len(text.strip()) < 100:
+            text = await _ocr_pdf(content, filename)
+        return _sanitize_text(text)
     if mime in (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/msword",
     ) or filename.lower().endswith((".docx", ".doc")):
-        return _extract_docx(content)
+        return _sanitize_text(_extract_docx(content))
 
-    return content.decode("utf-8", errors="replace")
+    return _sanitize_text(content.decode("utf-8", errors="replace"))
 
 
 def _try_markitdown(content: bytes, filename: str) -> str | None:
@@ -61,18 +71,80 @@ def _try_markitdown(content: bytes, filename: str) -> str | None:
         return None
 
 
-def _extract_pdf(content: bytes) -> str:
+def _extract_pdf_text(content: bytes) -> str:
+    """Extract text layer only — no OCR. Returns empty string on scanned PDFs."""
     try:
         import fitz
         doc = fitz.open(stream=content, filetype="pdf")
         return "\n".join(page.get_text() for page in doc)
     except ImportError:
-        try:
-            from pypdf import PdfReader
-            reader = PdfReader(io.BytesIO(content))
-            return "\n".join(p.extract_text() or "" for p in reader.pages)
-        except ImportError:
-            return content.decode("utf-8", errors="replace")
+        pass
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(content))
+        return "\n".join(p.extract_text() or "" for p in reader.pages)
+    except ImportError:
+        pass
+    return ""
+
+
+async def _ocr_pdf(content: bytes, filename: str) -> str:
+    """OCR fallback — dispatches to configured OCR_PROVIDER."""
+    provider = settings.OCR_PROVIDER.lower()
+    logger.info("OCR fallback (%s) for %s", provider, filename)
+    try:
+        if provider == "mistral":
+            return await _ocr_mistral(content)
+        if provider == "llm":
+            return await _ocr_llm(content, filename)
+        return _ocr_tesseract(content, filename)
+    except Exception as exc:
+        logger.warning("OCR %s failed for %s: %s", provider, filename, exc)
+        return ""
+
+
+async def _ocr_mistral(content: bytes) -> str:
+    """Mistral OCR — sends the whole PDF, returns markdown. Best for documents."""
+    import base64
+    import httpx
+    b64 = base64.b64encode(content).decode()
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            "https://api.mistral.ai/v1/ocr",
+            headers={"Authorization": f"Bearer {settings.MISTRAL_API_KEY}"},
+            json={
+                "model": "mistral-ocr-latest",
+                "document": {
+                    "type": "base64_document",
+                    "content": b64,
+                    "document_type": "application/pdf",
+                },
+            },
+        )
+        resp.raise_for_status()
+        pages = resp.json().get("pages", [])
+        return "\n\n".join(p.get("markdown", "") for p in pages)
+
+
+async def _ocr_llm(content: bytes, filename: str) -> str:
+    """Vision via gateway — rasterizes each page and calls _extract_image()."""
+    import fitz
+    doc = fitz.open(stream=content, filetype="pdf")
+    pages_text = []
+    for i, page in enumerate(doc):
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        text = await _extract_image(img_bytes, f"{filename}_p{i}.png", "image/png")
+        pages_text.append(text)
+    return "\n\n".join(pages_text)
+
+
+def _ocr_tesseract(content: bytes, filename: str) -> str:
+    """Local Tesseract OCR — no API key needed."""
+    import pdf2image
+    import pytesseract
+    images = pdf2image.convert_from_bytes(content)
+    return "\n".join(pytesseract.image_to_string(img, lang="fra+eng") for img in images)
 
 
 def _extract_docx(content: bytes) -> str:
