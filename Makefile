@@ -37,10 +37,11 @@ help:
 	@echo "  make deploy-assistant N=3     — pull GHCR + redémarrer les conteneurs (utilisé par CI/CD)"
 	@echo ""
 	@echo "  make observability-network    — créer le réseau Docker partagé (1 fois)"
-	@echo "  make start-observability      — démarrer Prometheus + Grafana + Redis exporter"
+	@echo "  make start-observability      — démarrer Prometheus + Grafana + Alertmanager + Node exporter"
 	@echo "  make stop-observability       — arrêter la stack observabilité"
-	@echo "  make logs-observability       — voir les logs Prometheus/Grafana"
+	@echo "  make logs-observability       — voir les logs Prometheus/Grafana/Alertmanager"
 	@echo "  → Grafana sur http://localhost:3100 (admin / GF_SECURITY_ADMIN_PASSWORD)"
+	@echo "  → Alertmanager sur http://localhost:9093"
 	@echo ""
 
 # ── SEED-ENVS ────────────────────────────────────────────────

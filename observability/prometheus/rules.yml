@@ -1,0 +1,48 @@
+groups:
+
+  - name: services
+    interval: 1m
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} DOWN"
+          description: "{{ $labels.job }} ({{ $labels.instance }}) injoignable depuis 2min."
+
+  - name: resources
+    interval: 1m
+    rules:
+      - alert: DiskSpaceLow
+        expr: >
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"}
+          / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disque {{ $labels.mountpoint }} < 20% libre"
+          description: "Espace libre : {{ printf \"%.1f\" $value }}% sur {{ $labels.mountpoint }}"
+
+      - alert: MemoryPressureHigh
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAM > 90%"
+          description: "RAM utilisée : {{ printf \"%.1f\" $value }}%"
+
+  - name: application
+    interval: 1m
+    rules:
+      - alert: RAGLatencyHigh
+        expr: histogram_quantile(0.95, rate(rag_query_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latence RAG P95 > 5s"
+          description: "P95 latence RAG : {{ printf \"%.2f\" $value }}s"
