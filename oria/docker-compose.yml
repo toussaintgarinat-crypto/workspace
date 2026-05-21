@@ -7,6 +7,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   db:
     image: postgres:16.14-alpine
@@ -24,6 +25,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   backend:
     build: ./backend
@@ -141,6 +143,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
@@ -158,6 +161,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     command: npm run dev -- --host
+    restart: unless-stopped
 
   livekit:
     image: livekit/livekit-server:v1.12.0
@@ -174,6 +178,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
 
 volumes:
   postgres_data:

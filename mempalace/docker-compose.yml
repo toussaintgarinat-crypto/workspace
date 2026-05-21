@@ -18,6 +18,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   # ── MinIO (S3-compatible object storage) ─────────────────────
   minio:
@@ -36,6 +37,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   # ── MemPalace API ────────────────────────────────────────────
   api:

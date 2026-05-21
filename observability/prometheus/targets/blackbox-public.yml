@@ -1,0 +1,20 @@
+# Cibles publiques (via Traefik) pour blackbox-exporter.
+# Modifier ce fichier sans toucher à prometheus.yml — Prometheus recharge file_sd à chaud.
+#
+# Remplace <DOMAIN> par ton domaine racine (ex: monagent.fr).
+# Le label `tier: critical` déclenche l'alerte ProbeDownCritical (severity: critical).
+
+- targets:
+    # - https://assistant.<DOMAIN>/health
+    # - https://oria.<DOMAIN>/health
+    # - https://mempalace.<DOMAIN>/health
+  labels:
+    tier: critical
+    layer: entry
+
+- targets:
+    # - https://forge.<DOMAIN>/api/health
+    # - https://gateway.<DOMAIN>/health
+  labels:
+    tier: standard
+    layer: entry

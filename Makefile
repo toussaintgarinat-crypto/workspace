@@ -19,7 +19,8 @@ DC := docker compose --env-file $(ENV_FILE)
         start-mempalace stop-mempalace logs-mempalace \
         start-oria stop-oria logs-oria \
         observability-network start-observability stop-observability logs-observability \
-        backup restore
+        backup restore \
+        continuity-audit continuity-reload continuity-check
 
 help:
 	@echo ""
@@ -231,3 +232,26 @@ backup:
 BACKUP ?=
 restore:
 	@bash backup/restore.sh $(BACKUP)
+
+# ── CONTINUITY (S86+) ─────────────────────────────────────────
+# Audit rapide + rechargement Prometheus/Grafana sans downtime.
+
+.PHONY: continuity-audit continuity-reload continuity-check
+
+continuity-audit:
+	@echo "── État des services (restart policies, healthchecks) ──"
+	@docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' | grep -E '(Up|Restarting|Exited)' || true
+	@echo ""
+	@echo "── Alertes Prometheus actives ──"
+	@curl -s http://localhost:9090/api/v1/alerts 2>/dev/null | python3 -m json.tool 2>/dev/null | grep -E '(alertname|state)' || echo "  Prometheus injoignable"
+	@echo ""
+	@echo "── Dernier backup ──"
+	@ls -t backup/data/ 2>/dev/null | head -3 || echo "  Aucun backup trouvé"
+
+continuity-reload:
+	@curl -sX POST http://localhost:9090/-/reload && echo "✓ Prometheus rechargé"
+
+continuity-check:
+	@docker run --rm --entrypoint promtool -v $(CURDIR)/observability/prometheus:/cfg \
+	  prom/prometheus:v2.55.1 check rules /cfg/continuity.yml /cfg/rules.yml
+

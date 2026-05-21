@@ -9,6 +9,7 @@ alerting:
 
 rule_files:
   - /etc/prometheus/rules.yml
+  - /etc/prometheus/continuity.yml
 
 scrape_configs:
 
@@ -32,3 +33,40 @@ scrape_configs:
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
+
+  # ── Blackbox probes (continuité S86) ─────────────────────────
+  # Probes HTTP internes (services sur observability_net) — déclenche ProbeDown
+  - job_name: "blackbox_internal"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://backend:8200/health
+        labels:
+          tier: critical
+          layer: app
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # Probes HTTPS via Traefik — cibles définies dans targets/blackbox-public.yml
+  - job_name: "blackbox_public"
+    metrics_path: /probe
+    params:
+      module: [http_2xx_tls]
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/blackbox-public.yml
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

@@ -1,5 +1,21 @@
 services:
 
+  # ── Alertmanager-init : envsubst du template (Alertmanager n'expand pas ${VAR}) ─
+  alertmanager-init:
+    image: alpine:3.20
+    command:
+      - "sh"
+      - "-c"
+      - "apk add --no-cache gettext >/dev/null && envsubst < /tpl/alertmanager.yml.tpl > /out/alertmanager.yml && echo 'alertmanager.yml rendu'"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-placeholder}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-1}
+    volumes:
+      - ./alertmanager:/tpl:ro
+      - alertmanager_config:/out
+    networks:
+      - observability_net
+
   # ── Alertmanager — routing + Telegram ────────────────────────
   alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -9,12 +25,11 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
-      - "--config.expand-env=true"
-    environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-0}
+    depends_on:
+      alertmanager-init:
+        condition: service_completed_successfully
     volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_config:/etc/alertmanager:ro
       - alertmanager_data:/alertmanager
     networks:
       - observability_net
@@ -55,6 +70,8 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - ./prometheus/continuity.yml:/etc/prometheus/continuity.yml:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -90,6 +107,23 @@ services:
       retries: 5
       start_period: 10s
 
+  # ── Blackbox Exporter — probes HTTP/TCP/ICMP par composant ──
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+    networks:
+      - observability_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9115/-/healthy >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # ── Postgres Exporter (optionnel — activé si DATABASE_URL set) ─
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.1
@@ -111,7 +145,7 @@ services:
 
   # ── Grafana — dashboards + Keycloak OIDC ─────────────────────
   grafana:
-    image: grafana/grafana:11.6.14+security-04
+    image: grafana/grafana:11.6.14-security-04
     restart: unless-stopped
     ports:
       - "3100:3000"
@@ -152,6 +186,7 @@ volumes:
   prometheus_data:
   grafana_data:
   alertmanager_data:
+  alertmanager_config:
 
 networks:
   observability_net:
