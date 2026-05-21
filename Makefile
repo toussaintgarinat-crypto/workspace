@@ -20,7 +20,8 @@ DC := docker compose --env-file $(ENV_FILE)
         start-oria stop-oria logs-oria \
         observability-network start-observability stop-observability logs-observability \
         backup restore \
-        continuity-audit continuity-reload continuity-check
+        continuity-audit continuity-reload continuity-check \
+        pg-status pg-status-oria
 
 help:
 	@echo ""
@@ -55,7 +56,7 @@ seed-envs:
 	@echo "→ Génération des <service>/.env depuis $(ENV_FILE)"
 	@grep -E '^(LITELLM_MASTER_KEY|OPENROUTER_API_KEY|OLLAMA_URL)=' $(ENV_FILE) 2>/dev/null \
 	  > gateway/.env; echo "  ✓ gateway/.env"
-	@grep -E '^(DEFAULT_LLM_PROVIDER|DEFAULT_LLM_MODEL|ANTHROPIC_API_KEY|OPENAI_API_KEY|GROQ_API_KEY|KEYCLOAK_ADMIN|KEYCLOAK_ADMIN_PASSWORD|ENCRYPTION_KEY|SMTP_HOST|SMTP_PORT|SMTP_USER|SMTP_PASS|SMTP_FROM|MINIO_ROOT_USER|MINIO_ROOT_PASSWORD|MEMPALACE_API_URL|MEMPALACE_API_TOKEN|OLLAMA_URL|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB)=' $(ENV_FILE) 2>/dev/null \
+	@grep -E '^(DEFAULT_LLM_PROVIDER|DEFAULT_LLM_MODEL|ANTHROPIC_API_KEY|OPENAI_API_KEY|GROQ_API_KEY|KEYCLOAK_ADMIN|KEYCLOAK_ADMIN_PASSWORD|ENCRYPTION_KEY|SMTP_HOST|SMTP_PORT|SMTP_USER|SMTP_PASS|SMTP_FROM|MINIO_ROOT_USER|MINIO_ROOT_PASSWORD|MEMPALACE_API_URL|MEMPALACE_API_TOKEN|OLLAMA_URL|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB|POSTGRES_SUPERUSER_PASSWORD|REPLICATOR_PASSWORD|REWIND_PASSWORD)=' $(ENV_FILE) 2>/dev/null \
 	  > forge/.env; echo "  ✓ forge/.env"
 	@{ grep -E '^(GATEWAY_URL|GATEWAY_API_KEY|GATEWAY_MODEL|CORS_ORIGINS|AUTH_ENABLED|KEYCLOAK_URL|KEYCLOAK_REALM|KEYCLOAK_CLIENT_ID|KEYCLOAK_AUDIENCE|VAULT_SECRET|ASSISTANT_DATABASE_URL|ASSISTANT_REDIS_URL|TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID|DISCORD_WEBHOOK_URL|RAG_ENABLED|RAG_TOP_K|RAG_MIN_SCORE|SUMMARIZE_ENABLED|SUMMARIZE_THRESHOLD|LOCAL_VOICE_ENABLED|WHISPER_LOCAL_MODEL|KOKORO_VOICE|KOKORO_LANG|COMPOSE_DIR|STORAGE_PATH|ASSISTANT_IMAGE_TAG)=' $(ENV_FILE) 2>/dev/null; \
 	   grep '^LITELLM_MASTER_KEY=' $(ENV_FILE) 2>/dev/null | sed 's/^LITELLM_MASTER_KEY=/GATEWAY_MASTER_KEY=/'; \
@@ -71,6 +72,9 @@ seed-envs:
 	@{ grep '^ORIA_POSTGRES_USER=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_POSTGRES_USER=/POSTGRES_USER=/'; \
 	   grep '^ORIA_POSTGRES_PASSWORD=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_POSTGRES_PASSWORD=/POSTGRES_PASSWORD=/'; \
 	   grep '^ORIA_POSTGRES_DB=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_POSTGRES_DB=/POSTGRES_DB=/'; \
+	   grep '^ORIA_POSTGRES_SUPERUSER_PASSWORD=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_POSTGRES_SUPERUSER_PASSWORD=/POSTGRES_SUPERUSER_PASSWORD=/'; \
+	   grep '^ORIA_REPLICATOR_PASSWORD=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_REPLICATOR_PASSWORD=/REPLICATOR_PASSWORD=/'; \
+	   grep '^ORIA_REWIND_PASSWORD=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_REWIND_PASSWORD=/REWIND_PASSWORD=/'; \
 	   grep '^ORIA_LIVEKIT_API_SECRET=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_LIVEKIT_API_SECRET=/LIVEKIT_API_SECRET=/'; \
 	   grep '^ORIA_MATRIX_SERVER_NAME=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_MATRIX_SERVER_NAME=/MATRIX_SERVER_NAME=/'; \
 	   grep '^ORIA_MATRIX_AS_TOKEN=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_MATRIX_AS_TOKEN=/MATRIX_AS_TOKEN=/'; \
@@ -190,6 +194,9 @@ start-oria:
 	POSTGRES_USER=$$(grep '^ORIA_POSTGRES_USER=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo oria) \
 	POSTGRES_PASSWORD=$$(grep '^ORIA_POSTGRES_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo oria_secret) \
 	POSTGRES_DB=$$(grep '^ORIA_POSTGRES_DB=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo oria) \
+	POSTGRES_SUPERUSER_PASSWORD=$$(grep '^ORIA_POSTGRES_SUPERUSER_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo postgres_super_secret_change_me) \
+	REPLICATOR_PASSWORD=$$(grep '^ORIA_REPLICATOR_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo replicator_secret_change_me) \
+	REWIND_PASSWORD=$$(grep '^ORIA_REWIND_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo rewind_secret_change_me) \
 	LIVEKIT_API_SECRET=$$(grep '^ORIA_LIVEKIT_API_SECRET=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo devsecret) \
 	MATRIX_SERVER_NAME=$$(grep '^ORIA_MATRIX_SERVER_NAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo oria.local) \
 	MATRIX_AS_TOKEN=$$(grep '^ORIA_MATRIX_AS_TOKEN=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-) \
@@ -232,6 +239,19 @@ backup:
 BACKUP ?=
 restore:
 	@bash backup/restore.sh $(BACKUP)
+
+# ── POSTGRES HA (S87+) ────────────────────────────────────────
+# Statut Patroni Forge (nécessite que forge soit démarré)
+pg-status:
+	@docker exec forge-postgres-1 patronictl -c /etc/patroni/patroni.yml list 2>/dev/null \
+	  || docker exec forge_postgres_1 patronictl -c /etc/patroni/patroni.yml list 2>/dev/null \
+	  || echo "  Patroni forge inaccessible — vérifier make start-forge"
+
+# Statut Patroni Oria
+pg-status-oria:
+	@docker exec oria-db-1 patronictl -c /etc/patroni/patroni.yml list 2>/dev/null \
+	  || docker exec oria_db_1 patronictl -c /etc/patroni/patroni.yml list 2>/dev/null \
+	  || echo "  Patroni oria inaccessible — vérifier make start-oria"
 
 # ── CONTINUITY (S86+) ─────────────────────────────────────────
 # Audit rapide + rechargement Prometheus/Grafana sans downtime.

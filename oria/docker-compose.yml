@@ -9,19 +9,90 @@ services:
       retries: 5
     restart: unless-stopped
 
-  db:
-    image: postgres:16.14-alpine
+  # ── etcd (Patroni DCS — Phase A: single node) ───────────────
+  etcd:
+    image: bitnami/etcd:3.5
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-oria}
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_NAME: oria-node1
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd:2380
+      ETCD_INITIAL_CLUSTER: "oria-node1=http://etcd:2380"
+      ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: oria-etcd
+      ETCD_DATA_DIR: /bitnami/etcd/data
+    volumes:
+      - etcd_data:/bitnami/etcd
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2379/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── PostgreSQL via Patroni (remplace standalone db) ──────────
+  # Phase B : ajouter patroni-replica + etcd nodes HP+N2+Pi → voir docs/runbooks/postgres-failover.md
+  db:
+    build:
+      context: ../infra/postgres-ha
+    image: patroni-pg16:local
+    environment:
+      PATRONI_NAME: oria-node1
+      PATRONI_SCOPE: oria-pg
+      PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
+      PATRONI_RESTAPI_CONNECT_ADDRESS: db:8008
+      PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: db:5432
+      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
+      PATRONI_ETCD3_HOSTS: etcd:2379
+      PATRONI_SUPERUSER_USERNAME: postgres
+      PATRONI_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres_super_secret_change_me}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${REPLICATOR_PASSWORD:-replicator_secret_change_me}
+      PATRONI_REWIND_USERNAME: rewind_user
+      PATRONI_REWIND_PASSWORD: ${REWIND_PASSWORD:-rewind_secret_change_me}
       POSTGRES_USER: ${POSTGRES_USER:-oria}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oria_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-oria}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - wal_archive:/var/lib/postgresql/wal_archive
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
+      - ../infra/postgres-ha/oria/patroni.yml:/etc/patroni/patroni.yml:ro
     ports:
       - "5433:5432"
+      - "8009:8008"
+    depends_on:
+      etcd:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U oria -d oria"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
+  # ── pgBouncer (pooler façade — prêt Phase B failover) ────────
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1-p1
+    environment:
+      DB_USER: ${POSTGRES_USER:-oria}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-oria_secret}
+      DB_HOST: db
+      DB_NAME: ${POSTGRES_DB:-oria}
+      POOL_MODE: session
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+      AUTH_TYPE: md5
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -32,7 +103,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-oria}:${POSTGRES_PASSWORD:-oria_secret}@db:5432/${POSTGRES_DB:-oria}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oria}:${POSTGRES_PASSWORD:-oria_secret}@pgbouncer:5432/${POSTGRES_DB:-oria}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3002,http://localhost:3000}
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-oria}
@@ -47,7 +118,7 @@ services:
       FORGE_TOKEN: ${FORGE_TOKEN:-}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -107,7 +178,7 @@ services:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-oria}
+      KC_DB_URL: jdbc:postgresql://pgbouncer:5432/${POSTGRES_DB:-oria}
       KC_DB_USERNAME: ${POSTGRES_USER:-oria}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-oria_secret}
       KC_HTTP_ENABLED: "true"
@@ -116,7 +187,7 @@ services:
     volumes:
       - ./keycloak:/opt/keycloak/data/import
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
@@ -187,3 +258,5 @@ volumes:
   dendrite_media:
   dendrite_nats:
   minio_data:
+  etcd_data:
+  wal_archive:

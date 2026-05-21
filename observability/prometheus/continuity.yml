@@ -55,7 +55,7 @@ groups:
           summary: "Certificat TLS {{ $labels.instance }} EXPIRÉ"
           description: "Service inaccessible en HTTPS — fix Traefik immédiat."
 
-  # ── Postgres réplication / disponibilité (préparation S87) ─────────
+  # ── Postgres / Patroni (S87) ─────────────────────────────────────
   - name: continuity_postgres
     interval: 30s
     rules:
@@ -68,7 +68,7 @@ groups:
           tier: data
         annotations:
           summary: "Postgres {{ $labels.instance }} DOWN"
-          description: "Cœur de MemPalace/Oria/Forge inaccessible — runbook S87 failover."
+          description: "Cœur de Oria/Forge inaccessible — runbook docs/runbooks/postgres-failover.md"
 
       - alert: PostgresReplicationLagHigh
         expr: pg_replication_lag_seconds > 30
@@ -88,7 +88,37 @@ groups:
           tier: data
         annotations:
           summary: "Postgres {{ $labels.instance }} > 80% connexions"
-          description: "{{ printf \"%.1f\" $value }} × max_connections — risque saturation pool."
+          description: "{{ printf \"%.1f\" $value }} × max_connections — saturation pool pgBouncer."
+
+      - alert: PatroniLeaderUnstable
+        expr: changes(patroni_master[10m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+          tier: data
+        annotations:
+          summary: "Leader Patroni {{ $labels.scope }} change > 2× en 10min"
+          description: "Flip-flop leader détecté — vérifier etcd + réseau entre nodes."
+
+      - alert: PatroniNoLeader
+        expr: max by (scope) (patroni_master) < 1
+        for: 1m
+        labels:
+          severity: critical
+          tier: data
+        annotations:
+          summary: "Aucun leader Patroni dans le cluster {{ $labels.scope }}"
+          description: "Cluster sans primaire — écritures bloquées. Vérifier etcd et runbook failover."
+
+      - alert: WALArchivingStale
+        expr: time() - pg_stat_archiver_last_archive_age_seconds > 600
+        for: 5m
+        labels:
+          severity: warning
+          tier: data
+        annotations:
+          summary: "WAL archiving inactif > 10min sur {{ $labels.instance }}"
+          description: "RPO dégradé — vérifier archive_command et volume wal_archive."
 
   # ── Backups freshness (S82) ───────────────────────────────────────
   - name: continuity_backups
