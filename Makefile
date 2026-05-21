@@ -240,6 +240,22 @@ BACKUP ?=
 restore:
 	@bash backup/restore.sh $(BACKUP)
 
+# ── HP G4 SFF + Pi 3B+ (S87B — décommenter quand matériel reçu) ──────────
+# Voir docs/runbooks/phase-b-checklist.md pour le setup complet
+#
+# PI_NETBIRD_IP := $(shell grep '^PI_NETBIRD_IP=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-)
+# HP_NETBIRD_IP := $(shell grep '^HP_NETBIRD_IP=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-)
+#
+# wake-hp:  ## Allumer le HP via le Pi (WoL magic packet)
+# 	HP_MAC=$$(grep '^HP_MAC_ADDRESS=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+# 	ssh pi@$(PI_NETBIRD_IP) "wakeonlan $$HP_MAC && echo '✓ Magic packet envoyé'"
+#
+# ssh-hp:   ## SSH direct sur le HP via NetBird
+# 	ssh $(HP_NETBIRD_IP)
+#
+# ssh-pi:   ## SSH sur le Pi via NetBird
+# 	ssh pi@$(PI_NETBIRD_IP)
+
 # ── POSTGRES HA (S87+) ────────────────────────────────────────
 # Statut Patroni Forge (nécessite que forge soit démarré)
 pg-status:
