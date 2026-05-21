@@ -5,6 +5,7 @@ http:
     mempalace-api:
       rule: 'Host(`palace.{{ env "DOMAIN" }}`)'
       entryPoints: [websecure]
+      middlewares: [rate-limit-api]
       service: mempalace-api
       tls:
         certResolver: letsencrypt

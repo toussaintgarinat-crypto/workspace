@@ -12,6 +12,7 @@ http:
     assistant-api:
       rule: 'Host(`assistant.{{ env "DOMAIN" }}`) && PathPrefix(`/api`)'
       entryPoints: [websecure]
+      middlewares: [rate-limit-api]
       service: assistant-api
       tls:
         certResolver: letsencrypt

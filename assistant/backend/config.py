@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # Kiwix offline knowledge base (Wikipedia LAN)
     KIWIX_URL: str = ""  # http://kiwix:8080 — vide = désactivé
 
+    # Daily chat quota per user (0 = unlimited)
+    QUOTA_FREE_DAILY: int = 50
+    QUOTA_PREMIUM_DAILY: int = 500
+    QUOTA_PREMIUM_ROLE: str = "premium"  # Keycloak realm role that grants premium quota
+
     # OCR provider for scanned PDFs (doc_intelligence)
     # mistral = Mistral OCR API (recommended, handles PDF natively)
     # llm     = vision via gateway model (any multimodal model, page-by-page)
