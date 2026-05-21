@@ -217,6 +217,18 @@ const s = {
     cursor: 'pointer',
     flexShrink: 0,
   },
+  degradedBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '11px',
+    color: '#f59e0b',
+    background: '#4a331022',
+    border: '1px solid #4a3310',
+    borderRadius: '8px',
+    padding: '2px 8px',
+    flexShrink: 0,
+  },
   modal: {
     position: 'fixed',
     inset: 0,
@@ -284,6 +296,7 @@ export default function MemoryView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null); // null = not searching
   const [searching, setSearching] = useState(false);
+  const [degradedSearch, setDegradedSearch] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importModal, setImportModal] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // {entries, filename}
@@ -342,8 +355,10 @@ export default function MemoryView() {
     try {
       const data = await mempalaceSearch(searchQuery.trim(), activeWing, 15);
       setSearchResults(data?.results || []);
+      setDegradedSearch(data?.degraded || false);
     } catch {
       setSearchResults([]);
+      setDegradedSearch(false);
     } finally {
       setSearching(false);
     }
@@ -354,6 +369,7 @@ export default function MemoryView() {
     if (e.key === 'Escape') {
       setSearchQuery('');
       setSearchResults(null);
+      setDegradedSearch(false);
     }
   };
 
@@ -437,6 +453,11 @@ export default function MemoryView() {
         <p style={{ ...s.title, justifyContent: 'space-between' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span>🧠</span> Mémoire
+            {degradedSearch && (
+              <span style={s.degradedBadge} title="Qdrant indisponible — recherche par mots-clés">
+                🔍 Recherche dégradée
+              </span>
+            )}
           </span>
           <span style={{ display: 'flex', gap: '6px' }}>
             <button
@@ -550,7 +571,7 @@ export default function MemoryView() {
                   <div style={{ fontSize: '11px', color: '#555', paddingBottom: '4px' }}>
                     {searchResults.length} résultat{searchResults.length !== 1 ? 's' : ''} pour «{searchQuery}»
                     <button
-                      onClick={() => { setSearchResults(null); setSearchQuery(''); }}
+                      onClick={() => { setSearchResults(null); setSearchQuery(''); setDegradedSearch(false); }}
                       style={{ marginLeft: '8px', background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontSize: '11px' }}
                     >
                       ✕ effacer

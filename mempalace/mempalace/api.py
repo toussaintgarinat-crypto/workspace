@@ -44,6 +44,8 @@ DB_PATH         = os.environ.get("MEMPALACE_DB_PATH",
 ADMIN_TOKEN     = os.environ.get("MEMPALACE_ADMIN_TOKEN", "")
 CORS_ORIGINS    = os.environ.get("CORS_ORIGINS",
                     "http://localhost:3000,http://localhost:8080").split(",")
+# Degraded mode: keyword fallback when Qdrant is unavailable
+QDRANT_FALLBACK_ENABLED = os.environ.get("QDRANT_FALLBACK_ENABLED", "false").lower() == "true"
 # Keycloak dual-auth (optional)
 KEYCLOAK_URL      = os.environ.get("KEYCLOAK_URL", "")
 KEYCLOAK_REALM    = os.environ.get("KEYCLOAK_REALM", "forge")
@@ -124,6 +126,74 @@ def _init_docs_db() -> None:
     """)
     conn.commit()
     conn.close()
+
+
+def _init_drawers_text_db() -> None:
+    """Mirror table for keyword fallback when Qdrant is unavailable."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS drawers_text (
+            drawer_id TEXT NOT NULL,
+            owner_id  TEXT NOT NULL,
+            content   TEXT NOT NULL,
+            wing      TEXT NOT NULL DEFAULT 'Input',
+            room      TEXT NOT NULL DEFAULT 'general',
+            added_at  TEXT NOT NULL,
+            PRIMARY KEY (owner_id, drawer_id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_drawers_text_owner ON drawers_text(owner_id)")
+    conn.commit()
+    conn.close()
+
+
+def _drawers_text_insert(owner_id: str, drawer_id: str, content: str, wing: str, room: str, added_at: str) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT OR REPLACE INTO drawers_text (drawer_id, owner_id, content, wing, room, added_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (drawer_id, owner_id, content, wing, room, added_at),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _drawers_text_search(owner_id: str, query: str, n: int, wing: Optional[str], room: Optional[str]) -> list:
+    conn = sqlite3.connect(DB_PATH)
+    where_parts = ["owner_id = ?"]
+    params: list = [owner_id]
+    for term in query.lower().split()[:4]:
+        where_parts.append("LOWER(content) LIKE ?")
+        params.append(f"%{term}%")
+    if wing:
+        where_parts.append("wing = ?")
+        params.append(wing)
+    if room:
+        where_parts.append("room = ?")
+        params.append(room)
+    params.append(n)
+    sql = f"SELECT content, wing, room, added_at, drawer_id FROM drawers_text WHERE {' AND '.join(where_parts)} LIMIT ?"
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [
+        {
+            "content": row[0],
+            "metadata": {"wing": row[1], "room": row[2], "added_at": row[3]},
+            "score": 0.75,
+        }
+        for row in rows
+    ]
+
+
+def _qdrant_available() -> bool:
+    from mempalace.storage import QDRANT_URL
+    if not QDRANT_URL:
+        return True  # Local embedded mode is always available
+    try:
+        from qdrant_client import QdrantClient
+        QdrantClient(url=QDRANT_URL, timeout=2).get_collections()
+        return True
+    except Exception:
+        return False
 
 
 def _register_document(
@@ -288,6 +358,7 @@ app.add_middleware(
 def startup() -> None:
     _init_db()
     _init_docs_db()
+    _init_drawers_text_db()
 
 
 # ── Health ───────────────────────────────────────────────────────
@@ -295,6 +366,16 @@ def startup() -> None:
 @app.get("/health")
 def health():
     return {"status": "ok", "module": "mempalace:api"}
+
+
+@app.get("/api/qdrant-status")
+def qdrant_status(_user: dict = Depends(_current_user)):
+    available = _qdrant_available()
+    return {
+        "available": available,
+        "fallback_enabled": QDRANT_FALLBACK_ENABLED,
+        "degraded": QDRANT_FALLBACK_ENABLED or not available,
+    }
 
 
 # ── Auth ─────────────────────────────────────────────────────────
@@ -415,8 +496,10 @@ class SearchBody(BaseModel):
 @app.post("/api/search")
 def search(body: SearchBody, user: dict = Depends(_current_user)):
     col = get_palace_storage(_palace(user["id"]))
-    if not col:
-        return {"results": []}
+
+    if QDRANT_FALLBACK_ENABLED or col is None:
+        results = _drawers_text_search(user["id"], body.query, body.n_results, body.wing, body.room)
+        return {"results": results, "degraded": True, "fallback": "keyword"}
 
     where = None
     if body.wing and body.room:
@@ -443,7 +526,8 @@ def search(body: SearchBody, user: dict = Depends(_current_user)):
         "results": [
             {"content": doc, "metadata": meta, "score": round(1 - dist, 4)}
             for doc, meta, dist in zip(docs, metas, dists)
-        ]
+        ],
+        "degraded": False,
     }
 
 
@@ -461,14 +545,16 @@ def add_drawer(body: DrawerBody, user: dict = Depends(_current_user)):
         raise HTTPException(status_code=503, detail="Storage unavailable")
 
     drawer_id = hashlib.sha256(body.content.encode()).hexdigest()[:16]
+    now = datetime.utcnow().isoformat()
     meta = {
         "wing":     body.wing,
         "room":     body.room,
-        "added_at": datetime.utcnow().isoformat(),
+        "added_at": now,
         "id":       drawer_id,
         **(body.metadata or {}),
     }
     col.add(ids=[drawer_id], documents=[body.content], metadatas=[meta])
+    _drawers_text_insert(user["id"], drawer_id, body.content, body.wing, body.room, now)
     return {"id": drawer_id, "wing": body.wing, "room": body.room}
 
 
@@ -657,13 +743,12 @@ def import_drawers(body: ImportBody, user: dict = Depends(_current_user)):
         if drawer_id in existing_ids:
             skipped += 1
             continue
-        meta = {
-            "wing":     entry.get("wing", "Input"),
-            "room":     entry.get("room", "general"),
-            "added_at": entry.get("added_at", now),
-            "id":       drawer_id,
-        }
+        wing = entry.get("wing", "Input")
+        room = entry.get("room", "general")
+        added_at = entry.get("added_at", now)
+        meta = {"wing": wing, "room": room, "added_at": added_at, "id": drawer_id}
         col.add(ids=[drawer_id], documents=[content], metadatas=[meta])
+        _drawers_text_insert(user["id"], drawer_id, content, wing, room, added_at)
         existing_ids.add(drawer_id)
         added += 1
 

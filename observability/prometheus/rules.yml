@@ -46,3 +46,33 @@ groups:
         annotations:
           summary: "Latence RAG P95 > 5s"
           description: "P95 latence RAG : {{ printf \"%.2f\" $value }}s"
+
+  - name: data_tier
+    interval: 1m
+    rules:
+      - alert: QdrantDown
+        expr: probe_success{job="blackbox", instance=~".*:6333.*|.*qdrant.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Qdrant DOWN — MemPalace en mode dégradé keyword"
+          description: "Qdrant injoignable depuis 2min. La recherche sémantique est indisponible. Fallback ILIKE actif si QDRANT_FALLBACK_ENABLED=true."
+
+      - alert: MinioDown
+        expr: probe_success{job="blackbox", instance=~".*:9000.*|.*minio.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO DOWN — uploads en mode dégradé local"
+          description: "MinIO injoignable depuis 2min. Les uploads sont redirigés vers le filesystem local (FallbackStorage)."
+
+      - alert: QdrantSnapshotStale
+        expr: (time() - qdrant_last_snapshot_timestamp) > 7200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Snapshot Qdrant > 2h"
+          description: "Dernier snapshot Qdrant il y a {{ printf \"%.0f\" $value }}s (> 2h). Vérifier make qdrant-snapshot."

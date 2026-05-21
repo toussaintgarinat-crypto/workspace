@@ -82,12 +82,51 @@ class S3Storage(StorageBackend):
         self.client.delete_object(Bucket=self.bucket, Key=storage_path)
 
 
+class FallbackStorage(StorageBackend):
+    """Tries S3/MinIO first; falls back to local filesystem on failure."""
+
+    _FALLBACK_PREFIX = "fallback:"
+
+    def __init__(self, s3: S3Storage, fallback_base: str):
+        self._s3 = s3
+        self._local = LocalStorage(fallback_base)
+        self.degraded = False
+
+    def save(self, user_id: str, doc_id: str, filename: str, data: bytes) -> str:
+        try:
+            path = self._s3.save(user_id, doc_id, filename, data)
+            self.degraded = False
+            return path
+        except Exception:
+            self.degraded = True
+            local_path = self._local.save(user_id, doc_id, filename, data)
+            return f"{self._FALLBACK_PREFIX}{local_path}"
+
+    def load(self, storage_path: str) -> bytes:
+        if storage_path.startswith(self._FALLBACK_PREFIX):
+            return self._local.load(storage_path[len(self._FALLBACK_PREFIX):])
+        try:
+            return self._s3.load(storage_path)
+        except Exception:
+            return self._local.load(storage_path)
+
+    def delete(self, storage_path: str) -> None:
+        if storage_path.startswith(self._FALLBACK_PREFIX):
+            return self._local.delete(storage_path[len(self._FALLBACK_PREFIX):])
+        try:
+            self._s3.delete(storage_path)
+        except Exception:
+            pass
+
+
 def get_storage_backend(base_path: str) -> StorageBackend:
     if os.environ.get("MEMPALACE_STORAGE", "local") == "s3":
-        return S3Storage(
+        s3 = S3Storage(
             endpoint=os.environ["S3_ENDPOINT"],
             access_key=os.environ["S3_ACCESS_KEY"],
             secret_key=os.environ["S3_SECRET_KEY"],
             bucket=os.environ.get("S3_BUCKET", "mempalace"),
         )
+        fallback_dir = os.environ.get("MINIO_FALLBACK_DIR", f"{base_path}/_fallback")
+        return FallbackStorage(s3, fallback_dir)
     return LocalStorage(base_path)

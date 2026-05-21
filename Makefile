@@ -21,7 +21,8 @@ DC := docker compose --env-file $(ENV_FILE)
         observability-network start-observability stop-observability logs-observability \
         backup restore \
         continuity-audit continuity-reload continuity-check \
-        pg-status pg-status-oria
+        pg-status pg-status-oria \
+        qdrant-status minio-status qdrant-snapshot
 
 help:
 	@echo ""
@@ -290,4 +291,29 @@ continuity-reload:
 continuity-check:
 	@docker run --rm --entrypoint promtool -v $(CURDIR)/observability/prometheus:/cfg \
 	  prom/prometheus:v2.55.1 check rules /cfg/continuity.yml /cfg/rules.yml
+
+# ── QDRANT + MINIO (S88) ──────────────────────────────────────────
+.PHONY: qdrant-status minio-status qdrant-snapshot
+
+qdrant-status:
+	@echo "── Qdrant health ──"
+	@curl -sf http://localhost:6334/ | python3 -m json.tool 2>/dev/null || echo "  Qdrant injoignable (port 6334)"
+	@echo ""
+	@echo "── Collections ──"
+	@curl -sf http://localhost:6334/collections | python3 -c \
+	  "import sys,json; [print('  •', c['name']) for c in json.load(sys.stdin)['result']['collections']]" \
+	  2>/dev/null || echo "  Aucune collection listée"
+
+minio-status:
+	@echo "── MinIO health ──"
+	@curl -sf http://localhost:9100/minio/health/live && echo "  MinIO UP" || echo "  MinIO DOWN"
+	@echo ""
+	@echo "── Buckets ──"
+	@docker exec mempalace-minio-1 mc alias set local http://localhost:9000 \
+	  "$${MINIO_ROOT_USER:-mempalace}" "$${MINIO_ROOT_PASSWORD:-mempalace_secret}" 2>/dev/null; \
+	  docker exec mempalace-minio-1 mc ls local 2>/dev/null || echo "  (mc non disponible)"
+
+qdrant-snapshot:
+	@echo "── Snapshot Qdrant ──"
+	@QDRANT_URL=http://localhost:6334 bash infra/qdrant/snapshot-and-sync.sh
 
