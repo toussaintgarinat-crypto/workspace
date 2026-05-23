@@ -1,21 +1,23 @@
 version: '3.9'
 
 # docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
 # Variables requises dans .env :
-#   DOMAIN, POSTGRES_PASSWORD, SYNAPSE_DB_PASSWORD,
-#   LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
-#   MATRIX_AS_TOKEN, MATRIX_HS_TOKEN
+#   DOMAIN
+#   POSTGRES_PASSWORD               (DB principale Oria)
+#   ORIA_LIVEKIT_API_SECRET         (LiveKit voix/vidéo)
+#   ORIA_MATRIX_AS_TOKEN            (Application Service Dendrite)
+#   ORIA_MATRIX_HS_TOKEN            (Homeserver Dendrite)
+#
+# Note : les healthchecks (backend, dendrite, livekit) sont définis dans
+# docker-compose.yml de base et héritent automatiquement en prod.
 
 services:
 
   redis:
     ports: []    # interne uniquement
 
-  synapse_db:
-    restart: unless-stopped
-    ports: []
-
-  synapse:
+  dendrite:
     restart: unless-stopped
 
   livekit:
