@@ -3,18 +3,41 @@
 #
 # Remplace <DOMAIN> par ton domaine racine (ex: monagent.fr).
 # Le label `tier: critical` déclenche l'alerte ProbeDownCritical (severity: critical).
+#
+# Labels spéciaux pour alertes entry_tier (S89) :
+#   instance contenant "traefik-hp" → alerte TraefikHPDown
+#   instance contenant "traefik-n2" → alerte BothNodesDown (si HP aussi down)
 
+# ── Traefik ping — surveillance SPOF entrée ────────────────────────────────────
+- targets:
+    # HP G4 SFF Traefik (primaire)
+    # - http://<HP_PUBLIC_IP>:8082/ping
+    # Exemple : http://1.2.3.4:8082/ping
+  labels:
+    tier: critical
+    layer: entry
+    node: traefik-hp
+
+- targets:
+    # Node 2 Traefik (standby DNS failover) — activer quand Node 2 opérationnel
+    # - http://<NODE2_PUBLIC_IP>:8082/ping
+  labels:
+    tier: critical
+    layer: entry
+    node: traefik-n2
+
+# ── Applications — healthchecks via Traefik HTTPS ─────────────────────────────
 - targets:
     # - https://assistant.<DOMAIN>/health
     # - https://oria.<DOMAIN>/health
     # - https://mempalace.<DOMAIN>/health
   labels:
     tier: critical
-    layer: entry
+    layer: app
 
 - targets:
     # - https://forge.<DOMAIN>/api/health
     # - https://gateway.<DOMAIN>/health
   labels:
     tier: standard
-    layer: entry
+    layer: app

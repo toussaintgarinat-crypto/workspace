@@ -18,15 +18,12 @@ entryPoints:
   websecure:
     address: ":443"
 
-  # Netbird signal (gRPC WebSocket)
   netbird-signal:
     address: ":10000"
 
-  # Netbird management (gRPC)
   netbird-management:
     address: ":33073"
 
-  # STUN/TURN UDP (coturn)
   turn-udp:
     address: ":3478/udp"
 
@@ -35,17 +32,13 @@ certificatesResolvers:
     acme:
       email: toussaintgarinat@gmail.com
       storage: /letsencrypt/acme.json
-      httpChallenge:
-        entryPoint: web
-      # DNS-01 via Cloudflare (Node 2 ou si port 80 indisponible) :
-      #   1. Commenter httpChallenge ci-dessus
-      #   2. Décommenter dnsChallenge ci-dessous
-      #   3. Injecter CF_DNS_API_TOKEN dans l'env du container
-      # dnsChallenge:
-      #   provider: cloudflare
-      #   resolvers:
-      #     - "1.1.1.1:53"
-      #     - "8.8.8.8:53"
+      # DNS-01 via Cloudflare — port 80 pas nécessaire sur Node 2
+      # CF_DNS_API_TOKEN injecté via env dans compose-node2.yml
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
 
 providers:
   file:

@@ -76,3 +76,35 @@ groups:
         annotations:
           summary: "Snapshot Qdrant > 2h"
           description: "Dernier snapshot Qdrant il y a {{ printf \"%.0f\" $value }}s (> 2h). Vérifier make qdrant-snapshot."
+
+  - name: entry_tier
+    interval: 30s
+    rules:
+      - alert: TraefikHPDown
+        expr: probe_success{job="blackbox_public", node="traefik-hp"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Traefik HP G4 DOWN"
+          description: "Traefik HP G4 SFF injoignable depuis 1min. Vérifier make traefik-failover-drill. DNS failover en cours si cloudflare-monitor actif."
+
+      - alert: BothNodesDown
+        expr: >
+          probe_success{job="blackbox_public", node="traefik-hp"} == 0
+          and probe_success{job="blackbox_public", node="traefik-n2"} == 0
+        for: 30s
+        labels:
+          severity: page
+        annotations:
+          summary: "BOTH NODES DOWN — page maintenance active"
+          description: "HP G4 SFF + Node 2 injoignables depuis 30s. Page maintenance Cloudflare Pages doit être visible. Runbook: docs/runbooks/traefik-failover.md (Plan D)."
+
+      - alert: CertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox_public"} - time() < 14 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Certificat TLS expire dans < 14j"
+          description: "Certificat {{ $labels.instance }} expire dans {{ printf \"%.0f\" $value }}s. Vérifier renouvellement ACME (make acme-sync si Node 2 actif)."

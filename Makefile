@@ -317,3 +317,39 @@ qdrant-snapshot:
 	@echo "── Snapshot Qdrant ──"
 	@QDRANT_URL=http://localhost:6334 bash infra/qdrant/snapshot-and-sync.sh
 
+# ── DNS FAILOVER (S89) ────────────────────────────────────────
+.PHONY: traefik-failover-drill both-down-drill acme-sync traefik-monitor
+
+traefik-failover-drill:  ## Simule panne HP Traefik + vérifie bascule DNS (< 90s)
+	@echo "==> [1/5] Arrêt Traefik HP (simulation panne)..."
+	@docker compose -f infra/traefik/docker-compose.yml stop traefik
+	@echo "==> [2/5] cloudflare-monitor détectera 3 échecs (3×30s = ~90s)..."
+	@echo "         Ou basculer manuellement : bash infra/dns-failover/cloudflare-monitor.sh"
+	@echo "==> [3/5] Attente propagation DNS (90s)..."
+	@sleep 90
+	@DOMAIN=$$(grep '^DOMAIN=' .env 2>/dev/null | cut -d= -f2); \
+	 if [[ -n "$$DOMAIN" ]]; then \
+	   echo "==> [4/5] Test DNS external (dig)..."; \
+	   dig +short "assistant.$$DOMAIN" A || true; \
+	 else \
+	   echo "==> [4/5] DOMAIN non défini dans .env — test ignoré"; \
+	 fi
+	@echo "==> [5/5] Redémarrage Traefik HP..."
+	@docker compose -f infra/traefik/docker-compose.yml start traefik
+	@echo "    Traefik HP redémarré — cloudflare-monitor restaurera le DNS au prochain poll."
+
+both-down-drill:  ## Simule HP + Node 2 down → vérifie page maintenance CF Pages
+	@echo "==> Drill 'both nodes down'"
+	@echo "    Ce drill nécessite d'arrêter Traefik HP ET Node 2 manuellement."
+	@echo "    1. Sur HP   : docker compose -f infra/traefik/docker-compose.yml stop traefik"
+	@echo "    2. Sur N2   : docker compose -f infra/traefik/compose-node2.yml stop traefik"
+	@DOMAIN=$$(grep '^DOMAIN=' .env 2>/dev/null | cut -d= -f2); \
+	 [[ -n "$$DOMAIN" ]] && echo "    3. Vérifier : https://assistant.$$DOMAIN (doit afficher page maintenance)" || true
+	@echo "    4. Redémarrer les deux Traefik, cloudflare-monitor restaure le DNS."
+
+acme-sync:  ## Synchronise acme.json (certs LE) HP → Node 2 via NetBird SSH
+	@bash infra/traefik/acme-sync.sh
+
+traefik-monitor:  ## Lance cloudflare-monitor en foreground (logs en direct)
+	@bash infra/dns-failover/cloudflare-monitor.sh
+
