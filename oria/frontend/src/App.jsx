@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import MainLayout from './components/MainLayout.jsx'
 import EasySetupWizard from './components/EasySetupWizard.jsx'
+import DegradedBanner from './components/DegradedBanner.jsx'
 import { initMatrixClient, startMatrixClient, stopMatrixClient } from './services/matrixClient.js'
 
 function AppInner() {
@@ -28,7 +29,12 @@ function AppInner() {
     return <EasySetupWizard user={user} onComplete={refreshUser} />
   }
 
-  return <MainLayout moi={user} onMoiUpdate={refreshUser} onDeconnexion={logout} />
+  return (
+    <>
+      <DegradedBanner />
+      <MainLayout moi={user} onMoiUpdate={refreshUser} onDeconnexion={logout} />
+    </>
+  )
 }
 
 export default function App() {

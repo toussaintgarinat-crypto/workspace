@@ -7,6 +7,13 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   receiver: telegram
+  routes:
+    - match:
+        degraded: "true"
+      receiver: degraded-webhook
+      group_wait: 10s
+      repeat_interval: 10m
+      continue: true
 
 receivers:
   - name: telegram
@@ -20,6 +27,14 @@ receivers:
           📌 {{ .Annotations.summary }}
           {{ .Annotations.description }}
           {{ end }}
+
+  - name: degraded-webhook
+    webhook_configs:
+      - url: "http://assistant:8000/admin/degraded/auto"
+        http_config:
+          headers:
+            X-Degraded-Token: "${DEGRADED_WEBHOOK_TOKEN}"
+        send_resolved: true
 
 inhibit_rules:
   - source_match:

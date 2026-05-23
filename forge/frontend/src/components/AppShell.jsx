@@ -5,6 +5,7 @@ import { sessions as sessionsApi } from '../services/api'
 import Sidebar from '../views/WorkspaceView/Sidebar'
 import SettingsPanel from '../views/WorkspaceView/SettingsPanel'
 import styles from './AppShell.module.css'
+import DegradedBanner from './DegradedBanner'
 
 /**
  * Shell global — Sidebar persistante sur toutes les vues authentifiées.
@@ -67,6 +68,7 @@ export default function AppShell({ children }) {
       />
 
       <main className={styles.main}>
+        <DegradedBanner apiUrl={import.meta.env.VITE_API_URL || ''} />
         {children}
       </main>
 

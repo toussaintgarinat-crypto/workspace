@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { isEnabled, getUser, logout } from './services/keycloak.js';
 import { registerServiceWorker, isPushSupported, requestPushPermission } from './services/push.js';
 import InstallBanner from './components/InstallBanner.jsx';
+import DegradedBanner from './components/DegradedBanner.jsx';
 import ChatView from './views/ChatView.jsx';
 import ConnectView from './views/ConnectView.jsx';
 import GatewayView from './views/GatewayView.jsx';
@@ -206,6 +207,7 @@ export default function App() {
         )}
       </nav>
       <main style={s.main}>
+        <DegradedBanner />
         {view === 'chat' && <ChatView />}
         {view === 'connections' && <ConnectView />}
         {view === 'gateway' && <GatewayView />}

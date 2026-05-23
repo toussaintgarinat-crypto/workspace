@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks, Query
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, BackgroundTasks, Query
 from fastapi.responses import Response, StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
@@ -363,9 +363,102 @@ def startup() -> None:
 
 # ── Health ───────────────────────────────────────────────────────
 
+_DEGRADED_COMPONENTS_MP = ["qdrant", "minio", "export", "import"]
+_DEGRADED_TOKEN_MP = os.environ.get("DEGRADED_WEBHOOK_TOKEN", "")
+_REDIS_URL_MP = os.environ.get("REDIS_URL", "")
+_redis_mp: Optional[object] = None
+
+
+def _get_redis_mp():
+    global _redis_mp
+    if _redis_mp is not None:
+        return _redis_mp
+    if not _REDIS_URL_MP:
+        return None
+    try:
+        import redis
+        _redis_mp = redis.from_url(_REDIS_URL_MP, decode_responses=True)
+        _redis_mp.ping()
+        return _redis_mp
+    except Exception:
+        _redis_mp = None
+        return None
+
+
+def _mp_degraded_states() -> dict:
+    rc = _get_redis_mp()
+    env_defaults = {
+        "qdrant": QDRANT_FALLBACK_ENABLED,
+        "minio": False,
+        "export": False,
+        "import": False,
+    }
+    states: dict = {}
+    for comp in _DEGRADED_COMPONENTS_MP:
+        key = f"degraded:mempalace:{comp}"
+        fallback = env_defaults.get(comp, False)
+        if rc:
+            try:
+                val = rc.get(key)
+                degraded = (val == "1") if val is not None else fallback
+            except Exception:
+                degraded = fallback
+        else:
+            degraded = fallback
+        states[comp] = {"degraded": degraded}
+    return states
+
+
+def _mp_set_degraded(component: str, degraded: bool, ttl: Optional[int] = None) -> bool:
+    rc = _get_redis_mp()
+    if not rc:
+        return False
+    key = f"degraded:mempalace:{component}"
+    val = "1" if degraded else "0"
+    try:
+        if ttl:
+            rc.setex(key, ttl, val)
+        else:
+            rc.set(key, val)
+        return True
+    except Exception:
+        return False
+
+
+def _mp_require_admin(token: str = Depends(oauth2_scheme)) -> dict:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        if payload.get("admin"):
+            return payload
+    except JWTError:
+        pass
+    if KEYCLOAK_URL:
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            jwks = loop.run_until_complete(_fetch_jwks())
+            decode_opts = ({"audience": KEYCLOAK_AUDIENCE}
+                           if KEYCLOAK_AUDIENCE else {"verify_aud": False})
+            payload = jwt.decode(token, jwks, algorithms=["RS256"], options=decode_opts)
+            roles = payload.get("realm_access", {}).get("roles", [])
+            if "admin" in roles:
+                return payload
+        except Exception:
+            pass
+    raise HTTPException(status_code=403, detail="Admin role required")
+
+
+import logging as _logging
+_mp_logger = _logging.getLogger("mempalace.api")
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "module": "mempalace:api"}
+    states = _mp_degraded_states()
+    any_degraded = any(v["degraded"] for v in states.values())
+    if any_degraded:
+        _mp_logger.warning("MemPalace running in degraded mode: %s", states)
+    return {"status": "ok", "module": "mempalace:api", "degraded": any_degraded}
 
 
 @app.get("/api/qdrant-status")
@@ -376,6 +469,61 @@ def qdrant_status(_user: dict = Depends(_current_user)):
         "fallback_enabled": QDRANT_FALLBACK_ENABLED,
         "degraded": QDRANT_FALLBACK_ENABLED or not available,
     }
+
+
+class MpDegradedToggleBody(BaseModel):
+    component: str
+    degraded: bool
+    ttl: Optional[int] = None
+
+
+class MpAlertWebhookBody(BaseModel):
+    alerts: list
+    status: str = "firing"
+
+
+_MP_ALERT_COMPONENT_MAP = {
+    "QdrantDown": "qdrant",
+    "MinioDown": "minio",
+}
+
+
+@app.get("/admin/degraded")
+def mp_get_degraded(_: dict = Depends(_mp_require_admin)):
+    states = _mp_degraded_states()
+    any_degraded = any(v["degraded"] for v in states.values())
+    return {"service": "mempalace", "components": states, "any_degraded": any_degraded}
+
+
+@app.post("/admin/degraded")
+def mp_toggle_degraded(body: MpDegradedToggleBody, _: dict = Depends(_mp_require_admin)):
+    if body.component not in _DEGRADED_COMPONENTS_MP:
+        raise HTTPException(status_code=400, detail=f"Unknown component: {body.component}")
+    ok = _mp_set_degraded(body.component, body.degraded, body.ttl)
+    if body.degraded:
+        _mp_logger.warning("Degraded mode ON for mempalace:%s", body.component)
+    return {"ok": ok, "component": body.component, "degraded": body.degraded}
+
+
+@app.post("/admin/degraded/auto")
+def mp_degraded_webhook(body: MpAlertWebhookBody, request: Request):
+    token = request.headers.get("X-Degraded-Token", "")
+    if _DEGRADED_TOKEN_MP and token != _DEGRADED_TOKEN_MP:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    toggled = []
+    for alert in body.alerts:
+        alertname = alert.get("labels", {}).get("alertname", "")
+        component = _MP_ALERT_COMPONENT_MAP.get(alertname)
+        if not component:
+            continue
+        degraded = body.status == "firing"
+        ok = _mp_set_degraded(component, degraded)
+        if degraded:
+            _mp_logger.warning("Auto degraded ON for mempalace:%s (alert: %s)", component, alertname)
+        toggled.append({"component": component, "degraded": degraded, "ok": ok})
+
+    return {"ok": True, "toggled": toggled}
 
 
 # ── Auth ─────────────────────────────────────────────────────────

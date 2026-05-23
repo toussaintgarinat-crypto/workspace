@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     OCR_PROVIDER: str = "tesseract"
     MISTRAL_API_KEY: str = ""
 
+    # Degraded mode webhook token (S90) — partagé avec Alertmanager
+    DEGRADED_WEBHOOK_TOKEN: str = ""
+
     class Config:
         env_file = ".env"
 

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import FastAPI, Depends, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -39,9 +39,24 @@ import summarizer as summarizer_mod
 import persona as persona_mod
 import scheduled as scheduled_mod
 from notifiers import inapp as inapp_notifier
+import degraded as degraded_mod
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+async def _sync_degraded_metrics():
+    from metrics import degraded_component_active
+    while True:
+        try:
+            states = await degraded_mod.get_degraded_states("assistant")
+            for comp, info in states.items():
+                degraded_component_active.labels(service="assistant", component=comp).set(
+                    1 if info.get("degraded") else 0
+                )
+        except Exception as exc:
+            logger.warning("Degraded metric sync failed: %s", exc)
+        await asyncio.sleep(30)
 
 
 @asynccontextmanager
@@ -54,6 +69,7 @@ async def lifespan(app: FastAPI):
     await swarm_mod.start_redis_listener()
     proactive_mod.start_scheduler()
     scheduled_mod.start_scheduler()
+    asyncio.create_task(_sync_degraded_metrics())
     yield
     scheduled_mod.stop_scheduler()
     proactive_mod.stop_scheduler()
@@ -1020,6 +1036,57 @@ async def admin_disk(_: dict = Depends(require_admin)):
             return json.load(fh)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ── Degraded mode (S90) ──────────────────────────────────────────────────────
+
+class DegradedToggleBody(BaseModel):
+    component: str
+    degraded: bool
+    ttl: int | None = None
+
+
+class AlertmanagerWebhookBody(BaseModel):
+    alerts: list
+    status: str = "firing"
+
+
+_DEGRADED_SERVICE = "assistant"
+
+
+@app.get("/admin/degraded")
+async def admin_get_degraded(_: dict = Depends(require_admin)):
+    states = await degraded_mod.get_degraded_states(_DEGRADED_SERVICE)
+    any_degraded = any(v["degraded"] for v in states.values())
+    return {"service": _DEGRADED_SERVICE, "components": states, "any_degraded": any_degraded}
+
+
+@app.post("/admin/degraded")
+async def admin_toggle_degraded(body: DegradedToggleBody, _: dict = Depends(require_admin)):
+    if body.component not in degraded_mod.COMPONENTS:
+        raise HTTPException(status_code=400, detail=f"Unknown component: {body.component}")
+    await degraded_mod.set_degraded(_DEGRADED_SERVICE, body.component, body.degraded, body.ttl)
+    return {"ok": True, "component": body.component, "degraded": body.degraded}
+
+
+@app.post("/admin/degraded/auto")
+async def admin_degraded_webhook(body: AlertmanagerWebhookBody, request: Request):
+    token = request.headers.get("X-Degraded-Token", "")
+    if not degraded_mod.verify_webhook_token(token):
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    toggled = []
+    for alert in body.alerts:
+        alertname = alert.get("labels", {}).get("alertname", "")
+        component = degraded_mod.alertname_to_component(alertname)
+        if not component:
+            continue
+        degraded = body.status == "firing"
+        await degraded_mod.set_degraded(_DEGRADED_SERVICE, component, degraded)
+        logger.warning("Auto degraded %s for %s (alert: %s)", "ON" if degraded else "OFF", component, alertname)
+        toggled.append({"component": component, "degraded": degraded, "alert": alertname})
+
+    return {"ok": True, "toggled": toggled}
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────

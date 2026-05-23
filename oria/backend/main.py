@@ -98,9 +98,11 @@ app.include_router(ipcra_router,     prefix="/api/ipcra",     tags=["IPCRA"])
 from routers.social_router import router as social_router
 from routers.jardin_router import router as jardin_router
 from routers.shared_zones_router import router as shared_zones_router
+from routers.admin import router as admin_router
 app.include_router(social_router,      prefix="/api/social",        tags=["Social"])
 app.include_router(jardin_router,      prefix="/api/jardin",        tags=["Jardin Secret"])
 app.include_router(shared_zones_router, prefix="/api/shared-zones", tags=["Zones partagées"])
+app.include_router(admin_router,       prefix="/api",               tags=["Admin"])
 from routers.coins_router import router as coins_router
 app.include_router(coins_router, prefix="/api", tags=["Coins & Rooms payantes"])
 app.include_router(conductor_router, prefix="/api/conductor", tags=["Conductor"])
@@ -178,8 +180,29 @@ app.router.lifespan_context = lifespan
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+async def health():
+    from routers.admin import _is_readonly
+    readonly = await _is_readonly()
+    if readonly:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("Oria running in read-only mode")
+    return {"status": "ok", "readonly": readonly}
+
+
+@app.middleware("http")
+async def readonly_guard(request, call_next):
+    from routers.admin import _is_readonly
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if not request.url.path.startswith("/api/admin"):
+            readonly = await _is_readonly()
+            if readonly:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Oria est en mode lecture seule (maintenance)"},
+                )
+    return await call_next(request)
+
 
 @app.get("/")
 def root():

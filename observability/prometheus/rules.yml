@@ -55,6 +55,8 @@ groups:
         for: 2m
         labels:
           severity: critical
+          degraded: "true"
+          component: rag
         annotations:
           summary: "Qdrant DOWN — MemPalace en mode dégradé keyword"
           description: "Qdrant injoignable depuis 2min. La recherche sémantique est indisponible. Fallback ILIKE actif si QDRANT_FALLBACK_ENABLED=true."
@@ -64,9 +66,20 @@ groups:
         for: 2m
         labels:
           severity: critical
+          degraded: "true"
+          component: tools
         annotations:
           summary: "MinIO DOWN — uploads en mode dégradé local"
           description: "MinIO injoignable depuis 2min. Les uploads sont redirigés vers le filesystem local (FallbackStorage)."
+
+      - alert: DegradedModeProlonged
+        expr: degraded_component_active > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mode dégradé actif > 30min sur {{ $labels.service }}/{{ $labels.component }}"
+          description: "Le composant {{ $labels.component }} du service {{ $labels.service }} est en mode dégradé depuis plus de 30min. Vérifier la cause racine."
 
       - alert: QdrantSnapshotStale
         expr: (time() - qdrant_last_snapshot_timestamp) > 7200

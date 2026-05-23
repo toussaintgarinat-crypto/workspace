@@ -31,3 +31,10 @@ rag_injections_total = Counter(
     "assistant_rag_injections_total",
     "Nombre total de souvenirs MemPalace injectés via RAG",
 )
+
+# Degraded components gauge (S90)
+degraded_component_active = Gauge(
+    "degraded_component_active",
+    "Composant en mode dégradé (1=dégradé, 0=normal)",
+    ["service", "component"],
+)
