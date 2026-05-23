@@ -21,9 +21,10 @@ import time
 from pathlib import Path
 
 import httpx
+from aiohttp import web
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, TypeHandler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +42,11 @@ ORIA_URL = os.getenv("ORIA_URL", "http://localhost")
 ONCALL_NAME = os.getenv("ONCALL_NAME", "Toussaint")
 RUNBOOKS_DIR = Path(os.getenv("RUNBOOKS_DIR", "/app/runbooks"))
 CHAOS_SCRIPTS_DIR = Path(os.getenv("CHAOS_SCRIPTS_DIR", "/app/chaos"))
+HEALTH_PORT = int(os.getenv("TELEGRAM_HEALTH_PORT", "9090"))
+
+# État partagé pour /health — alimenté par TypeHandler ci-dessous
+START_TS = time.time()
+LAST_UPDATE_TS: float = 0.0  # 0 = aucun update reçu pour l'instant
 
 SERVICES = [
     ("assistant", f"{ASSISTANT_URL}:8000/health"),
@@ -367,6 +373,49 @@ async def cmd_oncall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)
 
 
+# ── Health endpoint (aiohttp) ─────────────────────────────────────────────────
+
+async def _track_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global LAST_UPDATE_TS
+    LAST_UPDATE_TS = time.time()
+
+
+async def health_handler(request: web.Request) -> web.Response:
+    """GET /health — vérifie que l'API Telegram répond.
+
+    Retour 200 + JSON {status, uptime_seconds, seconds_since_last_update}.
+    Retour 503 si bot.get_me() échoue (token invalide, réseau coupé).
+    """
+    bot = request.app["bot"]
+    now = time.time()
+    payload = {
+        "uptime_seconds": int(now - START_TS),
+        "seconds_since_last_update": int(now - LAST_UPDATE_TS) if LAST_UPDATE_TS else None,
+    }
+    try:
+        me = await asyncio.wait_for(bot.get_me(), timeout=3)
+        payload["status"] = "ok"
+        payload["bot"] = me.username
+        return web.json_response(payload)
+    except Exception as exc:
+        payload["status"] = "error"
+        payload["error"] = str(exc)
+        logger.warning("Health check failed: %s", exc)
+        return web.json_response(payload, status=503)
+
+
+async def _start_health_server(application: Application) -> None:
+    """post_init hook : démarre aiohttp en parallèle du polling Telegram."""
+    aio_app = web.Application()
+    aio_app["bot"] = application.bot
+    aio_app.router.add_get("/health", health_handler)
+    runner = web.AppRunner(aio_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", HEALTH_PORT)
+    await site.start()
+    logger.info("Endpoint /health en écoute sur :%d", HEALTH_PORT)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -376,7 +425,15 @@ def main() -> None:
             "TELEGRAM_ADMIN_CHAT_ID non défini — commandes /drill et /silence désactivées."
         )
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(_start_health_server)
+        .build()
+    )
+
+    # Groupe -1 : tracker exécuté avant les handlers de commandes
+    app.add_handler(TypeHandler(Update, _track_update), group=-1)
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("status", cmd_status))
