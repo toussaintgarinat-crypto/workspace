@@ -131,7 +131,21 @@ class OAuthCallbackBody(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.0.0", "auth_enabled": settings.AUTH_ENABLED}
+    """Schema unifie S101 (HealthBuilder) — garde `status` top-level pour Prometheus blackbox."""
+    from agent_personnel_shared.health import HealthBuilder
+    from redis_client import redis_client
+
+    builder = HealthBuilder(
+        "assistant",
+        version="2.0.0",
+        metadata={"auth_enabled": settings.AUTH_ENABLED},
+    )
+    await builder.check_pg(database, name="postgres")
+    await builder.check_redis(redis_client, name="redis")
+    # Compat ancien format : on garde `auth_enabled` top-level pour les clients legacy.
+    payload = builder.build()
+    payload["auth_enabled"] = settings.AUTH_ENABLED
+    return payload
 
 
 @app.get("/models")
