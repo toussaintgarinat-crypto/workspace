@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-personnel-shared"
+version = "0.1.0"
+description = "Utilitaires partagés (Redis, Keycloak, FastAPI) — Agent Personnel de Création"
+requires-python = ">=3.10"
+# Volontairement minimal : les services hôtes déclarent déjà fastapi / httpx / python-jose / redis
+# dans leur requirements.txt. Garder ce paquet léger évite les conflits de versions.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent_personnel_shared*"]

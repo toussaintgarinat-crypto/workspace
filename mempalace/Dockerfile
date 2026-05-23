@@ -3,10 +3,15 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Build context = repo root (cf. mempalace/docker-compose.yml).
+# ── Shared utilities (Redis, Keycloak, FastAPI helpers) ──────────────
+COPY shared /shared
+RUN pip install --no-cache-dir -e /shared
+
+COPY mempalace/requirements.txt .
 RUN pip install --no-cache-dir setuptools && pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY mempalace/ ./
 RUN pip install -e . --no-deps --no-build-isolation
 
 EXPOSE 8100

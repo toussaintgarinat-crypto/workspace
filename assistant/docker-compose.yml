@@ -18,8 +18,9 @@ services:
   backend:
     image: ghcr.io/toussaintgarinat-crypto/workspace/assistant-backend:${ASSISTANT_IMAGE_TAG:-latest}
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      # Repo root pour accéder à ./shared/ (paquet partagé S95).
+      context: ..
+      dockerfile: assistant/backend/Dockerfile
       args:
         LOCAL_VOICE_ENABLED: ${LOCAL_VOICE_ENABLED:-false}
     ports:

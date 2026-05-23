@@ -20,11 +20,16 @@ from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, BackgroundTasks, Query
 from fastapi.responses import Response, StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from jose import JWTError, jwt
 import bcrypt
 
+from agent_personnel_shared.fastapi_setup import setup_cors, setup_logging
+from agent_personnel_shared.keycloak_auth import (
+    KeycloakSettings,
+    has_role,
+    verify_token,
+)
 from mempalace.storage import get_palace_storage
 from mempalace.document_storage import get_storage_backend, StorageBackend
 
@@ -42,8 +47,7 @@ PALACE_BASE     = os.environ.get("MEMPALACE_PALACE_BASE",
 DB_PATH         = os.environ.get("MEMPALACE_DB_PATH",
                     str(Path.home() / ".mempalace" / "users.db"))
 ADMIN_TOKEN     = os.environ.get("MEMPALACE_ADMIN_TOKEN", "")
-CORS_ORIGINS    = os.environ.get("CORS_ORIGINS",
-                    "http://localhost:3000,http://localhost:8080").split(",")
+CORS_ORIGINS    = os.environ.get("CORS_ORIGINS", "")
 # Degraded mode: keyword fallback when Qdrant is unavailable
 QDRANT_FALLBACK_ENABLED = os.environ.get("QDRANT_FALLBACK_ENABLED", "false").lower() == "true"
 # Keycloak dual-auth (optional)
@@ -51,7 +55,11 @@ KEYCLOAK_URL      = os.environ.get("KEYCLOAK_URL", "")
 KEYCLOAK_REALM    = os.environ.get("KEYCLOAK_REALM", "forge")
 KEYCLOAK_AUDIENCE = os.environ.get("KEYCLOAK_AUDIENCE", "")  # Multi-tenant: valeur = client_id Keycloak. Vide = verify_aud désactivé.
 
-_jwks_cache: dict | None = None
+# Configuration Keycloak partagée — initialisée à la demande si KEYCLOAK_URL est défini.
+_KC: Optional[KeycloakSettings] = (
+    KeycloakSettings(url=KEYCLOAK_URL, realm=KEYCLOAK_REALM, audience=KEYCLOAK_AUDIENCE)
+    if KEYCLOAK_URL else None
+)
 
 # ── Helpers ──────────────────────────────────────────────────────
 def _hash_pw(password: str) -> str:
@@ -296,19 +304,6 @@ def _create_token(user_id: str, username: str) -> str:
     )
 
 
-async def _fetch_jwks() -> dict:
-    global _jwks_cache
-    if _jwks_cache:
-        return _jwks_cache
-    import httpx
-    url = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs"
-    async with httpx.AsyncClient() as client:
-        r = await client.get(url, timeout=5)
-        r.raise_for_status()
-    _jwks_cache = r.json()
-    return _jwks_cache
-
-
 async def _current_user(token: str = Depends(oauth2_scheme)) -> dict:
     # Try local HS256 first
     try:
@@ -320,12 +315,9 @@ async def _current_user(token: str = Depends(oauth2_scheme)) -> dict:
         pass
 
     # Try Keycloak RS256 if configured
-    if KEYCLOAK_URL:
+    if _KC is not None:
         try:
-            jwks = await _fetch_jwks()
-            decode_opts = ({"audience": KEYCLOAK_AUDIENCE}
-                           if KEYCLOAK_AUDIENCE else {"verify_aud": False})
-            payload = jwt.decode(token, jwks, algorithms=["RS256"], options=decode_opts)
+            payload = await verify_token(token, _KC)
             user_id = payload.get("sub")
             if user_id:
                 username = payload.get("preferred_username") or payload.get("nom") or user_id
@@ -343,14 +335,14 @@ def _palace(user_id: str) -> str:
 
 
 # ── App ──────────────────────────────────────────────────────────
+setup_logging(level=os.environ.get("LOG_LEVEL", "INFO"), fmt=os.environ.get("LOG_FORMAT", "text"))
+
 app = FastAPI(title="MemPalace API", version="3.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+setup_cors(
+    app,
+    CORS_ORIGINS,
+    default=["http://localhost:3000", "http://localhost:8080"],
 )
 
 
@@ -432,16 +424,11 @@ def _mp_require_admin(token: str = Depends(oauth2_scheme)) -> dict:
             return payload
     except JWTError:
         pass
-    if KEYCLOAK_URL:
-        import asyncio
+    if _KC is not None:
         try:
-            loop = asyncio.get_event_loop()
-            jwks = loop.run_until_complete(_fetch_jwks())
-            decode_opts = ({"audience": KEYCLOAK_AUDIENCE}
-                           if KEYCLOAK_AUDIENCE else {"verify_aud": False})
-            payload = jwt.decode(token, jwks, algorithms=["RS256"], options=decode_opts)
-            roles = payload.get("realm_access", {}).get("roles", [])
-            if "admin" in roles:
+            from agent_personnel_shared.keycloak_auth import verify_token_sync
+            payload = verify_token_sync(token, _KC)
+            if has_role(payload, "admin"):
                 return payload
         except Exception:
             pass

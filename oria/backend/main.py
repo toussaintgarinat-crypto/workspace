@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from agent_personnel_shared.fastapi_setup import setup_cors, setup_logging
 from database import engine, Base
 from sqlalchemy import text
 import models.world, models.building, models.user, models.quartier, models.dm, models.network
@@ -43,17 +43,14 @@ with engine.connect() as _conn:
         except Exception:
             _conn.rollback()
 
+setup_logging(level=os.getenv("LOG_LEVEL", "INFO"), fmt=os.getenv("LOG_FORMAT", "text"))
+
 app = FastAPI(title="Oria API", version="2.0.0")
 
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")
-_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+setup_cors(
+    app,
+    os.getenv("ALLOWED_ORIGINS", ""),
+    default=["http://localhost:3000", "http://localhost:5173"],
 )
 
 for _candidate in ["/app/uploads", "/tmp/uploads",

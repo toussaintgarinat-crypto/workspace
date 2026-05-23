@@ -25,25 +25,20 @@ async def _redis():
 
 
 def _require_admin(request: Request):
-    from routers.auth import _get_jwks, KEYCLOAK_CLIENT_ID
-    from jose import jwt, JWTError
+    from routers.auth import _KC
+    from agent_personnel_shared.keycloak_auth import verify_token_sync, has_role
+    from jose import JWTError
 
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token manquant")
     token = auth[7:]
     try:
-        jwks = _get_jwks()
-        payload = jwt.decode(
-            token, jwks,
-            algorithms=["RS256"],
-            options={"verify_at_hash": False, "audience": KEYCLOAK_CLIENT_ID},
-        )
+        payload = verify_token_sync(token, _KC)
     except JWTError as exc:
         raise HTTPException(status_code=401, detail=f"Token invalide: {exc}")
 
-    roles = payload.get("realm_access", {}).get("roles", [])
-    if "admin" not in roles:
+    if not has_role(payload, "admin"):
         raise HTTPException(status_code=403, detail="Admin role required")
     return payload
 

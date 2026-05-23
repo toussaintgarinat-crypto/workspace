@@ -4,34 +4,41 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import get_db
 from models.user import User
-from jose import jwt, JWTError
-import httpx, os, time
+from jose import JWTError
+import os
 import services.matrix_service as matrix
+
+from agent_personnel_shared.keycloak_auth import (
+    KeycloakSettings,
+    verify_token_sync,
+)
 
 router = APIRouter()
 
 KEYCLOAK_URL      = os.getenv("KEYCLOAK_URL", "http://keycloak:8080")
 KEYCLOAK_REALM    = os.getenv("KEYCLOAK_REALM", "oria")
 KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "oria-app")
-JWKS_URL = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs"
 
-_jwks_cache: dict = {"keys": None, "fetched_at": 0.0}
-_JWKS_TTL = 300  # secondes
+# Configuration Keycloak partagée. `audience` reflète l'historique Oria (CLIENT_ID).
+# Pour passer en mode multi-tenant : vider la variable d'env KEYCLOAK_CLIENT_ID.
+_KC = KeycloakSettings(
+    url=KEYCLOAK_URL,
+    realm=KEYCLOAK_REALM,
+    audience=KEYCLOAK_CLIENT_ID,
+    jwks_ttl=300,
+    extra_decode_options={"verify_at_hash": False},
+)
 
 
 def _get_jwks() -> dict:
-    now = time.monotonic()
-    if _jwks_cache["keys"] and now - _jwks_cache["fetched_at"] < _JWKS_TTL:
-        return _jwks_cache["keys"]
+    """Compat — exposé pour les routers existants (worlds/admin/social)."""
+    from agent_personnel_shared.keycloak_auth import _fetch_jwks_sync
     try:
-        resp = httpx.get(JWKS_URL, timeout=5)
-        resp.raise_for_status()
-        _jwks_cache["keys"] = resp.json()
-        _jwks_cache["fetched_at"] = now
+        return _fetch_jwks_sync(_KC)
     except Exception as exc:
-        if not _jwks_cache["keys"]:
+        if _KC._jwks_cache is None:
             raise HTTPException(503, f"Keycloak JWKS indisponible: {exc}")
-    return _jwks_cache["keys"]
+        return _KC._jwks_cache
 
 
 def _provision_user(keycloak_sub: str, payload: dict, db: Session) -> User:
@@ -133,12 +140,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Token manquant")
     token = auth[7:]
     try:
-        jwks = _get_jwks()
-        payload = jwt.decode(
-            token, jwks,
-            algorithms=["RS256"],
-            options={"verify_at_hash": False, "audience": KEYCLOAK_CLIENT_ID},
-        )
+        payload = verify_token_sync(token, _KC)
     except JWTError as exc:
         raise HTTPException(status_code=401, detail=f"Token invalide: {exc}")
 

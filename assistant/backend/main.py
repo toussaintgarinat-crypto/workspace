@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from agent_personnel_shared.fastapi_setup import setup_cors, setup_logging
 from config import settings
 from db import (
     database, init_db, get_connections, upsert_connection, delete_connection,
@@ -41,7 +41,7 @@ import scheduled as scheduled_mod
 from notifiers import inapp as inapp_notifier
 import degraded as degraded_mod
 
-logging.basicConfig(level=logging.INFO)
+setup_logging(level=os.getenv("LOG_LEVEL", "INFO"), fmt=os.getenv("LOG_FORMAT", "text"))
 logger = logging.getLogger(__name__)
 
 
@@ -82,14 +82,7 @@ app = FastAPI(title="Assistant Backend", version="2.0.0", lifespan=lifespan)
 
 Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
-origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+setup_cors(app, settings.CORS_ORIGINS)
 
 
 # ── Models ───────────────────────────────────────────────────────────────────

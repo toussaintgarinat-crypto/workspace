@@ -8,12 +8,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir setuptools
 
+# ── Shared utilities (Redis, Keycloak, FastAPI helpers) ──────────────
+# Build context = repo root (cf. docker-compose.yml). On installe `shared/` AVANT
+# le code service pour bénéficier du cache Docker tant que les utilitaires partagés
+# ne changent pas.
+COPY shared /shared
+RUN pip install --no-cache-dir -e /shared
+
 ARG LOCAL_VOICE_ENABLED=false
-COPY requirements.txt requirements-voice.txt ./
+COPY assistant/backend/requirements.txt assistant/backend/requirements-voice.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
     if [ "$LOCAL_VOICE_ENABLED" = "true" ]; then pip install --no-cache-dir -r requirements-voice.txt; fi
 
-COPY . .
+COPY assistant/backend/ ./
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser

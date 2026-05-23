@@ -99,7 +99,10 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./backend
+    build:
+      # Repo root pour accéder à ./shared/ (paquet partagé S95).
+      context: ..
+      dockerfile: oria/backend/Dockerfile
     ports:
       - "8000:8000"
     environment:

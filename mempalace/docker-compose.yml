@@ -41,7 +41,10 @@ services:
 
   # ── MemPalace API ────────────────────────────────────────────
   api:
-    build: .
+    build:
+      # Repo root pour accéder à ./shared/ (paquet partagé S95).
+      context: ..
+      dockerfile: mempalace/Dockerfile
     ports:
       - "8100:8100"
     env_file:

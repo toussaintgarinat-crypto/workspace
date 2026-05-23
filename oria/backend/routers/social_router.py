@@ -4,12 +4,13 @@ Réseau social : follow/unfollow, fil d'activité, notifications.
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
-from routers.auth import get_current_user, _get_jwks, KEYCLOAK_CLIENT_ID
+from routers.auth import get_current_user, _KC
+from agent_personnel_shared.keycloak_auth import verify_token_sync
 from models.social import UserFollow, Notification
 from models.user import User
 from models.world import World
 from sse_starlette.sse import EventSourceResponse
-from jose import jwt, JWTError
+from jose import JWTError
 import asyncio, json, uuid, os
 
 router = APIRouter()
@@ -152,9 +153,7 @@ async def notifs_stream(request: Request, token: str = "", db: Session = Depends
     if not token:
         raise HTTPException(401, "Token manquant")
     try:
-        jwks = _get_jwks()
-        payload = jwt.decode(token, jwks, algorithms=["RS256"],
-                             options={"verify_at_hash": False, "audience": KEYCLOAK_CLIENT_ID})
+        payload = verify_token_sync(token, _KC)
     except JWTError as exc:
         raise HTTPException(401, f"Token invalide: {exc}")
     user_id = payload.get("sub")
