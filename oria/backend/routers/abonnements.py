@@ -1,23 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional
-from database import get_db
-from models.world import World, Member
-from models.abonnement import Abonnement, MembreAbonnement, RoomAbonnement
+
+from config import config
+from models.abonnement import Abonnement
 from routers.auth import get_current_user
-import uuid, os
+from services.abonnements_service import AbonnementsService, get_abonnements_service
 
 # ── Stripe (optionnel) ────────────────────────────────────────────────────────
 STRIPE_ENABLED = False
 stripe = None
-STRIPE_WEBHOOK_SECRET = None
 try:
     import stripe as _stripe
-    _key = os.getenv("STRIPE_SECRET_KEY")
-    if _key:
-        _stripe.api_key = _key
-        STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+    if config.STRIPE_SECRET_KEY:
+        _stripe.api_key = config.STRIPE_SECRET_KEY
         STRIPE_ENABLED = True
         stripe = _stripe
 except ImportError:
@@ -62,17 +57,22 @@ def _serialise(a: Abonnement) -> dict:
 # ── Tiers d'abonnement ────────────────────────────────────────────────────────
 
 @router.get("/worlds/{world_id}/abonnements")
-def lister_abonnements(world_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    abonnements = (db.query(Abonnement)
-                   .filter(Abonnement.world_id == world_id, Abonnement.actif == True)
-                   .all())
-    return [_serialise(a) for a in abonnements]
+def lister_abonnements(
+    world_id: str,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
+    return [_serialise(a) for a in svc.list_abonnements(world_id)]
 
 
 @router.post("/worlds/{world_id}/abonnements")
-def creer_abonnement(world_id: str, data: CreerAbonnement,
-                     db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def creer_abonnement(
+    world_id: str,
+    data: CreerAbonnement,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
 
@@ -95,57 +95,58 @@ def creer_abonnement(world_id: str, data: CreerAbonnement,
         except Exception:
             pass
 
-    db.add(a)
-    db.commit()
-    db.refresh(a)
+    a = svc.add_abonnement(a)
     return _serialise(a)
 
 
 @router.patch("/worlds/{world_id}/abonnements/{abonnement_id}")
-def modifier_abonnement(world_id: str, abonnement_id: str, data: UpdateAbonnement,
-                        db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def modifier_abonnement(
+    world_id: str,
+    abonnement_id: str,
+    data: UpdateAbonnement,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
-    a = db.query(Abonnement).filter(Abonnement.id == abonnement_id,
-                                     Abonnement.world_id == world_id).first()
+    a = svc.get_abonnement(abonnement_id, world_id=world_id)
     if not a:
         raise HTTPException(status_code=404)
-    if data.nom:                     a.nom         = data.nom
-    if data.description is not None: a.description = data.description
-    if data.couleur:                 a.couleur     = data.couleur
-    db.commit()
-    db.refresh(a)
+    desc = data.description if data.description is not None else None
+    a = svc.update_abonnement(a, nom=data.nom, description=desc, couleur=data.couleur)
     return _serialise(a)
 
 
 @router.delete("/worlds/{world_id}/abonnements/{abonnement_id}")
-def supprimer_abonnement(world_id: str, abonnement_id: str,
-                         db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def supprimer_abonnement(
+    world_id: str,
+    abonnement_id: str,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
-    a = db.query(Abonnement).filter(Abonnement.id == abonnement_id,
-                                     Abonnement.world_id == world_id).first()
+    a = svc.get_abonnement(abonnement_id, world_id=world_id)
     if a:
-        db.delete(a)
-        db.commit()
+        svc.delete_abonnement(a)
     return {"status": "ok"}
 
 
 # ── Abonnements d'un membre ───────────────────────────────────────────────────
 
 @router.get("/worlds/{world_id}/membres/{user_id}/abonnements")
-def get_abonnements_membre(world_id: str, user_id: str,
-                           db: Session = Depends(get_db), user=Depends(get_current_user)):
-    membre = db.query(Member).filter(Member.world_id == world_id,
-                                      Member.user_id == user_id).first()
+def get_abonnements_membre(
+    world_id: str,
+    user_id: str,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
+    membre = svc.get_membre(world_id, user_id)
     if not membre:
         raise HTTPException(status_code=404)
-    abonnements = (db.query(MembreAbonnement)
-                   .filter(MembreAbonnement.member_id == membre.id,
-                            MembreAbonnement.actif == True)
-                   .all())
+    abonnements = svc.list_membre_abonnements(membre.id)
     return [
         {
             "id":                   ma.id,
@@ -159,64 +160,64 @@ def get_abonnements_membre(world_id: str, user_id: str,
 
 
 @router.post("/worlds/{world_id}/membres/{user_id}/abonnements")
-def assigner_abonnement(world_id: str, user_id: str, data: AssignerAbonnement,
-                        db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def assigner_abonnement(
+    world_id: str,
+    user_id: str,
+    data: AssignerAbonnement,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Seul le propriétaire peut assigner des abonnements")
-    membre = db.query(Member).filter(Member.world_id == world_id,
-                                      Member.user_id == user_id).first()
+    membre = svc.get_membre(world_id, user_id)
     if not membre:
         raise HTTPException(status_code=404)
-    existe = (db.query(MembreAbonnement)
-              .filter(MembreAbonnement.member_id == membre.id,
-                       MembreAbonnement.abonnement_id == data.abonnement_id,
-                       MembreAbonnement.actif == True)
-              .first())
-    if existe:
+    if svc.get_active_membre_abonnement(membre.id, data.abonnement_id):
         return {"status": "deja_abonne"}
-    db.add(MembreAbonnement(
-        member_id=membre.id,
+    svc.add_membre_abonnement(
+        membre_id=membre.id,
         abonnement_id=data.abonnement_id,
-        actif=True,
         assigne_manuellement=True,
-    ))
-    db.commit()
+    )
     return {"status": "ok"}
 
 
 @router.delete("/worlds/{world_id}/membres/{user_id}/abonnements/{abonnement_id}")
-def retirer_abonnement(world_id: str, user_id: str, abonnement_id: str,
-                       db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def retirer_abonnement(
+    world_id: str,
+    user_id: str,
+    abonnement_id: str,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
-    membre = db.query(Member).filter(Member.world_id == world_id,
-                                      Member.user_id == user_id).first()
+    membre = svc.get_membre(world_id, user_id)
     if not membre:
         raise HTTPException(status_code=404)
-    ma = (db.query(MembreAbonnement)
-          .filter(MembreAbonnement.member_id == membre.id,
-                   MembreAbonnement.abonnement_id == abonnement_id)
-          .first())
+    ma = svc.get_any_membre_abonnement(membre.id, abonnement_id)
     if ma:
-        db.delete(ma)
-        db.commit()
+        svc.delete_membre_abonnement(ma)
     return {"status": "ok"}
 
 
 # ── Stripe checkout ───────────────────────────────────────────────────────────
 
 @router.post("/abonnements/{abonnement_id}/checkout")
-def creer_checkout(abonnement_id: str,
-                   db: Session = Depends(get_db), user=Depends(get_current_user)):
+def creer_checkout(
+    abonnement_id: str,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+    user=Depends(get_current_user),
+):
     if not STRIPE_ENABLED:
         raise HTTPException(status_code=400, detail="Stripe non configuré sur ce serveur")
-    a = db.query(Abonnement).filter(Abonnement.id == abonnement_id).first()
+    a = svc.get_abonnement(abonnement_id)
     if not a or not a.stripe_price_id:
         raise HTTPException(status_code=404, detail="Abonnement Stripe introuvable")
 
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    frontend_url = config.FRONTEND_URL
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
         line_items=[{"price": a.stripe_price_id, "quantity": 1}],
@@ -231,13 +232,16 @@ def creer_checkout(abonnement_id: str,
 # ── Stripe webhook ────────────────────────────────────────────────────────────
 
 @router.post("/stripe/webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+async def stripe_webhook(
+    request: Request,
+    svc: AbonnementsService = Depends(get_abonnements_service),
+):
     if not STRIPE_ENABLED:
         raise HTTPException(status_code=400)
     payload    = await request.body()
     sig_header = request.headers.get("stripe-signature")
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(payload, sig_header, config.STRIPE_WEBHOOK_SECRET)
     except Exception:
         raise HTTPException(status_code=400, detail="Signature webhook invalide")
 
@@ -248,34 +252,18 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         stripe_sub_id = session.get("subscription")
 
         if abonnement_id and user_id:
-            a = db.query(Abonnement).filter(Abonnement.id == abonnement_id).first()
+            a = svc.get_abonnement(abonnement_id)
             if a:
-                membre = db.query(Member).filter(Member.world_id == a.world_id,
-                                                  Member.user_id == user_id).first()
+                membre = svc.get_membre(a.world_id, user_id)
                 if membre:
-                    existe = (db.query(MembreAbonnement)
-                              .filter(MembreAbonnement.member_id == membre.id,
-                                       MembreAbonnement.abonnement_id == abonnement_id)
-                              .first())
-                    if existe:
-                        existe.actif = True
-                        existe.stripe_subscription_id = stripe_sub_id
-                    else:
-                        db.add(MembreAbonnement(
-                            member_id=membre.id,
-                            abonnement_id=abonnement_id,
-                            actif=True,
-                            stripe_subscription_id=stripe_sub_id,
-                        ))
-                    db.commit()
+                    svc.upsert_membre_abonnement_completion(
+                        membre_id=membre.id,
+                        abonnement_id=abonnement_id,
+                        stripe_sub_id=stripe_sub_id,
+                    )
 
     elif event["type"] in ("customer.subscription.deleted", "customer.subscription.paused"):
         sub = event["data"]["object"]
-        ma  = (db.query(MembreAbonnement)
-               .filter(MembreAbonnement.stripe_subscription_id == sub["id"])
-               .first())
-        if ma:
-            ma.actif = False
-            db.commit()
+        svc.deactivate_membre_abonnement_by_sub(sub["id"])
 
     return {"status": "ok"}

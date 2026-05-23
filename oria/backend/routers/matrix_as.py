@@ -7,21 +7,20 @@ et pour vérifier l'existence de users/rooms gérés par l'AS.
 Ces routes sont montées SANS préfixe /api (protocole Matrix AS).
 """
 
-import os
 import logging
 from typing import Optional
 from fastapi import APIRouter, Header, HTTPException, Request
 
-logger = logging.getLogger(__name__)
+from config import config
 
-HS_TOKEN = os.getenv("MATRIX_HS_TOKEN", "")
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
 def _verifier_token(authorization: Optional[str]):
     """Vérifie que la requête vient bien de Synapse."""
-    if not authorization or authorization != f"Bearer {HS_TOKEN}":
+    if not authorization or authorization != f"Bearer {config.MATRIX_HS_TOKEN}":
         raise HTTPException(status_code=403, detail="Token HS invalide")
 
 

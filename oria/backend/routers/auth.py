@@ -5,7 +5,9 @@ from pydantic import BaseModel
 from database import get_db
 from models.user import User
 from jose import JWTError
-import os
+
+from config import config
+from services.auth_service import AuthService, get_auth_service
 import services.matrix_service as matrix
 
 from agent_personnel_shared.keycloak_auth import (
@@ -15,16 +17,12 @@ from agent_personnel_shared.keycloak_auth import (
 
 router = APIRouter()
 
-KEYCLOAK_URL      = os.getenv("KEYCLOAK_URL", "http://keycloak:8080")
-KEYCLOAK_REALM    = os.getenv("KEYCLOAK_REALM", "oria")
-KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "oria-app")
-
 # Configuration Keycloak partagée. `audience` reflète l'historique Oria (CLIENT_ID).
 # Pour passer en mode multi-tenant : vider la variable d'env KEYCLOAK_CLIENT_ID.
 _KC = KeycloakSettings(
-    url=KEYCLOAK_URL,
-    realm=KEYCLOAK_REALM,
-    audience=KEYCLOAK_CLIENT_ID,
+    url=config.KEYCLOAK_URL,
+    realm=config.KEYCLOAK_REALM,
+    audience=config.KEYCLOAK_CLIENT_ID,
     jwks_ttl=300,
     extra_decode_options={"verify_at_hash": False},
 )
@@ -39,98 +37,6 @@ def _get_jwks() -> dict:
         if _KC._jwks_cache is None:
             raise HTTPException(503, f"Keycloak JWKS indisponible: {exc}")
         return _KC._jwks_cache
-
-
-def _provision_user(keycloak_sub: str, payload: dict, db: Session) -> User:
-    """Crée un utilisateur Oria au premier login Keycloak et provisionne ses ressources."""
-    nom = (payload.get("nom") or payload.get("preferred_username")
-           or payload.get("name") or "Utilisateur")
-    email = payload.get("email") or f"{keycloak_sub}@oria.local"
-    avatar_emoji = payload.get("avatarEmoji") or "👤"
-
-    # Liaison sur l'email si un compte local existait avant la migration Keycloak
-    existing = db.query(User).filter(User.email == email).first()
-    if existing:
-        if existing.id != keycloak_sub:
-            existing.id = keycloak_sub
-            db.commit()
-        return existing
-
-    import uuid as _uuid
-    user = User(
-        id=keycloak_sub,
-        email=email,
-        nom=nom,
-        avatar_emoji=avatar_emoji,
-        hashed_password="",
-    )
-    db.add(user)
-    db.flush()
-
-    # Matrix provisioning (dégradé si Synapse indisponible)
-    matrix_data = matrix.provision_user(user.id)
-    if matrix_data:
-        user.matrix_user_id      = matrix_data["user_id"]
-        user.matrix_access_token = matrix_data["access_token"]
-        user.matrix_provisioned  = "true"
-
-    # Jardin Secret inviolable
-    from models.world import World, Member
-    from models.building import Building, Room
-
-    jardin = World(
-        id=str(_uuid.uuid4()),
-        nom="Mon Jardin Secret",
-        description="Mon espace privé, invisible pour tous",
-        emoji="🌿",
-        couleur="#2d5a27",
-        owner_id=user.id,
-        is_public=False,
-        is_garden=True,
-    )
-    db.add(jardin)
-    db.add(Member(world_id=jardin.id, user_id=user.id, nom=user.nom,
-                  avatar_emoji=user.avatar_emoji, role="proprietaire"))
-    db.flush()
-
-    bld = Building(id=str(_uuid.uuid4()), world_id=jardin.id,
-                   nom="Mon espace", type="maison", emoji="🌿", couleur="#2d5a27")
-    db.add(bld)
-    db.flush()
-    for pos, (nom_room, emoji) in enumerate([
-        ("📔 Journal", "📔"), ("💭 Pensées", "💭"), ("🎯 Objectifs", "🎯"),
-    ]):
-        db.add(Room(id=str(_uuid.uuid4()), building_id=bld.id,
-                   nom=nom_room, type="texte", emoji=emoji, position=pos))
-
-    user.jardin_world_id = jardin.id
-
-    # Agent personnel du Jardin
-    from models.agent import AgentDefinition as _AgentDef
-    _forge_url = os.getenv("FORGE_URL", "http://localhost:3001")
-    _provider  = os.getenv("DEFAULT_AGENT_PROVIDER", "openrouter")
-    _model     = os.getenv("DEFAULT_AGENT_MODEL", "anthropic/claude-sonnet-4-6")
-    db.add(_AgentDef(
-        id=str(_uuid.uuid4()),
-        world_id=jardin.id,
-        owner_id=user.id,
-        nom="Mon Assistant",
-        avatar_emoji="🌿",
-        description="Ton assistant personnel — il se souvient de tout ce que tu partages.",
-        system_prompt=(
-            f"Tu es l'assistant personnel de {user.nom}. "
-            "Tu as accès à sa mémoire longue durée (documents, notes, conversations passées). "
-            "Sois direct, chaleureux et contextuel. Utilise la mémoire pour personnaliser tes réponses."
-        ),
-        forge_url=_forge_url,
-        forge_provider=_provider,
-        forge_model=_model,
-        use_memory=True,
-        is_active=True,
-        is_jardin_agent=True,
-    ))
-    db.commit()
-    return user
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)):
@@ -148,9 +54,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     if not keycloak_sub:
         raise HTTPException(status_code=401, detail="Token invalide (sub manquant)")
 
-    user = db.query(User).filter(User.id == keycloak_sub).first()
+    svc = AuthService(db)
+    user = svc.get_user(keycloak_sub)
     if not user:
-        user = _provision_user(keycloak_sub, payload, db)
+        user = svc.provision_new_user(keycloak_sub, payload, matrix)
 
     return {"id": user.id, "nom": user.nom, "avatar_emoji": user.avatar_emoji}
 
@@ -168,8 +75,11 @@ class MiseAJourProfil(BaseModel):
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @router.get("/me")
-def get_me(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == user["id"]).first()
+def get_me(
+    user=Depends(get_current_user),
+    svc: AuthService = Depends(get_auth_service),
+):
+    db_user = svc.get_user(user["id"])
     return {
         "user": {
             **user,
@@ -193,22 +103,23 @@ def logout():
 
 
 @router.patch("/me")
-def update_profil(data: MiseAJourProfil, user=Depends(get_current_user), db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == user["id"]).first()
+def update_profil(
+    data: MiseAJourProfil,
+    user=Depends(get_current_user),
+    svc: AuthService = Depends(get_auth_service),
+):
+    db_user = svc.get_user(user["id"])
     if not db_user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    if data.nom is not None:
-        db_user.nom = data.nom.strip()
-    if data.avatar_emoji is not None:
-        db_user.avatar_emoji = data.avatar_emoji
-    if data.bio is not None:
-        db_user.bio = data.bio
-    if data.is_public is not None:
-        db_user.is_public = data.is_public
-    if data.documents_partageables_par_defaut is not None:
-        db_user.documents_partageables_par_defaut = data.documents_partageables_par_defaut
-    db.commit()
-    db.refresh(db_user)
+    nom_clean = data.nom.strip() if data.nom is not None else None
+    db_user = svc.update_profile(
+        db_user,
+        nom=nom_clean,
+        avatar_emoji=data.avatar_emoji,
+        bio=data.bio,
+        is_public=data.is_public,
+        documents_partageables_par_defaut=data.documents_partageables_par_defaut,
+    )
     return {
         "user": {
             "id": db_user.id, "nom": db_user.nom, "avatar_emoji": db_user.avatar_emoji,
@@ -222,23 +133,26 @@ def update_profil(data: MiseAJourProfil, user=Depends(get_current_user), db: Ses
 
 
 @router.post("/me/setup-complete")
-def mark_setup_complete(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    from datetime import datetime, timezone
-    db_user = db.query(User).filter(User.id == user["id"]).first()
+def mark_setup_complete(
+    user=Depends(get_current_user),
+    svc: AuthService = Depends(get_auth_service),
+):
+    db_user = svc.get_user(user["id"])
     if not db_user:
         raise HTTPException(404, "Utilisateur introuvable")
-    db_user.setup_completed_at = datetime.now(timezone.utc)
-    db.commit()
+    db_user = svc.mark_setup_completed(db_user)
     return {"setup_completed_at": db_user.setup_completed_at.isoformat()}
 
 
 @router.delete("/me/setup-complete")
-def reset_setup(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.id == user["id"]).first()
+def reset_setup(
+    user=Depends(get_current_user),
+    svc: AuthService = Depends(get_auth_service),
+):
+    db_user = svc.get_user(user["id"])
     if not db_user:
         raise HTTPException(404, "Utilisateur introuvable")
-    db_user.setup_completed_at = None
-    db.commit()
+    svc.reset_setup(db_user)
     return {"ok": True}
 
 
@@ -249,16 +163,18 @@ def get_2fa_status(user=Depends(get_current_user)):
 
 
 @router.get("/me/export")
-def exporter_donnees(user=Depends(get_current_user), db: Session = Depends(get_db)):
+def exporter_donnees(
+    user=Depends(get_current_user),
+    svc: AuthService = Depends(get_auth_service),
+):
     """Export RGPD de toutes les données de l'utilisateur."""
-    from models.world import Member
     from datetime import datetime, timezone
 
-    db_user = db.query(User).filter(User.id == user["id"]).first()
+    db_user = svc.get_user(user["id"])
     if not db_user:
         raise HTTPException(404)
 
-    membres = db.query(Member).filter(Member.user_id == user["id"]).all()
+    membres = svc.list_membres_for_user(user["id"])
     return {
         "utilisateur": {
             "id":          db_user.id,
@@ -273,20 +189,13 @@ def exporter_donnees(user=Depends(get_current_user), db: Session = Depends(get_d
 
 
 @router.delete("/me")
-def supprimer_compte(user=Depends(get_current_user), db: Session = Depends(get_db)):
+def supprimer_compte(
+    user=Depends(get_current_user),
+    svc: AuthService = Depends(get_auth_service),
+):
     """Suppression du compte (droit à l'oubli RGPD)."""
-    from models.world import Member
-
-    db_user = db.query(User).filter(User.id == user["id"]).first()
+    db_user = svc.get_user(user["id"])
     if not db_user:
         raise HTTPException(404)
-
-    db.query(Member).filter(Member.user_id == user["id"]).delete()
-    db_user.email           = f"deleted_{db_user.id}@rgpd.deleted"
-    db_user.nom             = "[Compte supprimé]"
-    db_user.avatar_emoji    = "❌"
-    db_user.hashed_password = ""
-    db_user.matrix_user_id  = None
-    db_user.matrix_access_token = None
-    db.commit()
+    svc.anonymize_account(db_user)
     return {"ok": True, "message": "Compte anonymisé conformément au RGPD"}
