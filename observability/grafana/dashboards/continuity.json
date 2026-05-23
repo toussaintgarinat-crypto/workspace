@@ -1,5 +1,22 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": [
+      {
+        "name": "Bascules Alertmanager",
+        "type": "alert",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\"}",
+        "step": "60s",
+        "titleFormat": "{{alertname}}",
+        "tagKeys": "severity,service",
+        "textFormat": "{{summary}}",
+        "useValueForTime": false
+      }
+    ]
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -223,6 +240,349 @@
         }
       ],
       "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Sprint 91 — BCP avancé",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }
+    },
+
+    {
+      "id": 101,
+      "type": "stat",
+      "title": "Plan actif",
+      "description": "Plan de continuité en cours. Alimenté par la métrique continuity_active_plan ou le compteur d'alertes critiques actives.",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertstate=\"firing\",severity=\"critical\"}) or vector(0)",
+          "legendFormat": "alertes critiques",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "textMode": "value_and_name",
+        "graphMode": "none",
+        "orientation": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Plan A", "color": "green", "index": 0 }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 1,
+                "to": 2,
+                "result": { "text": "Plan B", "color": "orange", "index": 1 }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 3,
+                "to": 999,
+                "result": { "text": "Plan C/D", "color": "red", "index": 2 }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 102,
+      "type": "table",
+      "title": "Fraîcheur des sauvegardes",
+      "description": "Age de chaque backup en heures. Vert < 24 h, orange 24-48 h, rouge > 48 h. Alimenté par backup_last_success_timestamp{job=...} (exporter à implémenter en S91) — fallback sur assistant_backup_last_success_timestamp_seconds.",
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "(time() - backup_last_success_timestamp) / 3600",
+          "legendFormat": "{{job}}",
+          "refId": "A",
+          "instant": true
+        },
+        {
+          "expr": "(time() - assistant_backup_last_success_timestamp_seconds) / 3600",
+          "legendFormat": "assistant (legacy)",
+          "refId": "B",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Time": "Horodatage",
+              "Value #A": "Âge (h)",
+              "Value #B": "Âge (h)",
+              "job": "Service"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Âge (h)", "desc": true }]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 1,
+          "custom": {
+            "displayMode": "color-background"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 24 },
+              { "color": "red", "value": 48 }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Service" },
+            "properties": [
+              { "id": "custom.width", "value": 200 },
+              { "id": "custom.displayMode", "value": "auto" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Horodatage" },
+            "properties": [
+              { "id": "custom.width", "value": 160 },
+              { "id": "custom.displayMode", "value": "auto" },
+              { "id": "unit", "value": "dateTimeAsIso" }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 103,
+      "type": "gauge",
+      "title": "Expiration certificats (jours restants)",
+      "description": "Basé sur probe_ssl_earliest_cert_expiry fourni par le blackbox-exporter (S86). Vert > 30 j, orange 10-30 j, rouge < 10 j.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox\"} - time()) / 86400",
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "orientation": "horizontal",
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 0,
+          "min": 0,
+          "max": 90,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 10 },
+              { "color": "green", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 104,
+      "type": "bargauge",
+      "title": "RTO mesuré vs cible (secondes)",
+      "description": "Comparaison RTO mesuré (chaos_drill_rto_seconds) vs cibles S91. Les valeurs statiques sont les cibles ; les valeurs Prometheus sont les mesures réelles issues de make chaos-drill.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "chaos_drill_rto_seconds",
+          "legendFormat": "RTO mesuré — {{scenario}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "minVizWidth": 10,
+        "minVizHeight": 10,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "min": 0,
+          "max": 1800,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 300 },
+              { "color": "red", "value": 900 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } },
+              { "id": "custom.hideFrom", "value": { "legend": false, "tooltip": false, "viz": false } }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 105,
+      "type": "table",
+      "title": "Historique drills chaos",
+      "description": "Alimenté automatiquement par make chaos-drill via chaos_drill_rto_seconds{scenario,result,drill_date}. En attendant des métriques, la table affiche les valeurs brutes exportées par le pushgateway.",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 46 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "chaos_drill_rto_seconds",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": false, "__name__": true, "Value": false },
+            "renameByName": {
+              "drill_date": "Date",
+              "scenario": "Scénario",
+              "result": "Résultat",
+              "Value": "RTO mesuré (s)"
+            },
+            "indexByName": {
+              "drill_date": 0,
+              "scenario": 1,
+              "Value": 2,
+              "result": 3
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": { "fields": [{ "displayName": "Date", "desc": true }] }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": ["count"],
+          "fields": ["RTO mesuré (s)"],
+          "countRows": true
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "displayMode": "auto", "filterable": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "RTO mesuré (s)" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 0 },
+              { "id": "custom.displayMode", "value": "color-background" },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "orange", "value": 300 },
+                    { "color": "red", "value": 900 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Résultat" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ok": { "text": "OK", "color": "green", "index": 0 },
+                      "fail": { "text": "FAIL", "color": "red", "index": 1 },
+                      "partial": { "text": "PARTIAL", "color": "orange", "index": 2 }
+                    }
+                  }
+                ]
+              },
+              { "id": "custom.displayMode", "value": "color-background" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Date" },
+            "properties": [
+              { "id": "custom.width", "value": 180 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Scénario" },
+            "properties": [
+              { "id": "custom.width", "value": 200 }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

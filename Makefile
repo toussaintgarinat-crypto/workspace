@@ -22,7 +22,8 @@ DC := docker compose --env-file $(ENV_FILE)
         backup restore \
         continuity-audit continuity-reload continuity-check \
         pg-status pg-status-oria \
-        qdrant-status minio-status qdrant-snapshot
+        qdrant-status minio-status qdrant-snapshot \
+        chaos-drill chaos-drill-postgres chaos-drill-qdrant chaos-drill-minio chaos-drill-ollama chaos-drill-network oncall-test
 
 help:
 	@echo ""
@@ -352,4 +353,28 @@ acme-sync:  ## Synchronise acme.json (certs LE) HP → Node 2 via NetBird SSH
 
 traefik-monitor:  ## Lance cloudflare-monitor en foreground (logs en direct)
 	@bash infra/dns-failover/cloudflare-monitor.sh
+
+# ── CHAOS DRILLS (S91) ───────────────────────────────────────
+.PHONY: chaos-drill chaos-drill-postgres chaos-drill-qdrant chaos-drill-minio chaos-drill-ollama chaos-drill-network oncall-test
+
+chaos-drill:  ## Lance un chaos drill aléatoire (prod: samedi 3h)
+	@bash scripts/chaos/random-failure.sh
+
+chaos-drill-postgres:  ## Chaos drill Postgres (arrêt 30s + vérif recovery)
+	@bash scripts/chaos/random-failure.sh --scenario postgres
+
+chaos-drill-qdrant:  ## Chaos drill Qdrant (arrêt 60s + vérif mode dégradé)
+	@bash scripts/chaos/random-failure.sh --scenario qdrant
+
+chaos-drill-minio:  ## Chaos drill MinIO (arrêt 30s + vérif mode dégradé)
+	@bash scripts/chaos/random-failure.sh --scenario minio
+
+chaos-drill-ollama:  ## Chaos drill Ollama (block 60s + vérif fallback LLM)
+	@bash scripts/chaos/random-failure.sh --scenario ollama
+
+chaos-drill-network:  ## Chaos drill réseau (iptables DROP NetBird)
+	@bash scripts/chaos/random-failure.sh --scenario network
+
+oncall-test:  ## Test bout-en-bout escalade astreinte (Telegram → SMS)
+	@bash scripts/chaos/oncall-test.sh
 

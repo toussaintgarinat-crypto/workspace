@@ -1,0 +1,39 @@
+services:
+  telegram-bot:
+    build: .
+    image: telegram-bot:latest
+    container_name: telegram-bot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID:-}
+      ASSISTANT_URL: ${ASSISTANT_URL:-http://assistant}
+      MEMPALACE_URL: ${MEMPALACE_URL:-http://mempalace}
+      ORIA_URL: ${ORIA_URL:-http://oria}
+      ONCALL_NAME: ${ONCALL_NAME:-Toussaint}
+      RUNBOOKS_DIR: /app/runbooks
+      CHAOS_SCRIPTS_DIR: /app/chaos
+      # PostgreSQL (pour pg_isready si installé dans l'image)
+      PGHOST: ${PGHOST:-postgres}
+      PGPORT: ${PGPORT:-5432}
+    volumes:
+      # Accès aux runbooks du projet
+      - ../../docs/runbooks:/app/runbooks:ro
+      # Accès aux scripts chaos
+      - ../../scripts/chaos:/app/chaos:ro
+    networks:
+      - proxy_net
+      - observability_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy_net:
+    external: true
+    name: proxy_net
+  observability_net:
+    external: true
+    name: observability_net

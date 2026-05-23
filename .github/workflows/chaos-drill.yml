@@ -1,0 +1,151 @@
+name: Chaos Drill — BCP
+
+on:
+  schedule:
+    # Premiers samedis du mois à 3h UTC (jours 1-7, samedi = 6)
+    - cron: '0 3 1-7 * 6'
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Scénario à exécuter'
+        required: true
+        default: 'random'
+        type: choice
+        options:
+          - random
+          - postgres
+          - qdrant
+          - minio
+          - ollama
+          - network
+
+jobs:
+  # ── Chaos Drill via SSH ────────────────────────────────────────
+  drill:
+    name: Chaos Drill — ${{ inputs.scenario || 'random' }}
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SERVER_HOST != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Vérification SERVER_HOST ──────────────────────────────
+      - name: Check SERVER_HOST
+        id: check_host
+        run: |
+          if [ -z "${{ secrets.SERVER_HOST }}" ]; then
+            echo "::notice title=Chaos Drill skippé::SERVER_HOST non configuré — drill ignoré."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Setup clé SSH ─────────────────────────────────────────
+      - name: Setup SSH key
+        if: steps.check_host.outputs.skip == 'false'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # ── Lancer le chaos drill sur le serveur ──────────────────
+      - name: Run chaos drill
+        if: steps.check_host.outputs.skip == 'false'
+        env:
+          SCENARIO: ${{ inputs.scenario || 'random' }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            bash -s << 'EOF'
+          set -e
+          cd ~/workspace
+
+          SCENARIO="${SCENARIO:-random}"
+          if [ "$SCENARIO" = "random" ]; then
+            make chaos-drill
+          else
+            make chaos-drill-$SCENARIO
+          fi
+          EOF
+
+      # ── Récupérer le rapport JSON ─────────────────────────────
+      - name: Fetch drill report
+        if: steps.check_host.outputs.skip == 'false'
+        run: |
+          scp -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/last-chaos-drill.json" \
+            ./last-chaos-drill.json
+
+      # ── Parser le résultat et écrire le job summary ───────────
+      - name: Parse result & write summary
+        if: steps.check_host.outputs.skip == 'false'
+        id: parse
+        run: |
+          REPORT="./last-chaos-drill.json"
+
+          SCENARIO_VAL=$(jq -r '.scenario   // "unknown"' "$REPORT")
+          RTO_MEASURED=$(jq -r '.rto_seconds // 0'        "$REPORT")
+          RTO_TARGET=$(  jq -r '.rto_target  // 300'      "$REPORT")
+          RECOVERY=$(    jq -r '.recovery    // "-"'       "$REPORT")
+          STATUS=$(      jq -r '.status      // "unknown"' "$REPORT")
+          DRILL_DATE=$(  jq -r '.date        // "'$(date -u +%Y-%m-%dT%H:%MZ)'"' "$REPORT")
+
+          if [ "$STATUS" = "ok" ]; then
+            RESULT_ICON="✅ OK"
+            FAILED="false"
+          else
+            RESULT_ICON="❌ RTO dépassé"
+            FAILED="true"
+          fi
+
+          echo "scenario=$SCENARIO_VAL"   >> $GITHUB_OUTPUT
+          echo "rto_measured=$RTO_MEASURED" >> $GITHUB_OUTPUT
+          echo "rto_target=$RTO_TARGET"   >> $GITHUB_OUTPUT
+          echo "status=$STATUS"           >> $GITHUB_OUTPUT
+          echo "failed=$FAILED"           >> $GITHUB_OUTPUT
+          echo "drill_date=$DRILL_DATE"   >> $GITHUB_OUTPUT
+
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
+          ## Chaos Drill — ${SCENARIO_VAL} — ${DRILL_DATE}
+
+          | Métrique | Valeur |
+          |---|---|
+          | Scénario | ${SCENARIO_VAL} |
+          | RTO mesuré | ${RTO_MEASURED}s |
+          | RTO cible | ${RTO_TARGET}s |
+          | Résultat | ${RESULT_ICON} |
+          | Recovery | ${RECOVERY} |
+          SUMMARY
+
+      # ── Notification Telegram si RTO dépassé ──────────────────
+      - name: Notify Telegram on failure
+        if: steps.check_host.outputs.skip == 'false' && steps.parse.outputs.failed == 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          TEXT="🚨 *Chaos Drill FAILED*%0A%0A"
+          TEXT+="Scénario : ${{ steps.parse.outputs.scenario }}%0A"
+          TEXT+="RTO mesuré : ${{ steps.parse.outputs.rto_measured }}s%0A"
+          TEXT+="RTO cible : ${{ steps.parse.outputs.rto_target }}s%0A"
+          TEXT+="Date : ${{ steps.parse.outputs.drill_date }}%0A%0A"
+          TEXT+="Voir le rapport : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -sf \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "parse_mode=Markdown" \
+            --data-urlencode "text=$(printf '%b' "$TEXT")"
+
+      # ── Upload artifact ────────────────────────────────────────
+      - name: Upload drill report
+        if: steps.check_host.outputs.skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-drill-${{ steps.parse.outputs.scenario || inputs.scenario || 'random' }}-${{ github.run_id }}
+          path: last-chaos-drill.json
+          retention-days: 90
