@@ -178,12 +178,27 @@ app.router.lifespan_context = lifespan
 
 @app.get("/health")
 async def health():
+    """Schema unifie S101 (HealthBuilder) — garde `status` top-level pour Prometheus blackbox."""
     from routers.admin import _is_readonly
+    from agent_personnel_shared.health import HealthBuilder
+    from redis_client import redis_client
+
     readonly = await _is_readonly()
     if readonly:
         import logging as _logging
         _logging.getLogger(__name__).warning("Oria running in read-only mode")
-    return {"status": "ok", "readonly": readonly}
+
+    builder = HealthBuilder(
+        "oria",
+        version="3.0.0",
+        metadata={"readonly": readonly},
+        degraded=readonly,
+    )
+    await builder.check_redis(redis_client, name="redis")
+    payload = builder.build()
+    # Compat ancien format : on garde `readonly` top-level pour les clients legacy.
+    payload["readonly"] = readonly
+    return payload
 
 
 @app.middleware("http")
