@@ -23,4 +23,14 @@ app.include_router(ingestion_router, prefix="/ingestion", tags=["ingestion"])
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "module": "forge:ml"}
+    """Schema unifie S101 (HealthBuilder) — service S2S minimal, pas de deps Redis/PG."""
+    from agent_personnel_shared.health import HealthBuilder
+
+    payload = HealthBuilder(
+        "forge-ml",
+        version="0.1.0",
+        metadata={"module": "forge:ml"},
+    ).build()
+    # Compat ancien format : on garde `module` top-level.
+    payload["module"] = "forge:ml"
+    return payload

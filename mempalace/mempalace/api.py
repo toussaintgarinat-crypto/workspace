@@ -358,6 +358,7 @@ def startup() -> None:
 _DEGRADED_COMPONENTS_MP = ["qdrant", "minio", "export", "import"]
 _DEGRADED_TOKEN_MP = os.environ.get("DEGRADED_WEBHOOK_TOKEN", "")
 _REDIS_URL_MP = os.environ.get("REDIS_URL", "")
+_MP_NAMESPACE = "mempalace"  # S101 — prefixe toutes les cles Redis pour eviter les collisions inter-services.
 _redis_mp: Optional[object] = None
 
 
@@ -377,6 +378,11 @@ def _get_redis_mp():
         return None
 
 
+def _mp_key(suffix: str) -> str:
+    """Prefixe `mempalace:` sauf si la cle l'est deja."""
+    return suffix if suffix.startswith(f"{_MP_NAMESPACE}:") else f"{_MP_NAMESPACE}:{suffix}"
+
+
 def _mp_degraded_states() -> dict:
     rc = _get_redis_mp()
     env_defaults = {
@@ -387,7 +393,7 @@ def _mp_degraded_states() -> dict:
     }
     states: dict = {}
     for comp in _DEGRADED_COMPONENTS_MP:
-        key = f"degraded:mempalace:{comp}"
+        key = _mp_key(f"degraded:{comp}")
         fallback = env_defaults.get(comp, False)
         if rc:
             try:
@@ -405,7 +411,7 @@ def _mp_set_degraded(component: str, degraded: bool, ttl: Optional[int] = None) 
     rc = _get_redis_mp()
     if not rc:
         return False
-    key = f"degraded:mempalace:{component}"
+    key = _mp_key(f"degraded:{component}")
     val = "1" if degraded else "0"
     try:
         if ttl:
@@ -441,11 +447,42 @@ _mp_logger = _logging.getLogger("mempalace.api")
 
 @app.get("/health")
 def health():
+    """Schema unifie S101 (HealthBuilder) — endpoint sync (mempalace n'utilise pas asyncio)."""
+    from agent_personnel_shared.health import HealthBuilder, STATUS_OK, STATUS_DEGRADED
+
     states = _mp_degraded_states()
-    any_degraded = any(v["degraded"] for v in states.values())
+    degraded_states = [c for c, v in states.items() if v["degraded"]]
+    any_degraded = bool(degraded_states)
     if any_degraded:
         _mp_logger.warning("MemPalace running in degraded mode: %s", states)
-    return {"status": "ok", "module": "mempalace:api", "degraded": any_degraded}
+
+    builder = HealthBuilder(
+        "mempalace",
+        version="1.0.0",
+        metadata={
+            "module": "mempalace:api",
+            "degraded_states": degraded_states,
+        },
+        degraded=any_degraded,
+    )
+    # Redis check sync (mempalace utilise un client redis sync, pas asyncio)
+    rc = _get_redis_mp()
+    if rc is None:
+        builder.add_dependency("redis", "down" if _REDIS_URL_MP else "ok", "unavailable" if _REDIS_URL_MP else None)
+    else:
+        try:
+            rc.ping()
+            builder.add_dependency("redis", STATUS_OK)
+        except Exception as exc:
+            builder.add_dependency("redis", "down", str(exc)[:120])
+    # Detail par composant
+    for comp, info in states.items():
+        builder.add_dependency(comp, STATUS_DEGRADED if info["degraded"] else STATUS_OK)
+
+    payload = builder.build()
+    # Compat ancien format : on garde `module` et `degraded` top-level.
+    payload["module"] = "mempalace:api"
+    return payload
 
 
 @app.get("/api/qdrant-status")
