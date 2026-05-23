@@ -84,6 +84,7 @@ seed-envs:
 	   grep '^ORIA_SYNAPSE_DB_PASSWORD=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_SYNAPSE_DB_PASSWORD=/SYNAPSE_DB_PASSWORD=/'; \
 	   grep '^ORIA_MINIO_USER=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_MINIO_USER=/MINIO_ROOT_USER=/'; \
 	   grep '^ORIA_MINIO_PASSWORD=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_MINIO_PASSWORD=/MINIO_ROOT_PASSWORD=/'; \
+	   grep '^ORIA_LLM_ENCRYPTION_KEY=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_LLM_ENCRYPTION_KEY=/LLM_ENCRYPTION_KEY=/'; \
 	   grep -E '^(VITE_ORIA_API_URL|VITE_ORIA_KEYCLOAK_URL)=' $(ENV_FILE) 2>/dev/null; \
 	  } > oria/.env; echo "  ✓ oria/.env"
 

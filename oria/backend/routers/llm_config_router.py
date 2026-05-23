@@ -10,6 +10,7 @@ from database import get_db
 from routers.auth import get_current_user
 from models.llm_config import LLMConfig
 from models.world import Member
+from crypto_utils import encrypt_api_key, decrypt_api_key
 import os
 
 router = APIRouter()
@@ -45,7 +46,7 @@ def get_config_for_world(db: Session, world_id: str) -> dict:
         return {
             "provider": cfg.provider,
             "base_url": cfg.base_url or _default_base_url(cfg.provider),
-            "api_key":  cfg.api_key or DEFAULT_API_KEY,
+            "api_key":  decrypt_api_key(cfg.api_key) or DEFAULT_API_KEY,
             "model":    cfg.model,
         }
     return {
@@ -112,7 +113,7 @@ def sauvegarder_config(
         cfg.base_url   = body.base_url or ""
         # Si api_key est "***" (masqué), on ne l'écrase pas
         if body.api_key and body.api_key != "***":
-            cfg.api_key = body.api_key
+            cfg.api_key = encrypt_api_key(body.api_key)
         cfg.model      = body.model
         cfg.updated_by = user["id"]
     else:
@@ -120,7 +121,7 @@ def sauvegarder_config(
             world_id   = world_id,
             provider   = body.provider,
             base_url   = body.base_url or "",
-            api_key    = body.api_key if body.api_key != "***" else "",
+            api_key    = encrypt_api_key(body.api_key) if body.api_key != "***" else "",
             model      = body.model,
             updated_by = user["id"],
         )
