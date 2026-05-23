@@ -1,12 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List
-from database import get_db
-from models.building import Room, Building
-from models.abonnement import RoomAbonnement
+
+from models.building import Room
 from routers.auth import get_current_user
-import uuid
+from services.rooms_service import RoomsService, get_rooms_service
 import services.matrix_service as matrix
 
 router = APIRouter()
@@ -46,47 +44,43 @@ def _serialise_room(r: Room) -> dict:
 
 
 @router.get("/{room_id}")
-def get_room(room_id: str, db: Session = Depends(get_db)):
-    r = db.query(Room).filter(Room.id == room_id).first()
+def get_room(room_id: str, svc: RoomsService = Depends(get_rooms_service)):
+    r = svc.get_room(room_id)
     if not r:
         raise HTTPException(status_code=404, detail="Room introuvable")
     return _serialise_room(r)
 
 
 @router.get("/{building_id}/rooms")
-def lister_rooms(building_id: str, db: Session = Depends(get_db)):
-    building = db.query(Building).filter(Building.id == building_id).first()
+def lister_rooms(building_id: str, svc: RoomsService = Depends(get_rooms_service)):
+    building = svc.get_building(building_id)
     if not building:
         raise HTTPException(status_code=404, detail="Building introuvable")
     return [_serialise_room(r) for r in building.rooms]
 
 
 @router.post("/{building_id}/rooms")
-def creer_room(building_id: str, data: CreerRoom, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    building = db.query(Building).filter(Building.id == building_id).first()
+def creer_room(
+    building_id: str,
+    data: CreerRoom,
+    svc: RoomsService = Depends(get_rooms_service),
+    user=Depends(get_current_user),
+):
+    building = svc.get_building(building_id)
     if not building:
         raise HTTPException(status_code=404, detail="Building introuvable")
 
-    room = Room(
-        id=str(uuid.uuid4()),
+    room = svc.create_room(
         building_id=building_id,
-        nom=data.nom,
-        type=data.type,
-        etage=data.etage,
-        emoji=data.emoji,
-        acces_restreint=data.acces_restreint,
+        nom=data.nom, type_=data.type, etage=data.etage,
+        emoji=data.emoji, acces_restreint=data.acces_restreint,
+        abonnements_requis_ids=data.abonnements_requis_ids,
     )
-    db.add(room)
-    db.flush()
-
-    for abonnement_id in (data.abonnements_requis_ids or []):
-        db.add(RoomAbonnement(room_id=room.id, abonnement_id=abonnement_id))
 
     # Créer la Matrix Room correspondante
     creator = None
     try:
-        from models.user import User
-        creator = db.query(User).filter(User.id == user["id"]).first()
+        creator = svc.get_user(user["id"])
     except Exception:
         pass
     creator_mxid = creator.matrix_user_id if creator else None
@@ -99,36 +93,40 @@ def creer_room(building_id: str, data: CreerRoom, db: Session = Depends(get_db),
             encrypt=(data.type in ("texte", "mixte")),
         )
         if matrix_room_id:
-            room.matrix_room_id = matrix_room_id
+            svc.set_matrix_room_id(room, matrix_room_id)
 
-    db.commit()
-    db.refresh(room)
+    svc.commit()
+    svc.refresh(room)
     return _serialise_room(room)
 
 
 @router.patch("/{room_id}")
-def modifier_room(room_id: str, data: UpdateRoom, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    r = db.query(Room).filter(Room.id == room_id).first()
+def modifier_room(
+    room_id: str,
+    data: UpdateRoom,
+    svc: RoomsService = Depends(get_rooms_service),
+    user=Depends(get_current_user),
+):
+    r = svc.get_room(room_id)
     if not r:
         raise HTTPException(status_code=404, detail="Room introuvable")
-    if data.nom:             r.nom             = data.nom
-    if data.type:            r.type            = data.type
-    if data.emoji:           r.emoji           = data.emoji
-    if data.acces_restreint: r.acces_restreint = data.acces_restreint
-    if data.abonnements_requis_ids is not None:
-        db.query(RoomAbonnement).filter(RoomAbonnement.room_id == r.id).delete()
-        for abonnement_id in data.abonnements_requis_ids:
-            db.add(RoomAbonnement(room_id=r.id, abonnement_id=abonnement_id))
-    db.commit()
-    db.refresh(r)
+    r = svc.update_room(
+        r,
+        nom=data.nom, type_=data.type, emoji=data.emoji,
+        acces_restreint=data.acces_restreint,
+        abonnements_requis_ids=data.abonnements_requis_ids,
+    )
     return _serialise_room(r)
 
 
 @router.delete("/{room_id}")
-def supprimer_room(room_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    r = db.query(Room).filter(Room.id == room_id).first()
+def supprimer_room(
+    room_id: str,
+    svc: RoomsService = Depends(get_rooms_service),
+    user=Depends(get_current_user),
+):
+    r = svc.get_room(room_id)
     if not r:
         raise HTTPException(status_code=404, detail="Room introuvable")
-    db.delete(r)
-    db.commit()
+    svc.delete_room(r)
     return {"status": "ok"}

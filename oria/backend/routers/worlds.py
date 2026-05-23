@@ -1,14 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from database import get_db
-from models.world import World, Member
-from models.abonnement import MembreAbonnement
-from models.user import User
+
 from routers.auth import get_current_user, _KC
 from agent_personnel_shared.keycloak_auth import verify_token_sync
-import uuid
+from services.worlds_service import WorldsService, get_worlds_service
 import services.matrix_service as matrix
 
 router = APIRouter()
@@ -25,10 +21,10 @@ class UpdateWorld(BaseModel):
     emoji:       str = ""
     couleur:     str = ""
 
-def _serialise_membres(membres, db: Session) -> list:
+def _serialise_membres(membres, svc: WorldsService) -> list:
     """Retourne les membres avec leur matrix_user_id (joint depuis la table users)."""
     user_ids = [m.user_id for m in membres]
-    users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()}
+    users = svc.get_users_map(user_ids)
     return [
         {
             "user_id": m.user_id,
@@ -52,19 +48,6 @@ def get_current_user_optional(authorization: str = Header(None)):
         return {"id": user_id, "nom": nom} if user_id else None
     except Exception:
         return None
-
-
-def _abonnement_ids_membre(world_id: str, user_id: str, db: Session) -> set:
-    """Retourne l'ensemble des abonnement_id actifs d'un membre dans un world."""
-    membre = db.query(Member).filter(Member.world_id == world_id,
-                                     Member.user_id == user_id).first()
-    if not membre:
-        return set()
-    mas = (db.query(MembreAbonnement)
-           .filter(MembreAbonnement.member_id == membre.id,
-                    MembreAbonnement.actif == True)
-           .all())
-    return {ma.abonnement_id for ma in mas}
 
 
 def serialise_room(r, user_abonnement_ids: Optional[set] = None, is_owner: bool = False) -> Optional[dict]:
@@ -107,38 +90,43 @@ def serialise_building(b, user_abonnement_ids: Optional[set] = None, is_owner: b
             "quartier_id": b.quartier_id, "rooms": rooms}
 
 @router.get("/")
-def lister_worlds(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    membres = db.query(Member).filter(Member.user_id == user["id"]).all()
-    world_ids = [m.world_id for m in membres]
-    worlds = db.query(World).filter(World.id.in_(world_ids)).all() if world_ids else []
+def lister_worlds(
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user),
+):
+    worlds = svc.list_worlds_for_user(user["id"])
     return [{"id": w.id, "nom": w.nom, "description": w.description,
              "emoji": w.emoji, "couleur": w.couleur, "owner_id": w.owner_id,
              "is_garden": bool(w.is_garden),
              "nb_membres": len(w.members), "nb_buildings": len(w.buildings)} for w in worlds]
 
 @router.post("/")
-def creer_world(data: CreerWorld, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    world = World(id=str(uuid.uuid4()), nom=data.nom, description=data.description,
-                  emoji=data.emoji, couleur=data.couleur, owner_id=user["id"])
-    db.add(world)
-    membre = Member(world_id=world.id, user_id=user["id"], nom=user["nom"],
-                    avatar_emoji=user["avatar_emoji"], role="proprietaire")
-    db.add(membre)
-    db.commit()
-    db.refresh(world)
-
+def creer_world(
+    data: CreerWorld,
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user),
+):
+    world = svc.create_world(
+        nom=data.nom, description=data.description,
+        emoji=data.emoji, couleur=data.couleur,
+        owner_id=user["id"], owner_nom=user["nom"],
+        owner_avatar_emoji=user["avatar_emoji"],
+    )
     return {"id": world.id, "nom": world.nom, "emoji": world.emoji, "couleur": world.couleur}
 
 @router.get("/{world_id}")
-def get_world(world_id: str, db: Session = Depends(get_db),
-              user=Depends(get_current_user_optional)):
-    world = db.query(World).filter(World.id == world_id).first()
+def get_world(
+    world_id: str,
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user_optional),
+):
+    world = svc.get_world(world_id)
     if not world:
         raise HTTPException(status_code=404, detail="Monde introuvable")
 
     is_owner = user and world.owner_id == user["id"]
     user_abonnement_ids = (
-        _abonnement_ids_membre(world_id, user["id"], db)
+        svc.abonnement_ids_membre(world_id, user["id"])
         if user and not is_owner else set()
     )
 
@@ -157,80 +145,100 @@ def get_world(world_id: str, db: Session = Depends(get_db),
     return {"id": world.id, "nom": world.nom, "description": world.description,
             "emoji": world.emoji, "couleur": world.couleur, "owner_id": world.owner_id,
             "buildings": buildings_libres, "quartiers": quartiers,
-            "membres": _serialise_membres(world.members, db)}
+            "membres": _serialise_membres(world.members, svc)}
 
 @router.patch("/{world_id}")
-def modifier_world(world_id: str, data: UpdateWorld, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def modifier_world(
+    world_id: str,
+    data: UpdateWorld,
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
     if w.is_garden:
         raise HTTPException(status_code=403, detail="Le jardin secret ne peut pas être modifié")
-    if data.nom:                     w.nom         = data.nom
-    if data.description is not None: w.description = data.description
-    if data.emoji:                   w.emoji       = data.emoji
-    if data.couleur:                 w.couleur     = data.couleur
-    db.commit()
+    w = svc.update_world(
+        w, nom=data.nom,
+        description=(data.description if data.description is not None else None),
+        emoji=data.emoji, couleur=data.couleur,
+    )
     return {"id": w.id, "nom": w.nom, "emoji": w.emoji, "couleur": w.couleur}
 
 @router.delete("/{world_id}")
-def supprimer_world(world_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def supprimer_world(
+    world_id: str,
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
     if w.is_garden:
         raise HTTPException(status_code=403, detail="Le jardin secret ne peut pas être supprimé")
-    db.delete(w)
-    db.commit()
+    svc.delete_world(w)
     return {"status": "ok"}
 
 @router.get("/{world_id}/membres")
-def get_membres(world_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    membres = db.query(Member).filter(Member.world_id == world_id).all()
-    return _serialise_membres(membres, db)
+def get_membres(
+    world_id: str,
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user),
+):
+    membres = svc.list_membres(world_id)
+    return _serialise_membres(membres, svc)
 
 @router.patch("/{world_id}/membres/{user_id}")
-def modifier_role(world_id: str, user_id: str, role: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def modifier_role(
+    world_id: str,
+    user_id: str,
+    role: str,
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Seul le propriétaire peut changer les rôles")
-    m = db.query(Member).filter(Member.world_id == world_id, Member.user_id == user_id).first()
+    m = svc.get_membre(world_id, user_id)
     if m:
-        m.role = role
-        db.commit()
+        svc.update_membre_role(m, role)
     return {"status": "ok"}
 
 @router.delete("/{world_id}/membres/{user_id}")
-def exclure_membre(world_id: str, user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    w = db.query(World).filter(World.id == world_id).first()
+def exclure_membre(
+    world_id: str,
+    user_id: str,
+    svc: WorldsService = Depends(get_worlds_service),
+    user=Depends(get_current_user),
+):
+    w = svc.get_world(world_id)
     if not w or w.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Interdit")
-    m = db.query(Member).filter(Member.world_id == world_id, Member.user_id == user_id).first()
+    m = svc.get_membre(world_id, user_id)
     if m:
-        db.delete(m)
-        db.commit()
+        svc.delete_membre(m)
     return {"status": "ok"}
 
 @router.post("/{world_id}/rejoindre")
-def rejoindre_world(world_id: str, user_id: str, nom: str, avatar_emoji: str = "👤", db: Session = Depends(get_db)):
-    existe = db.query(Member).filter(Member.world_id == world_id, Member.user_id == user_id).first()
+def rejoindre_world(
+    world_id: str,
+    user_id: str,
+    nom: str,
+    avatar_emoji: str = "👤",
+    svc: WorldsService = Depends(get_worlds_service),
+):
+    existe = svc.get_membre(world_id, user_id)
     if not existe:
-        db.add(Member(world_id=world_id, user_id=user_id, nom=nom,
-                      avatar_emoji=avatar_emoji, role="membre"))
-        db.commit()
+        svc.add_membre(world_id, user_id, nom, avatar_emoji=avatar_emoji)
 
         # Inviter le nouveau membre dans toutes les Matrix Rooms du world
-        nouveau = db.query(User).filter(User.id == user_id).first()
+        nouveau = svc.get_user(user_id)
         if nouveau and nouveau.matrix_user_id:
-            rooms = (db.query(Room)
-                     .join(Building, Room.building_id == Building.id)
-                     .filter(Building.world_id == world_id, Room.matrix_room_id.isnot(None))
-                     .all())
+            rooms = svc.get_world_matrix_rooms(world_id)
             # Utiliser le premier propriétaire comme invitant
-            owner = db.query(Member).filter(
-                Member.world_id == world_id, Member.role == "proprietaire"
-            ).first()
-            owner_user = db.query(User).filter(User.id == owner.user_id).first() if owner else None
+            owner = svc.get_world_owner_member(world_id)
+            owner_user = svc.get_user(owner.user_id) if owner else None
             inviter_mxid = owner_user.matrix_user_id if owner_user else None
 
             if inviter_mxid:

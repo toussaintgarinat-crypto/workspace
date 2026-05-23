@@ -3,18 +3,13 @@ Router Intercommunalité — Documents partagés entre worlds en réseau.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-from database import get_db
+
 from routers.auth import get_current_user
-from models.world import Member, World
-from models.network import WorldLink
 from models.document import Document
+from models.world import World
+from services.reseau_service import ReseauService, get_reseau_service
 
 router = APIRouter()
-
-
-def _is_member(db: Session, world_id: str, user_id: str) -> bool:
-    return bool(db.query(Member).filter_by(world_id=world_id, user_id=user_id).first())
 
 
 def _categorise(nom: str) -> str:
@@ -43,35 +38,21 @@ def _doc_dict(doc: Document, world: World) -> dict:
     }
 
 
-def _linked_world_ids(db: Session, world_id: str) -> list[str]:
-    """Retourne les IDs de tous les worlds liés (dans les deux sens)."""
-    links_out = db.query(WorldLink).filter(WorldLink.from_world_id == world_id).all()
-    links_in  = db.query(WorldLink).filter(WorldLink.to_world_id  == world_id).all()
-    ids = set()
-    for l in links_out:
-        ids.add(l.to_world_id)
-    for l in links_in:
-        ids.add(l.from_world_id)
-    return list(ids)
-
-
 @router.get("/documents")
-def documents_reseau(world_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if not _is_member(db, world_id, user["id"]):
+def documents_reseau(
+    world_id: str,
+    svc: ReseauService = Depends(get_reseau_service),
+    user=Depends(get_current_user),
+):
+    if not svc.is_member(world_id, user["id"]):
         raise HTTPException(403)
 
-    linked_ids = _linked_world_ids(db, world_id)
+    linked_ids = svc.linked_world_ids(world_id)
     if not linked_ids:
         return {"communes": [], "deliberations": [], "arretes": [], "autres": []}
 
-    # Worlds liés (communes)
-    worlds = {w.id: w for w in db.query(World).filter(World.id.in_(linked_ids)).all()}
-
-    # Documents partagés de ces worlds
-    docs = db.query(Document).filter(
-        Document.world_id.in_(linked_ids),
-        Document.partage_reseau == True,  # noqa: E712
-    ).order_by(Document.created_at.desc()).all()
+    worlds = svc.get_worlds_map(linked_ids)
+    docs = svc.list_shared_docs_for_worlds(linked_ids)
 
     deliberations, arretes, autres = [], [], []
     for doc in docs:
@@ -101,17 +82,16 @@ def documents_reseau(world_id: str, db: Session = Depends(get_db), user=Depends(
 
 
 @router.get("/documents/mes-docs")
-def mes_docs_partageables(world_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def mes_docs_partageables(
+    world_id: str,
+    svc: ReseauService = Depends(get_reseau_service),
+    user=Depends(get_current_user),
+):
     """Documents de l'utilisateur dans ce world — pour gérer le partage réseau."""
-    if not _is_member(db, world_id, user["id"]):
+    if not svc.is_member(world_id, user["id"]):
         raise HTTPException(403)
 
-    docs = (
-        db.query(Document)
-        .filter_by(owner_id=user["id"], world_id=world_id)
-        .order_by(Document.created_at.desc())
-        .all()
-    )
+    docs = svc.list_user_docs_in_world(user["id"], world_id)
     return [
         {
             "id":           d.id,
@@ -132,11 +112,14 @@ class PartagerBody(BaseModel):
 
 
 @router.post("/documents/partager")
-def partager_document(body: PartagerBody, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def partager_document(
+    body: PartagerBody,
+    svc: ReseauService = Depends(get_reseau_service),
+    user=Depends(get_current_user),
+):
     """Active ou désactive le partage réseau d'un document appartenant à l'utilisateur."""
-    doc = db.query(Document).filter_by(id=body.doc_id, owner_id=user["id"]).first()
+    doc = svc.get_owned_document(body.doc_id, user["id"])
     if not doc:
         raise HTTPException(404, "Document introuvable ou accès refusé")
-    doc.partage_reseau = body.partage
-    db.commit()
+    svc.set_doc_partage_reseau(doc, body.partage)
     return {"ok": True, "doc_id": doc.id, "partage_reseau": doc.partage_reseau}

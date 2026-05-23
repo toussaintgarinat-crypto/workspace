@@ -1,40 +1,28 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File as FastAPIFile
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from database import get_db
-from models.building import Room
-from models.coin import RoomAccesPaye, Coin, CoinDossier, CoinFichier
+import os
+
+from config import config
+from models.coin import Coin, CoinDossier, CoinFichier
 from routers.auth import get_current_user
-import uuid, os, shutil
+from services.coins_service import CoinsService, get_coins_service
 
 # ── Stripe ────────────────────────────────────────────────────────────────────
 STRIPE_ENABLED = False
 stripe = None
-STRIPE_WEBHOOK_SECRET = None
 try:
     import stripe as _stripe
-    _key = os.getenv("STRIPE_SECRET_KEY")
-    if _key:
-        _stripe.api_key = _key
-        STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+    if config.STRIPE_SECRET_KEY:
+        _stripe.api_key = config.STRIPE_SECRET_KEY
         STRIPE_ENABLED = True
         stripe = _stripe
 except ImportError:
     pass
 
-# ── Upload dir ────────────────────────────────────────────────────────────────
-for _candidate in ["/app/uploads", "/tmp/uploads",
-                   os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads"))]:
-    try:
-        os.makedirs(_candidate, exist_ok=True)
-        UPLOAD_DIR = _candidate
-        break
-    except OSError:
-        continue
-else:
-    UPLOAD_DIR = "/tmp/uploads"
+# ── Upload dir (résolu via config) ───────────────────────────────────────────
+UPLOAD_DIR = config.UPLOAD_DIR
 
 router = APIRouter()
 
@@ -58,17 +46,7 @@ class UpdateDossier(BaseModel):
     visibilite: str = ""
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _has_access(room_id: str, user_id: str, db: Session) -> bool:
-    room = db.query(Room).filter(Room.id == room_id).first()
-    if not room or not room.est_payante:
-        return True
-    return db.query(RoomAccesPaye).filter(
-        RoomAccesPaye.room_id == room_id,
-        RoomAccesPaye.user_id == user_id,
-        RoomAccesPaye.actif == True,
-    ).first() is not None
+# ── Helpers de sérialisation ─────────────────────────────────────────────────
 
 def _serialise_fichier(f: CoinFichier) -> dict:
     return {
@@ -107,17 +85,17 @@ def _serialise_coin(c: Coin, user_id: str) -> dict:
 # ── Accès payant ──────────────────────────────────────────────────────────────
 
 @router.get("/rooms/{room_id}/acces-paye")
-def check_acces(room_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    room = db.query(Room).filter(Room.id == room_id).first()
+def check_acces(
+    room_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    room = svc.get_room(room_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room introuvable")
     if not room.est_payante:
         return {"acces": True, "gratuit": True}
-    acces = db.query(RoomAccesPaye).filter(
-        RoomAccesPaye.room_id == room_id,
-        RoomAccesPaye.user_id == user["id"],
-        RoomAccesPaye.actif == True,
-    ).first()
+    acces = svc.get_acces(room_id, user["id"])
     return {
         "acces":         acces is not None,
         "gratuit":       False,
@@ -127,18 +105,22 @@ def check_acces(room_id: str, db: Session = Depends(get_db), user=Depends(get_cu
     }
 
 @router.post("/rooms/{room_id}/checkout-acces")
-def checkout_acces(room_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    room = db.query(Room).filter(Room.id == room_id).first()
+def checkout_acces(
+    room_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    room = svc.get_room(room_id)
     if not room or not room.est_payante:
         raise HTTPException(status_code=404, detail="Room payante introuvable")
-    if _has_access(room_id, user["id"], db):
+    if svc.has_access(room_id, user["id"]):
         return {"acces": True}
     if not STRIPE_ENABLED:
         raise HTTPException(status_code=400, detail="Stripe non configuré sur ce serveur")
     if not room.stripe_price_id_acces:
         raise HTTPException(status_code=400, detail="Prix Stripe non configuré pour cette room")
 
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    frontend_url = config.FRONTEND_URL
     mode = "subscription" if room.type_paiement == "abonnement" else "payment"
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
@@ -152,13 +134,13 @@ def checkout_acces(room_id: str, db: Session = Depends(get_db), user=Depends(get
     return {"checkout_url": session.url}
 
 @router.post("/rooms/acces-paye/webhook")
-async def webhook_acces(request: Request, db: Session = Depends(get_db)):
+async def webhook_acces(request: Request, svc: CoinsService = Depends(get_coins_service)):
     if not STRIPE_ENABLED:
         raise HTTPException(status_code=400)
     payload    = await request.body()
     sig_header = request.headers.get("stripe-signature")
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(payload, sig_header, config.STRIPE_WEBHOOK_SECRET)
     except Exception:
         raise HTTPException(status_code=400, detail="Signature webhook invalide")
 
@@ -169,31 +151,17 @@ async def webhook_acces(request: Request, db: Session = Depends(get_db)):
         ptype   = sess["metadata"].get("type", "unique")
         sub_id  = sess.get("subscription")
         if room_id and user_id:
-            existe = db.query(RoomAccesPaye).filter(
-                RoomAccesPaye.room_id == room_id,
-                RoomAccesPaye.user_id == user_id,
-            ).first()
-            if existe:
-                existe.actif = True
-                existe.stripe_subscription_id = sub_id
-            else:
-                db.add(RoomAccesPaye(
-                    room_id=room_id, user_id=user_id,
-                    type_paiement=ptype,
-                    stripe_session_id=sess.get("id"),
-                    stripe_subscription_id=sub_id,
-                    actif=True,
-                ))
-            db.commit()
+            svc.upsert_acces_completion(
+                room_id=room_id,
+                user_id=user_id,
+                ptype=ptype,
+                session_id=sess.get("id"),
+                subscription_id=sub_id,
+            )
 
     elif event["type"] in ("customer.subscription.deleted", "customer.subscription.paused"):
-        sub   = event["data"]["object"]
-        acces = db.query(RoomAccesPaye).filter(
-            RoomAccesPaye.stripe_subscription_id == sub["id"]
-        ).first()
-        if acces:
-            acces.actif = False
-            db.commit()
+        sub = event["data"]["object"]
+        svc.desactiver_acces_par_subscription(sub["id"])
 
     return {"status": "ok"}
 
@@ -201,147 +169,163 @@ async def webhook_acces(request: Request, db: Session = Depends(get_db)):
 # ── Coins ─────────────────────────────────────────────────────────────────────
 
 @router.get("/rooms/{room_id}/coins")
-def lister_coins(room_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if not _has_access(room_id, user["id"], db):
+def lister_coins(
+    room_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    if not svc.has_access(room_id, user["id"]):
         raise HTTPException(status_code=403, detail="Accès payant requis")
-    coins = db.query(Coin).filter(Coin.room_id == room_id).all()
+    coins = svc.list_coins(room_id)
     return [_serialise_coin(c, user["id"]) for c in coins]
 
 @router.post("/rooms/{room_id}/coins")
-def creer_coin(room_id: str, data: CreerCoin,
-               db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if not _has_access(room_id, user["id"], db):
+def creer_coin(
+    room_id: str,
+    data: CreerCoin,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    if not svc.has_access(room_id, user["id"]):
         raise HTTPException(status_code=403, detail="Accès payant requis")
-    existe = db.query(Coin).filter(
-        Coin.room_id == room_id, Coin.user_id == user["id"]
-    ).first()
-    if existe:
+    if svc.get_coin_for_user(room_id, user["id"]):
         raise HTTPException(status_code=400, detail="Vous avez déjà un Coin dans cette room")
 
-    from models.user import User as UserModel
-    u = db.query(UserModel).filter(UserModel.id == user["id"]).first()
-
-    coin = Coin(
+    avatar_emoji = svc.get_user_avatar_emoji(user["id"])
+    coin = svc.create_coin(
         room_id=room_id,
         user_id=user["id"],
         user_nom=user["nom"],
-        user_emoji=u.avatar_emoji if u else "👤",
+        user_emoji=avatar_emoji,
         titre=data.titre,
         description=data.description,
     )
-    db.add(coin)
-    db.commit()
-    db.refresh(coin)
     return _serialise_coin(coin, user["id"])
 
 @router.get("/coins/{coin_id}")
-def get_coin(coin_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id).first()
+def get_coin(
+    coin_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_coin_by_id(coin_id)
     if not c:
         raise HTTPException(status_code=404, detail="Coin introuvable")
-    if not _has_access(c.room_id, user["id"], db):
+    if not svc.has_access(c.room_id, user["id"]):
         raise HTTPException(status_code=403, detail="Accès payant requis")
     return _serialise_coin(c, user["id"])
 
 @router.patch("/coins/{coin_id}")
-def modifier_coin(coin_id: str, data: UpdateCoin,
-                  db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id, Coin.user_id == user["id"]).first()
+def modifier_coin(
+    coin_id: str,
+    data: UpdateCoin,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_owned_coin(coin_id, user["id"])
     if not c:
         raise HTTPException(status_code=403, detail="Interdit")
-    if data.titre:       c.titre       = data.titre
-    if data.description: c.description = data.description
-    db.commit()
-    db.refresh(c)
-    return _serialise_coin(c, user["id"])
+    coin = svc.update_coin(c, titre=data.titre, description=data.description)
+    return _serialise_coin(coin, user["id"])
 
 @router.delete("/coins/{coin_id}")
-def supprimer_coin(coin_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id, Coin.user_id == user["id"]).first()
+def supprimer_coin(
+    coin_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_owned_coin(coin_id, user["id"])
     if not c:
         raise HTTPException(status_code=403, detail="Interdit")
-    db.delete(c)
-    db.commit()
+    svc.delete_coin(c)
     return {"status": "ok"}
 
 
 # ── Dossiers ──────────────────────────────────────────────────────────────────
 
 @router.get("/coins/{coin_id}/dossiers")
-def lister_dossiers(coin_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id).first()
+def lister_dossiers(
+    coin_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_coin_by_id(coin_id)
     if not c:
         raise HTTPException(status_code=404, detail="Coin introuvable")
-    if not _has_access(c.room_id, user["id"], db):
+    if not svc.has_access(c.room_id, user["id"]):
         raise HTTPException(status_code=403, detail="Accès payant requis")
-    dossiers = db.query(CoinDossier).filter(CoinDossier.coin_id == coin_id).all()
+    dossiers = svc.list_dossiers(coin_id)
     est_proprio = c.user_id == user["id"]
     if not est_proprio:
         dossiers = [d for d in dossiers if d.visibilite == "partage"]
     return [_serialise_dossier(d) for d in dossiers]
 
 @router.post("/coins/{coin_id}/dossiers")
-def creer_dossier(coin_id: str, data: CreerDossier,
-                  db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id, Coin.user_id == user["id"]).first()
+def creer_dossier(
+    coin_id: str,
+    data: CreerDossier,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_owned_coin(coin_id, user["id"])
     if not c:
         raise HTTPException(status_code=403, detail="Seul le propriétaire peut créer des dossiers")
-    d = CoinDossier(
+    d = svc.create_dossier(
         coin_id=coin_id,
         nom=data.nom,
         visibilite=data.visibilite,
         parent_id=data.parent_id,
     )
-    db.add(d)
-    db.commit()
-    db.refresh(d)
     return _serialise_dossier(d)
 
 @router.patch("/coins/{coin_id}/dossiers/{dossier_id}")
-def modifier_dossier(coin_id: str, dossier_id: str, data: UpdateDossier,
-                     db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id, Coin.user_id == user["id"]).first()
+def modifier_dossier(
+    coin_id: str,
+    dossier_id: str,
+    data: UpdateDossier,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_owned_coin(coin_id, user["id"])
     if not c:
         raise HTTPException(status_code=403, detail="Interdit")
-    d = db.query(CoinDossier).filter(
-        CoinDossier.id == dossier_id, CoinDossier.coin_id == coin_id
-    ).first()
+    d = svc.get_dossier(coin_id, dossier_id)
     if not d:
         raise HTTPException(status_code=404, detail="Dossier introuvable")
-    if data.nom:        d.nom        = data.nom
-    if data.visibilite: d.visibilite = data.visibilite
-    db.commit()
-    db.refresh(d)
+    d = svc.update_dossier(d, nom=data.nom, visibilite=data.visibilite)
     return _serialise_dossier(d)
 
 @router.delete("/coins/{coin_id}/dossiers/{dossier_id}")
-def supprimer_dossier(coin_id: str, dossier_id: str,
-                      db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id, Coin.user_id == user["id"]).first()
+def supprimer_dossier(
+    coin_id: str,
+    dossier_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_owned_coin(coin_id, user["id"])
     if not c:
         raise HTTPException(status_code=403, detail="Interdit")
-    d = db.query(CoinDossier).filter(
-        CoinDossier.id == dossier_id, CoinDossier.coin_id == coin_id
-    ).first()
+    d = svc.get_dossier(coin_id, dossier_id)
     if d:
-        db.delete(d)
-        db.commit()
+        svc.delete_dossier(d)
     return {"status": "ok"}
 
 
 # ── Fichiers ──────────────────────────────────────────────────────────────────
 
 @router.get("/coins/{coin_id}/dossiers/{dossier_id}/fichiers")
-def lister_fichiers(coin_id: str, dossier_id: str,
-                    db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id).first()
+def lister_fichiers(
+    coin_id: str,
+    dossier_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_coin_by_id(coin_id)
     if not c:
         raise HTTPException(status_code=404)
-    if not _has_access(c.room_id, user["id"], db):
+    if not svc.has_access(c.room_id, user["id"]):
         raise HTTPException(status_code=403, detail="Accès payant requis")
-    d = db.query(CoinDossier).filter(
-        CoinDossier.id == dossier_id, CoinDossier.coin_id == coin_id
-    ).first()
+    d = svc.get_dossier(coin_id, dossier_id)
     if not d:
         raise HTTPException(status_code=404, detail="Dossier introuvable")
     if d.visibilite == "prive" and c.user_id != user["id"]:
@@ -349,46 +333,36 @@ def lister_fichiers(coin_id: str, dossier_id: str,
     return [_serialise_fichier(f) for f in d.fichiers]
 
 @router.post("/coins/{coin_id}/dossiers/{dossier_id}/fichiers")
-async def uploader_fichier(coin_id: str, dossier_id: str,
-                           file: UploadFile = FastAPIFile(...),
-                           db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id, Coin.user_id == user["id"]).first()
+async def uploader_fichier(
+    coin_id: str,
+    dossier_id: str,
+    file: UploadFile = FastAPIFile(...),
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_owned_coin(coin_id, user["id"])
     if not c:
         raise HTTPException(status_code=403, detail="Interdit")
-    d = db.query(CoinDossier).filter(
-        CoinDossier.id == dossier_id, CoinDossier.coin_id == coin_id
-    ).first()
+    d = svc.get_dossier(coin_id, dossier_id)
     if not d:
         raise HTTPException(status_code=404, detail="Dossier introuvable")
-
-    ext      = os.path.splitext(file.filename or "")[1]
-    file_id  = str(uuid.uuid4())
-    filename = f"coin_{file_id}{ext}"
-    path     = os.path.join(UPLOAD_DIR, filename)
-    with open(path, "wb") as out:
-        shutil.copyfileobj(file.file, out)
-    size = os.path.getsize(path)
-
-    db_file = CoinFichier(
-        id=file_id, dossier_id=dossier_id, coin_id=coin_id,
-        nom=file.filename or filename,
-        path=filename, taille=size,
-        type_mime=file.content_type or "application/octet-stream",
-        uploaded_by=user["id"],
+    db_file = svc.save_uploaded_file(
+        coin_id=coin_id, dossier_id=dossier_id,
+        user_id=user["id"], file=file, upload_dir=UPLOAD_DIR,
     )
-    db.add(db_file)
-    db.commit()
-    db.refresh(db_file)
     return _serialise_fichier(db_file)
 
 @router.get("/coins/fichiers/{fichier_id}/download")
-def telecharger_fichier(fichier_id: str,
-                        db: Session = Depends(get_db), user=Depends(get_current_user)):
-    f = db.query(CoinFichier).filter(CoinFichier.id == fichier_id).first()
+def telecharger_fichier(
+    fichier_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    f = svc.get_fichier(fichier_id)
     if not f:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
-    d = db.query(CoinDossier).filter(CoinDossier.id == f.dossier_id).first()
-    c = db.query(Coin).filter(Coin.id == f.coin_id).first()
+    d = svc.get_dossier_by_id(f.dossier_id)
+    c = svc.get_coin_by_id(f.coin_id)
     if d and d.visibilite == "prive" and c and c.user_id != user["id"]:
         raise HTTPException(status_code=403, detail="Dossier privé")
     path = os.path.join(UPLOAD_DIR, f.path)
@@ -397,18 +371,17 @@ def telecharger_fichier(fichier_id: str,
     return FileResponse(path, filename=f.nom, media_type=f.type_mime)
 
 @router.delete("/coins/{coin_id}/dossiers/{dossier_id}/fichiers/{fichier_id}")
-def supprimer_fichier(coin_id: str, dossier_id: str, fichier_id: str,
-                      db: Session = Depends(get_db), user=Depends(get_current_user)):
-    c = db.query(Coin).filter(Coin.id == coin_id, Coin.user_id == user["id"]).first()
+def supprimer_fichier(
+    coin_id: str,
+    dossier_id: str,
+    fichier_id: str,
+    svc: CoinsService = Depends(get_coins_service),
+    user=Depends(get_current_user),
+):
+    c = svc.get_owned_coin(coin_id, user["id"])
     if not c:
         raise HTTPException(status_code=403, detail="Interdit")
-    f = db.query(CoinFichier).filter(
-        CoinFichier.id == fichier_id, CoinFichier.dossier_id == dossier_id
-    ).first()
+    f = svc.get_fichier_in_dossier(fichier_id, dossier_id)
     if f:
-        p = os.path.join(UPLOAD_DIR, f.path)
-        if os.path.exists(p):
-            os.remove(p)
-        db.delete(f)
-        db.commit()
+        svc.delete_fichier(f, UPLOAD_DIR)
     return {"status": "ok"}

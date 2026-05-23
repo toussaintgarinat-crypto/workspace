@@ -2,16 +2,14 @@
 Réseau social : follow/unfollow, fil d'activité, notifications.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from database import get_db
-from routers.auth import get_current_user, _KC
-from agent_personnel_shared.keycloak_auth import verify_token_sync
-from models.social import UserFollow, Notification
-from models.user import User
-from models.world import World
 from sse_starlette.sse import EventSourceResponse
 from jose import JWTError
-import asyncio, json, uuid, os
+import asyncio
+import json
+
+from routers.auth import get_current_user, _KC
+from agent_personnel_shared.keycloak_auth import verify_token_sync
+from services.social_service import SocialService, get_social_service
 
 router = APIRouter()
 
@@ -27,83 +25,89 @@ async def _publish_notif(user_id: str, count: int):
 # ── Follow ───────────────────────────────────────────────────────
 
 @router.post("/follow/{user_id}")
-async def follow_user(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def follow_user(
+    user_id: str,
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
     if user_id == user["id"]:
         raise HTTPException(400, "Tu ne peux pas te suivre toi-même")
-    if db.query(UserFollow).filter_by(follower_id=user["id"], followed_id=user_id).first():
+    if svc.get_follow(user["id"], user_id):
         raise HTTPException(400, "Déjà suivi")
-    target = db.query(User).filter_by(id=user_id).first()
-    if not target:
+    if not svc.get_user(user_id):
         raise HTTPException(404, "Utilisateur introuvable")
-    db.add(UserFollow(follower_id=user["id"], followed_id=user_id))
-    db.add(Notification(
+
+    svc.create_follow(follower_id=user["id"], followed_id=user_id)
+    svc.add_notification(
         user_id=user_id,
-        type="new_follower",
-        data=json.dumps({
+        type_="new_follower",
+        data_dict={
             "follower_id":     user["id"],
             "follower_nom":    user["nom"],
             "follower_avatar": user["avatar_emoji"],
-        }),
-    ))
-    db.commit()
-    count = db.query(Notification).filter_by(user_id=user_id, read=False).count()
+        },
+    )
+    svc.commit()
+    count = svc.count_unread_notifs(user_id)
     await _publish_notif(user_id, count)
     return {"ok": True}
 
 
 @router.delete("/follow/{user_id}")
-def unfollow_user(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    follow = db.query(UserFollow).filter_by(follower_id=user["id"], followed_id=user_id).first()
+def unfollow_user(
+    user_id: str,
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    follow = svc.get_follow(user["id"], user_id)
     if not follow:
         raise HTTPException(404, "Pas suivi")
-    db.delete(follow)
-    db.commit()
+    svc.delete_follow(follow)
     return {"ok": True}
 
 
 @router.get("/check/{user_id}")
-def check_follow(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    existing = db.query(UserFollow).filter_by(follower_id=user["id"], followed_id=user_id).first()
-    return {"following": bool(existing)}
+def check_follow(
+    user_id: str,
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    return {"following": bool(svc.get_follow(user["id"], user_id))}
 
 
 @router.get("/following")
-def get_following(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    follows = db.query(UserFollow).filter_by(follower_id=user["id"]).all()
-    ids = [f.followed_id for f in follows]
-    users = db.query(User).filter(User.id.in_(ids)).all() if ids else []
+def get_following(
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    users = svc.list_following(user["id"])
     return [{"id": u.id, "nom": u.nom, "avatar_emoji": u.avatar_emoji, "bio": u.bio or ""} for u in users]
 
 
 @router.get("/followers")
-def get_followers(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    follows = db.query(UserFollow).filter_by(followed_id=user["id"]).all()
-    ids = [f.follower_id for f in follows]
-    users = db.query(User).filter(User.id.in_(ids)).all() if ids else []
+def get_followers(
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    users = svc.list_followers(user["id"])
     return [{"id": u.id, "nom": u.nom, "avatar_emoji": u.avatar_emoji, "bio": u.bio or ""} for u in users]
 
 
 # ── Feed ─────────────────────────────────────────────────────────
 
 @router.get("/feed")
-def get_feed(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_feed(
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
     """Worlds publics récents des utilisateurs suivis."""
-    follows = db.query(UserFollow).filter_by(follower_id=user["id"]).all()
-    followed_ids = [f.followed_id for f in follows]
+    followed_ids = svc.list_followed_ids(user["id"])
     if not followed_ids:
         return []
 
-    worlds = (db.query(World)
-              .filter(
-                  World.owner_id.in_(followed_ids),
-                  World.is_public == True,
-                  World.is_garden == False,
-              )
-              .order_by(World.created_at.desc())
-              .limit(30).all())
-
+    worlds = svc.list_public_worlds_by_owners(followed_ids, limit=30)
+    owners = svc.get_users_map(followed_ids)
     result = []
-    owners = {u.id: u for u in db.query(User).filter(User.id.in_(followed_ids)).all()}
     for w in worlds:
         owner = owners.get(w.owner_id)
         result.append({
@@ -124,11 +128,11 @@ def get_feed(db: Session = Depends(get_db), user=Depends(get_current_user)):
 # ── Notifications ────────────────────────────────────────────────
 
 @router.get("/notifs")
-def get_notifs(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    notifs = (db.query(Notification)
-              .filter_by(user_id=user["id"])
-              .order_by(Notification.created_at.desc())
-              .limit(50).all())
+def get_notifs(
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    notifs = svc.list_notifs(user["id"], limit=50)
     return [
         {
             "id":         n.id,
@@ -142,13 +146,19 @@ def get_notifs(db: Session = Depends(get_db), user=Depends(get_current_user)):
 
 
 @router.get("/notifs/unread-count")
-def unread_count(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    count = db.query(Notification).filter_by(user_id=user["id"], read=False).count()
-    return {"count": count}
+def unread_count(
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    return {"count": svc.count_unread_notifs(user["id"])}
 
 
 @router.get("/notifs/stream")
-async def notifs_stream(request: Request, token: str = "", db: Session = Depends(get_db)):
+async def notifs_stream(
+    request: Request,
+    token: str = "",
+    svc: SocialService = Depends(get_social_service),
+):
     # Valide le JWT depuis le query param (EventSource ne supporte pas les headers)
     if not token:
         raise HTTPException(401, "Token manquant")
@@ -164,7 +174,7 @@ async def notifs_stream(request: Request, token: str = "", db: Session = Depends
 
     async def generator():
         # Envoie le count actuel au démarrage
-        count = db.query(Notification).filter_by(user_id=user_id, read=False).count()
+        count = svc.count_unread_notifs(user_id)
         yield json.dumps({"count": count})
 
         if redis_client:
@@ -192,40 +202,46 @@ async def notifs_stream(request: Request, token: str = "", db: Session = Depends
                 if await request.is_disconnected():
                     break
                 await asyncio.sleep(30)
-                count = db.query(Notification).filter_by(user_id=user_id, read=False).count()
+                count = svc.count_unread_notifs(user_id)
                 yield json.dumps({"count": count})
 
     return EventSourceResponse(generator())
 
 
 @router.patch("/notifs/{notif_id}/read")
-def mark_read(notif_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    n = db.query(Notification).filter_by(id=notif_id, user_id=user["id"]).first()
+def mark_read(
+    notif_id: str,
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    n = svc.get_notif(notif_id, user["id"])
     if not n:
         raise HTTPException(404)
-    n.read = True
-    db.commit()
+    svc.mark_notif_read(n)
     return {"ok": True}
 
 
 @router.patch("/notifs/read-all")
-def mark_all_read(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    db.query(Notification).filter_by(user_id=user["id"], read=False).update({"read": True})
-    db.commit()
+def mark_all_read(
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    svc.mark_all_notifs_read(user["id"])
     return {"ok": True}
 
 
 # ── Public profile ───────────────────────────────────────────────
 
 @router.get("/profile/{user_id}")
-def get_profile(user_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    target = db.query(User).filter_by(id=user_id).first()
+def get_profile(
+    user_id: str,
+    svc: SocialService = Depends(get_social_service),
+    user=Depends(get_current_user),
+):
+    target = svc.get_user(user_id)
     if not target:
         raise HTTPException(404, "Utilisateur introuvable")
-    worlds = (db.query(World)
-              .filter_by(owner_id=user_id, is_public=True, is_garden=False)
-              .order_by(World.created_at.desc())
-              .limit(20).all())
+    worlds = svc.get_user_public_worlds(user_id, limit=20)
     return {
         "id":           target.id,
         "nom":          target.nom,
