@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-personnel-shared"
-version = "0.1.0"
+version = "0.2.0"
 description = "Utilitaires partagés (Redis, Keycloak, FastAPI) — Agent Personnel de Création"
 requires-python = ">=3.10"
 # Volontairement minimal : les services hôtes déclarent déjà fastapi / httpx / python-jose / redis

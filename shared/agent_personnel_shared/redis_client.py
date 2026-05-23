@@ -57,8 +57,44 @@ def get_raw_client() -> Optional[Any]:
     return _client
 
 
+class _NamespacedPubSub:
+    """Proxy autour de redis.asyncio.client.PubSub qui préfixe les channels."""
+
+    def __init__(self, pubsub: Any, prefix: str) -> None:
+        self._pubsub = pubsub
+        self._prefix = prefix
+
+    def _k(self, channel: str) -> str:
+        if not self._prefix or channel.startswith(self._prefix):
+            return channel
+        return f"{self._prefix}{channel}"
+
+    async def subscribe(self, *channels: str, **kwargs: Any) -> Any:
+        return await self._pubsub.subscribe(*(self._k(c) for c in channels), **kwargs)
+
+    async def unsubscribe(self, *channels: str) -> Any:
+        return await self._pubsub.unsubscribe(*(self._k(c) for c in channels))
+
+    async def psubscribe(self, *patterns: str, **kwargs: Any) -> Any:
+        return await self._pubsub.psubscribe(*(self._k(p) for p in patterns), **kwargs)
+
+    async def punsubscribe(self, *patterns: str) -> Any:
+        return await self._pubsub.punsubscribe(*(self._k(p) for p in patterns))
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(self._pubsub, item)
+
+
 class _NamespacedClient:
-    """Proxy qui préfixe automatiquement les clés avec `namespace:`."""
+    """Proxy qui préfixe automatiquement les clés avec `namespace:`.
+
+    Les méthodes suivantes préfixent leurs arguments clés/channels :
+    `get`, `set`, `setex`, `delete`, `incr`, `decr`, `expire`, `ttl`,
+    `exists`, `keys`, `eval` (clés positionnelles via `keys=`/numkeys),
+    `publish`, `pubsub()` (proxy qui préfixe subscribe/psubscribe).
+    Toute autre méthode est déléguée brute (ex: `info`, `ping`,
+    `pubsub_channels`, `pubsub_numsub`) — utile pour les vues admin.
+    """
 
     def __init__(self, client: Any, namespace: str) -> None:
         self._client = client
@@ -81,13 +117,37 @@ class _NamespacedClient:
     async def delete(self, *keys: str) -> Any:
         return await self._client.delete(*(self._k(k) for k in keys))
 
+    async def incr(self, key: str, amount: int = 1) -> Any:
+        return await self._client.incr(self._k(key), amount)
+
+    async def decr(self, key: str, amount: int = 1) -> Any:
+        return await self._client.decr(self._k(key), amount)
+
+    async def expire(self, key: str, seconds: int, **kwargs: Any) -> Any:
+        return await self._client.expire(self._k(key), seconds, **kwargs)
+
+    async def ttl(self, key: str) -> Any:
+        return await self._client.ttl(self._k(key))
+
+    async def exists(self, *keys: str) -> Any:
+        return await self._client.exists(*(self._k(k) for k in keys))
+
+    async def keys(self, pattern: str = "*") -> Any:
+        return await self._client.keys(self._k(pattern))
+
+    async def eval(self, script: str, numkeys: int, *keys_and_args: Any) -> Any:
+        # Les `numkeys` premiers arguments sont des KEYS Lua → on les préfixe.
+        keys = [self._k(str(k)) for k in keys_and_args[:numkeys]]
+        argv = list(keys_and_args[numkeys:])
+        return await self._client.eval(script, numkeys, *keys, *argv)
+
     async def publish(self, channel: str, payload: Any) -> Any:
         if not isinstance(payload, (str, bytes)):
             payload = json.dumps(payload)
         return await self._client.publish(self._k(channel), payload)
 
     def pubsub(self) -> Any:
-        return self._client.pubsub()
+        return _NamespacedPubSub(self._client.pubsub(), self._prefix)
 
     def __getattr__(self, item: str) -> Any:
         # Fallback : on délègue au client réel pour tout le reste de l'API redis.asyncio.
