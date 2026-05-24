@@ -1,0 +1,6 @@
+# Test dependencies (S102 — coverage min 30% sur services/)
+pytest>=8.0,<10
+pytest-asyncio>=0.24
+pytest-cov>=5.0
+respx>=0.21          # mock httpx without monkey-patching
+aiosqlite>=0.20      # in-memory DB pour tests connections_service
