@@ -3,32 +3,18 @@ Agents IA — définitions, CRUD, et pont vers Forge (streaming ReAct).
 """
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 import httpx, json
 
-from database import get_db
-from routers.auth import get_current_user
 from models.agent import AgentDefinition
-from models.world import World, Member
-from models.document import Document
+from routers.auth import get_current_user
+from services.agents_service import AgentsService, get_agents_service
 
 router = APIRouter()
 
 
 # ── Helpers ──────────────────────────────────────────────────────
-
-def _check_world_access(db, world_id, user_id, require_owner=False):
-    world = db.query(World).filter(World.id == world_id).first()
-    if not world:
-        raise HTTPException(404, "World introuvable")
-    if require_owner and world.owner_id != user_id:
-        raise HTTPException(403, "Réservé au propriétaire")
-    member = db.query(Member).filter_by(world_id=world_id, user_id=user_id).first()
-    if not member and world.owner_id != user_id:
-        raise HTTPException(403, "Accès refusé")
-    return world
 
 
 def _agent_dict(a: AgentDefinition) -> dict:
@@ -83,16 +69,24 @@ class UpdateAgent(BaseModel):
 
 
 @router.get("/world/{world_id}")
-def list_agents(world_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    _check_world_access(db, world_id, user["id"])
-    agents = db.query(AgentDefinition).filter_by(world_id=world_id).all()
+def list_agents(
+    world_id: str,
+    svc: AgentsService = Depends(get_agents_service),
+    user=Depends(get_current_user),
+):
+    svc.check_world_access(world_id, user["id"])
+    agents = svc.list_world_agents(world_id)
     return [_agent_dict(a) for a in agents]
 
 
 @router.post("/")
-def create_agent(body: CreateAgent, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    _check_world_access(db, body.world_id, user["id"], require_owner=True)
-    agent = AgentDefinition(
+def create_agent(
+    body: CreateAgent,
+    svc: AgentsService = Depends(get_agents_service),
+    user=Depends(get_current_user),
+):
+    svc.check_world_access(body.world_id, user["id"], require_owner=True)
+    agent = svc.create_agent(
         world_id=body.world_id, owner_id=user["id"],
         nom=body.nom, avatar_emoji=body.avatar_emoji,
         description=body.description, system_prompt=body.system_prompt,
@@ -102,33 +96,35 @@ def create_agent(body: CreateAgent, db: Session = Depends(get_db), user=Depends(
         can_read_docs=body.can_read_docs, use_memory=body.use_memory,
         use_ipcra=body.use_ipcra, wake_word=body.wake_word,
     )
-    db.add(agent)
-    db.commit()
-    db.refresh(agent)
     return _agent_dict(agent)
 
 
 @router.patch("/{agent_id}")
-def update_agent(agent_id: str, body: UpdateAgent, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = db.query(AgentDefinition).filter_by(id=agent_id).first()
+def update_agent(
+    agent_id: str,
+    body: UpdateAgent,
+    svc: AgentsService = Depends(get_agents_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.get_agent(agent_id)
     if not agent:
         raise HTTPException(404)
-    _check_world_access(db, agent.world_id, user["id"], require_owner=True)
-    for k, v in body.model_dump(exclude_none=True).items():
-        setattr(agent, k, v)
-    db.commit()
-    db.refresh(agent)
+    svc.check_world_access(agent.world_id, user["id"], require_owner=True)
+    agent = svc.update_agent(agent, body.model_dump(exclude_none=True))
     return _agent_dict(agent)
 
 
 @router.delete("/{agent_id}", status_code=204)
-def delete_agent(agent_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = db.query(AgentDefinition).filter_by(id=agent_id).first()
+def delete_agent(
+    agent_id: str,
+    svc: AgentsService = Depends(get_agents_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.get_agent(agent_id)
     if not agent:
         raise HTTPException(404)
-    _check_world_access(db, agent.world_id, user["id"], require_owner=True)
-    db.delete(agent)
-    db.commit()
+    svc.check_world_access(agent.world_id, user["id"], require_owner=True)
+    svc.delete_agent(agent)
 
 
 # ── Chat — pont vers Forge (streaming) ───────────────────────────
@@ -142,18 +138,18 @@ class ChatBody(BaseModel):
 async def chat_with_agent(
     agent_id: str,
     body: ChatBody,
-    db: Session = Depends(get_db),
+    svc: AgentsService = Depends(get_agents_service),
     user=Depends(get_current_user),
 ):
-    agent = db.query(AgentDefinition).filter_by(id=agent_id, is_active=True).first()
+    agent = svc.get_active_agent(agent_id)
     if not agent:
         raise HTTPException(404, "Agent introuvable ou inactif")
-    _check_world_access(db, agent.world_id, user["id"])
+    svc.check_world_access(agent.world_id, user["id"])
 
     # Construire le contexte docs si l'agent peut les lire
     docs_context = ""
     if agent.can_read_docs:
-        docs = db.query(Document).filter_by(owner_id=user["id"]).limit(5).all()
+        docs = svc.list_user_documents(user["id"], limit=5)
         if docs:
             docs_context = "\n\n## Documents disponibles de l'utilisateur\n" + "\n\n---\n".join(
                 f"### {d.nom}\n{d.content_md[:2000]}" for d in docs if d.content_md
@@ -197,17 +193,17 @@ async def chat_with_agent(
 async def chat_simple(
     agent_id: str,
     body: ChatBody,
-    db: Session = Depends(get_db),
+    svc: AgentsService = Depends(get_agents_service),
     user=Depends(get_current_user),
 ):
-    agent = db.query(AgentDefinition).filter_by(id=agent_id, is_active=True).first()
+    agent = svc.get_active_agent(agent_id)
     if not agent:
         raise HTTPException(404)
-    _check_world_access(db, agent.world_id, user["id"])
+    svc.check_world_access(agent.world_id, user["id"])
 
     docs_context = ""
     if agent.can_read_docs:
-        docs = db.query(Document).filter_by(owner_id=user["id"]).limit(3).all()
+        docs = svc.list_user_documents(user["id"], limit=3)
         if docs:
             docs_context = "\n\nDocs : " + " | ".join(d.nom for d in docs if d.content_md)
 
