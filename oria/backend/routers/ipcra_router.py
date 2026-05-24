@@ -13,17 +13,15 @@ Intégration MemPalace : chaque item est syncsé dans le palace de l'utilisateur
 Intégration Forge : assistance IA via l'agent assigné.
 """
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 import httpx
 import json
 import time
 
-from database import get_db
-from routers.auth import get_current_user
 from models.ipcra import IPCRAItem, IPCRATrace, CATEGORIES
-from models.agent import AgentDefinition
+from routers.auth import get_current_user
+from services.ipcra_service import IPCRAService, get_ipcra_service
 import mempalace_client as mp
 
 router = APIRouter()
@@ -80,17 +78,12 @@ class UpdateItem(BaseModel):
 def list_items(
     categorie: Optional[str] = None,
     world_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    svc: IPCRAService = Depends(get_ipcra_service),
     user=Depends(get_current_user),
 ):
-    q = db.query(IPCRAItem).filter_by(owner_id=user["id"])
-    if categorie:
-        if categorie not in CATEGORIES:
-            raise HTTPException(400, f"Catégorie invalide. Valeurs: {CATEGORIES}")
-        q = q.filter_by(categorie=categorie)
-    if world_id:
-        q = q.filter_by(world_id=world_id)
-    items = q.order_by(IPCRAItem.updated_at.desc()).all()
+    if categorie and categorie not in CATEGORIES:
+        raise HTTPException(400, f"Catégorie invalide. Valeurs: {CATEGORIES}")
+    items = svc.list_items(owner_id=user["id"], categorie=categorie, world_id=world_id)
     return [_item_dict(i) for i in items]
 
 
@@ -98,25 +91,22 @@ def list_items(
 def create_item(
     body: CreateItem,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    svc: IPCRAService = Depends(get_ipcra_service),
     user=Depends(get_current_user),
 ):
     if body.categorie not in CATEGORIES:
         raise HTTPException(400, f"Catégorie invalide. Valeurs: {CATEGORIES}")
-    item = IPCRAItem(
+    item = svc.create_item(
         owner_id=user["id"],
         world_id=body.world_id,
         categorie=body.categorie,
         titre=body.titre,
         contenu=body.contenu,
-        tags=json.dumps(body.tags),
+        tags=body.tags,
         casquette=body.casquette,
         source_url=body.source_url,
         agent_id=body.agent_id,
     )
-    db.add(item)
-    db.commit()
-    db.refresh(item)
     background_tasks.add_task(
         _sync_item, item.id, item.titre, item.contenu, item.categorie, user["id"]
     )
@@ -124,8 +114,12 @@ def create_item(
 
 
 @router.get("/{item_id}")
-def get_item(item_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+def get_item(
+    item_id: str,
+    svc: IPCRAService = Depends(get_ipcra_service),
+    user=Depends(get_current_user),
+):
+    item = svc.get_item(item_id, user["id"])
     if not item:
         raise HTTPException(404)
     return _item_dict(item)
@@ -136,28 +130,18 @@ def update_item(
     item_id: str,
     body: UpdateItem,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    svc: IPCRAService = Depends(get_ipcra_service),
     user=Depends(get_current_user),
 ):
-    from datetime import datetime, timezone
-    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    item = svc.get_item(item_id, user["id"])
     if not item:
         raise HTTPException(404)
-    if body.titre is not None:
-        item.titre = body.titre
-    if body.contenu is not None:
-        item.contenu = body.contenu
-    if body.tags is not None:
-        item.tags = json.dumps(body.tags)
-    if body.casquette is not None:
-        item.casquette = body.casquette
-    if body.source_url is not None:
-        item.source_url = body.source_url
-    if body.agent_id is not None:
-        item.agent_id = body.agent_id
-    item.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(item)
+    item = svc.update_item_fields(
+        item,
+        titre=body.titre, contenu=body.contenu, tags=body.tags,
+        casquette=body.casquette, source_url=body.source_url,
+        agent_id=body.agent_id,
+    )
     background_tasks.add_task(
         _sync_item, item.id, item.titre, item.contenu, item.categorie, user["id"]
     )
@@ -169,20 +153,16 @@ def move_categorie(
     item_id: str,
     categorie: str,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    svc: IPCRAService = Depends(get_ipcra_service),
     user=Depends(get_current_user),
 ):
     """Déplace un item vers une autre catégorie (ex: Input → Projet, Projet → Archive)."""
-    from datetime import datetime, timezone
     if categorie not in CATEGORIES:
         raise HTTPException(400, f"Catégorie invalide. Valeurs: {CATEGORIES}")
-    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    item = svc.get_item(item_id, user["id"])
     if not item:
         raise HTTPException(404)
-    item.categorie = categorie
-    item.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(item)
+    item = svc.change_categorie(item, categorie)
     background_tasks.add_task(
         _sync_item, item.id, item.titre, item.contenu, item.categorie, user["id"]
     )
@@ -190,12 +170,15 @@ def move_categorie(
 
 
 @router.delete("/{item_id}", status_code=204)
-def delete_item(item_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+def delete_item(
+    item_id: str,
+    svc: IPCRAService = Depends(get_ipcra_service),
+    user=Depends(get_current_user),
+):
+    item = svc.get_item(item_id, user["id"])
     if not item:
         raise HTTPException(404)
-    db.delete(item)
-    db.commit()
+    svc.delete_item(item)
 
 
 # ── Assistance IA via Forge ───────────────────────────────────────
@@ -209,17 +192,17 @@ async def assist_item(
     item_id: str,
     body: AssistBody,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    svc: IPCRAService = Depends(get_ipcra_service),
     user=Depends(get_current_user),
 ):
     """Demande à l'agent Forge assigné d'assister sur un élément IPCRA."""
-    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+    item = svc.get_item(item_id, user["id"])
     if not item:
         raise HTTPException(404)
 
     agent = None
     if item.agent_id:
-        agent = db.query(AgentDefinition).filter_by(id=item.agent_id, is_active=True).first()
+        agent = svc.get_active_agent(item.agent_id)
 
     # Prefetch mémoires pertinentes
     mem_block = ""
@@ -273,7 +256,7 @@ Réponds toujours dans la langue de l'utilisateur."""
                     background_tasks.add_task(
                         _save_trace,
                         item_id, user["id"], body.prompt,
-                        data.get("answer", ""), agent.nom, duree, db,
+                        data.get("answer", ""), agent.nom, duree,
                     )
                     return data
         except httpx.ConnectError:
@@ -289,7 +272,7 @@ Réponds toujours dans la langue de l'utilisateur."""
     }
 
 
-def _save_trace(item_id, owner_id, prompt, answer, agent_nom, duree_ms, db):
+def _save_trace(item_id, owner_id, prompt, answer, agent_nom, duree_ms):
     from database import SessionLocal
     _db = SessionLocal()
     try:
@@ -305,16 +288,15 @@ def _save_trace(item_id, owner_id, prompt, answer, agent_nom, duree_ms, db):
 
 
 @router.get("/{item_id}/traces")
-def get_traces(item_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    item = db.query(IPCRAItem).filter_by(id=item_id, owner_id=user["id"]).first()
+def get_traces(
+    item_id: str,
+    svc: IPCRAService = Depends(get_ipcra_service),
+    user=Depends(get_current_user),
+):
+    item = svc.get_item(item_id, user["id"])
     if not item:
         raise HTTPException(404)
-    traces = (
-        db.query(IPCRATrace)
-        .filter_by(item_id=item_id)
-        .order_by(IPCRATrace.created_at.asc())
-        .all()
-    )
+    traces = svc.list_traces(item_id)
     return [
         {
             "id": t.id,
