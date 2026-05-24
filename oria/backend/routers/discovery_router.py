@@ -2,23 +2,21 @@
 Découverte des worlds publics + profils utilisateurs publics.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
-from database import get_db
-from routers.auth import get_current_user
-from models.world import World, Member
+from models.world import World
 from models.user import User
-from models.agent import AgentDefinition
+from routers.auth import get_current_user
+from services.discovery_service import DiscoveryService, get_discovery_service
 
 router = APIRouter()
 
 
-def _world_preview(w: World, db: Session) -> dict:
-    member_count = db.query(Member).filter_by(world_id=w.id).count()
-    agent_count  = db.query(AgentDefinition).filter_by(world_id=w.id, is_active=True).count()
-    owner = db.query(User).filter_by(id=w.owner_id).first()
+def _world_preview(w: World, svc: DiscoveryService) -> dict:
+    member_count = svc.count_members(w.id)
+    agent_count = svc.count_active_agents(w.id)
+    owner = svc.get_user(w.owner_id)
     import json as _json
     tags = []
     try:
@@ -47,46 +45,37 @@ def list_public_worlds(
     tag: Optional[str] = Query(None),
     limit: int = Query(20, le=50),
     offset: int = Query(0),
-    db: Session = Depends(get_db),
+    svc: DiscoveryService = Depends(get_discovery_service),
 ):
-    query = db.query(World).filter(World.is_public == True, World.is_garden == False)
-
-    if q:
-        query = query.filter(
-            World.nom.ilike(f"%{q}%") | World.description.ilike(f"%{q}%")
-        )
-    if tag:
-        query = query.filter(World.tags.ilike(f'%"{tag}"%'))
-
-    worlds = query.order_by(World.view_count.desc(), World.created_at.desc()).offset(offset).limit(limit).all()
-    return [_world_preview(w, db) for w in worlds]
+    worlds = svc.list_public_worlds(q=q, tag=tag, limit=limit, offset=offset)
+    return [_world_preview(w, svc) for w in worlds]
 
 
 @router.get("/worlds/{world_id}")
-def get_public_world(world_id: str, db: Session = Depends(get_db)):
-    w = db.query(World).filter_by(id=world_id, is_public=True).first()
+def get_public_world(world_id: str, svc: DiscoveryService = Depends(get_discovery_service)):
+    w = svc.get_public_world(world_id)
     if not w:
         raise HTTPException(404, "World introuvable ou privé")
     # Incrémenter view_count
     w.view_count = (w.view_count or 0) + 1
-    db.commit()
-    return _world_preview(w, db)
+    svc.commit()
+    return _world_preview(w, svc)
 
 
 @router.patch("/worlds/{world_id}/visibility")
 def toggle_world_visibility(
     world_id: str,
     is_public: bool,
-    db: Session = Depends(get_db),
+    svc: DiscoveryService = Depends(get_discovery_service),
     user=Depends(get_current_user),
 ):
-    w = db.query(World).filter_by(id=world_id, owner_id=user["id"]).first()
+    w = svc.get_own_world(world_id, user["id"])
     if not w:
         raise HTTPException(404)
     if w.is_garden:
         raise HTTPException(403, "Le jardin secret est toujours privé")
     w.is_public = is_public
-    db.commit()
+    svc.commit()
     return {"id": w.id, "is_public": w.is_public}
 
 
@@ -99,18 +88,18 @@ class UpdateWorldMeta(BaseModel):
 def update_world_meta(
     world_id: str,
     body: UpdateWorldMeta,
-    db: Session = Depends(get_db),
+    svc: DiscoveryService = Depends(get_discovery_service),
     user=Depends(get_current_user),
 ):
     import json as _json
-    w = db.query(World).filter_by(id=world_id, owner_id=user["id"]).first()
+    w = svc.get_own_world(world_id, user["id"])
     if not w:
         raise HTTPException(404)
     if body.tags is not None:
         w.tags = _json.dumps(body.tags)
     if body.map_data is not None:
         w.map_data = body.map_data
-    db.commit()
+    svc.commit()
     return {"ok": True}
 
 
@@ -120,13 +109,10 @@ def update_world_meta(
 def list_public_users(
     limit: int = Query(5, le=20),
     exclude: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
+    svc: DiscoveryService = Depends(get_discovery_service),
 ):
     import random as _random
-    query = db.query(User).filter(User.is_public == True)
-    if exclude:
-        query = query.filter(User.id != exclude)
-    users = query.all()
+    users = svc.list_public_users(exclude=exclude)
     sample = _random.sample(users, min(limit, len(users)))
     return [
         {"id": u.id, "nom": u.nom, "avatar_emoji": u.avatar_emoji, "bio": u.bio or ""}
@@ -137,19 +123,19 @@ def list_public_users(
 # ── Profils publics ──────────────────────────────────────────────
 
 @router.get("/profile/{user_id}")
-def get_public_profile(user_id: str, db: Session = Depends(get_db)):
-    u = db.query(User).filter_by(id=user_id, is_public=True).first()
+def get_public_profile(user_id: str, svc: DiscoveryService = Depends(get_discovery_service)):
+    u = svc.get_public_user(user_id)
     if not u:
         raise HTTPException(404, "Profil introuvable ou privé")
 
-    worlds = db.query(World).filter_by(owner_id=user_id, is_public=True).all()
+    worlds = svc.list_public_worlds_by_owner(user_id)
     return {
         "id": u.id, "nom": u.nom,
         "avatar_emoji": u.avatar_emoji,
         "bio": u.bio or "",
         "website": u.website or "",
         "created_at": u.created_at.isoformat() if u.created_at else None,
-        "worlds": [_world_preview(w, db) for w in worlds],
+        "worlds": [_world_preview(w, svc) for w in worlds],
     }
 
 
@@ -158,10 +144,10 @@ def update_my_profile(
     bio: Optional[str] = None,
     website: Optional[str] = None,
     is_public: Optional[bool] = None,
-    db: Session = Depends(get_db),
+    svc: DiscoveryService = Depends(get_discovery_service),
     user=Depends(get_current_user),
 ):
-    u = db.query(User).filter_by(id=user["id"]).first()
+    u = svc.get_user(user["id"])
     if not u:
         raise HTTPException(404)
     if bio is not None:
@@ -170,7 +156,7 @@ def update_my_profile(
         u.website = website
     if is_public is not None:
         u.is_public = is_public
-    db.commit()
+    svc.commit()
     return {
         "id": u.id, "nom": u.nom, "avatar_emoji": u.avatar_emoji,
         "bio": u.bio, "website": u.website, "is_public": u.is_public,
