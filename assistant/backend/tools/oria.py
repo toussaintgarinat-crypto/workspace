@@ -1,5 +1,12 @@
+"""Oria tools — wrappers OpenAI function-calling pour worlds/rooms/messages.
+
+S99 : migration vers `agent_personnel_shared.http_client.S2SClient`.
+Paths prefixes `/v1/api/...` (alias legacy `/api/...` toujours actif).
+"""
+
 import logging
-import httpx
+
+from agent_personnel_shared.http_client import S2SClient, S2SError
 
 logger = logging.getLogger(__name__)
 
@@ -44,52 +51,52 @@ OPENAI_TOOLS = [
 ]
 
 
+_ORIA_DOWN_MSG = "Oria indisponible (circuit ouvert ou backend down), je continue sans interagir avec le world."
+
+
 class OriaTools:
     def __init__(self, base_url: str, token: str):
-        self.base_url = base_url.rstrip("/")
-        self.token = token
-        self._headers = {"Authorization": f"Bearer {token}"}
+        self._client = S2SClient(
+            base_url=base_url,
+            token=token,
+            service_name="oria",
+            timeout=10.0,
+        )
 
     def get_tools(self) -> list[dict]:
         return OPENAI_TOOLS
 
     async def list_worlds(self) -> list[dict]:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{self.base_url}/api/worlds", headers=self._headers)
-            resp.raise_for_status()
-            return resp.json()
+        resp = await self._client.get("/v1/api/worlds")
+        return resp.json()
 
     async def post_message(self, room_id: str, message: str) -> dict:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{self.base_url}/api/rooms/{room_id}/messages",
-                json={"message": message},
-                headers=self._headers,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        resp = await self._client.post(
+            f"/v1/api/rooms/{room_id}/messages",
+            json={"message": message},
+        )
+        return resp.json()
 
     async def list_rooms(self, world_id: str = "") -> list[dict]:
         params = {}
         if world_id:
             params["world_id"] = world_id
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{self.base_url}/api/rooms",
-                params=params,
-                headers=self._headers,
-            )
-            resp.raise_for_status()
-            return resp.json()
+        resp = await self._client.get("/v1/api/rooms", params=params)
+        return resp.json()
 
     async def execute_tool(self, name: str, args: dict) -> str:
-        if name == "oria_list_worlds":
-            result = await self.list_worlds()
-            return str(result)
-        if name == "oria_post_message":
-            result = await self.post_message(args["room_id"], args["message"])
-            return str(result)
-        if name == "oria_list_rooms":
-            result = await self.list_rooms(args.get("world_id", ""))
-            return str(result)
+        """Tool dispatcher. Degradation gracieuse si Oria tombe."""
+        try:
+            if name == "oria_list_worlds":
+                result = await self.list_worlds()
+                return str(result)
+            if name == "oria_post_message":
+                result = await self.post_message(args["room_id"], args["message"])
+                return str(result)
+            if name == "oria_list_rooms":
+                result = await self.list_rooms(args.get("world_id", ""))
+                return str(result)
+        except S2SError as exc:
+            logger.warning("Oria S2S failure on %s: %s", name, exc)
+            return _ORIA_DOWN_MSG
         raise ValueError(f"Unknown tool: {name}")
