@@ -110,6 +110,11 @@ class OriaConfig:
 
     # ─── Stockage ─────────────────────────────────────────────────────────────
     @property
+    def DOCUMENTS_DIR(self) -> str:
+        """Répertoire d'upload des documents (jardin/documents)."""
+        return os.getenv("DOCUMENTS_DIR", "/tmp/oria_documents")
+
+    @property
     def UPLOAD_DIR(self) -> str:
         """Premier répertoire d'upload disponible (créé à la volée)."""
         candidates = [

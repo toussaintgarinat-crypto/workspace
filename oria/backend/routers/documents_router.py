@@ -3,19 +3,19 @@ Gestion des documents utilisateur.
 Upload → conversion Markitdown (Python API) → indexation MemPalace (via mempalace_client).
 """
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 import os, uuid
 
-from database import get_db
-from routers.auth import get_current_user
+from config import config as oria_config
 from models.document import Document
+from routers.auth import get_current_user
+from services.documents_service import DocumentsService, get_documents_service
 import mempalace_client as mp
 
 router = APIRouter()
 
-UPLOAD_DIR = os.environ.get("DOCUMENTS_DIR", "/tmp/oria_documents")
+UPLOAD_DIR = oria_config.DOCUMENTS_DIR
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 SUPPORTED_PLAIN = {"text/plain", "text/markdown", "text/csv"}
@@ -72,13 +72,11 @@ def _do_index(doc_id: str, doc_name: str, content: str, owner_id: str,
 @router.get("/")
 def list_documents(
     world_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    svc: DocumentsService = Depends(get_documents_service),
     user=Depends(get_current_user),
 ):
-    q = db.query(Document).filter_by(owner_id=user["id"])
-    if world_id:
-        q = q.filter_by(world_id=world_id)
-    return [_doc_dict(d) for d in q.order_by(Document.created_at.desc()).all()]
+    docs = svc.list_user_documents(owner_id=user["id"], world_id=world_id)
+    return [_doc_dict(d) for d in docs]
 
 
 @router.post("/upload")
@@ -89,7 +87,7 @@ async def upload_document(
     index_memory: bool = Form(True),   # True par défaut
     session_id: Optional[str] = Form(None),
     session_titre: Optional[str] = Form(None),
-    db: Session = Depends(get_db),
+    svc: DocumentsService = Depends(get_documents_service),
     user=Depends(get_current_user),
 ):
     """
@@ -120,14 +118,11 @@ async def upload_document(
         file_path=file_path,
         content_md=md_content,
     )
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
+    doc = svc.create_document(doc)
 
     # Indexation MemPalace en arrière-plan
     if index_memory and md_content.strip():
-        doc.indexe_memory = True
-        db.commit()
+        svc.mark_indexed(doc, True)
         background_tasks.add_task(
             _do_index, doc.id, doc.nom, md_content, user["id"], session_id, session_titre
         )
@@ -136,8 +131,12 @@ async def upload_document(
 
 
 @router.get("/{doc_id}/content")
-def get_document_content(doc_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    doc = db.query(Document).filter_by(id=doc_id, owner_id=user["id"]).first()
+def get_document_content(
+    doc_id: str,
+    svc: DocumentsService = Depends(get_documents_service),
+    user=Depends(get_current_user),
+):
+    doc = svc.get_user_document(doc_id, user["id"])
     if not doc:
         raise HTTPException(404)
     return {"id": doc.id, "nom": doc.nom, "content_md": doc.content_md}
@@ -149,18 +148,17 @@ def index_document_memory(
     background_tasks: BackgroundTasks,
     session_id: Optional[str] = None,
     session_titre: Optional[str] = None,
-    db: Session = Depends(get_db),
+    svc: DocumentsService = Depends(get_documents_service),
     user=Depends(get_current_user),
 ):
     """Indexe (ou réindexe) un document existant dans MemPalace."""
-    doc = db.query(Document).filter_by(id=doc_id, owner_id=user["id"]).first()
+    doc = svc.get_user_document(doc_id, user["id"])
     if not doc:
         raise HTTPException(404)
     if not doc.content_md or not doc.content_md.strip():
         raise HTTPException(400, "Document sans contenu Markdown")
 
-    doc.indexe_memory = True
-    db.commit()
+    svc.mark_indexed(doc, True)
     background_tasks.add_task(
         _do_index, doc.id, doc.nom, doc.content_md, user["id"], session_id, session_titre
     )
@@ -168,8 +166,12 @@ def index_document_memory(
 
 
 @router.delete("/{doc_id}", status_code=204)
-def delete_document(doc_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    doc = db.query(Document).filter_by(id=doc_id, owner_id=user["id"]).first()
+def delete_document(
+    doc_id: str,
+    svc: DocumentsService = Depends(get_documents_service),
+    user=Depends(get_current_user),
+):
+    doc = svc.get_user_document(doc_id, user["id"])
     if not doc:
         raise HTTPException(404)
     try:
@@ -177,8 +179,7 @@ def delete_document(doc_id: str, db: Session = Depends(get_db), user=Depends(get
             os.remove(doc.file_path)
     except Exception:
         pass
-    db.delete(doc)
-    db.commit()
+    svc.delete_document(doc)
 
 
 # ── Recherche sémantique dans MemPalace ──────────────────────────
