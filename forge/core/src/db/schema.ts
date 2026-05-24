@@ -244,6 +244,29 @@ export const auditDocuments = pgTable('audit_documents', {
   createdAt:  timestamp('created_at').defaultNow().notNull(),
 })
 
+// ── Findings d'audit ─────────────────────────────────────────
+export const auditFindings = pgTable('audit_findings', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  missionId:   uuid('mission_id').notNull().references(() => auditMissions.id, { onDelete: 'cascade' }),
+  userId:      text('user_id').notNull(),
+  categorie:   text('categorie').default(''),
+  severite:    text('severite', { enum: ['faible', 'moyen', 'critique'] }).default('faible'),
+  description: text('description').notNull(),
+  source:      text('source').default(''),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Recommandations d'audit ──────────────────────────────────
+export const auditRecommendations = pgTable('audit_recommendations', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  missionId: uuid('mission_id').notNull().references(() => auditMissions.id, { onDelete: 'cascade' }),
+  userId:    text('user_id').notNull(),
+  priorite:  text('priorite', { enum: ['haute', 'moyenne', 'faible'] }).default('moyenne'),
+  action:    text('action').notNull(),
+  statut:    text('statut', { enum: ['ouvert', 'en_cours', 'resolu'] }).default('ouvert'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 // ── Comptes sociaux ──────────────────────────────────────────
 export const socialAccounts = pgTable('social_accounts', {
   id:        uuid('id').primaryKey().defaultRandom(),
@@ -885,6 +908,7 @@ export const rapports = pgTable('rapports', {
   id:          uuid('id').primaryKey().defaultRandom(),
   userId:      text('user_id').notNull(),
   orgId:       uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  missionId:   uuid('mission_id').references(() => auditMissions.id, { onDelete: 'set null' }),
   titre:       text('titre').notNull(),
   contenu:     text('contenu').notNull(),
   type:        text('type', { enum: ['weekly', 'monthly', 'audit', 'custom'] }).default('weekly'),
