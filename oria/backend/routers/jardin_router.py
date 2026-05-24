@@ -8,15 +8,14 @@ Chaque utilisateur a :
 """
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 import httpx, json, os, uuid
 
-from database import get_db
-from routers.auth import get_current_user
 from models.agent import AgentDefinition
 from models.document import Document
+from routers.auth import get_current_user
+from services.jardin_service import JardinService, get_jardin_service
 import mempalace_client as mp
 
 router = APIRouter()
@@ -27,9 +26,6 @@ UPLOAD_BASE = os.path.abspath(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _get_personal_agent(db: Session, user_id: str) -> AgentDefinition:
-    return db.query(AgentDefinition).filter_by(owner_id=user_id, is_jardin_agent=True).first()
 
 
 def _agent_dict(a: AgentDefinition) -> dict:
@@ -64,8 +60,11 @@ def _index_doc_background(doc_id: str, nom: str, content_md: str, user_id: str):
 # ── Agent personnel ───────────────────────────────────────────────────────────
 
 @router.get("/agent")
-def get_agent(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = _get_personal_agent(db, user["id"])
+def get_agent(
+    svc: JardinService = Depends(get_jardin_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.get_personal_agent(user["id"])
     if not agent:
         raise HTTPException(404, "Agent personnel introuvable")
     return _agent_dict(agent)
@@ -84,14 +83,15 @@ class UpdateJardinAgent(BaseModel):
 
 
 @router.patch("/agent")
-def update_agent(body: UpdateJardinAgent, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = _get_personal_agent(db, user["id"])
+def update_agent(
+    body: UpdateJardinAgent,
+    svc: JardinService = Depends(get_jardin_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.get_personal_agent(user["id"])
     if not agent:
         raise HTTPException(404)
-    for k, v in body.model_dump(exclude_none=True).items():
-        setattr(agent, k, v)
-    db.commit()
-    db.refresh(agent)
+    agent = svc.update_personal_agent(agent, body.model_dump(exclude_none=True))
     return _agent_dict(agent)
 
 
@@ -107,10 +107,10 @@ class JardinChatBody(BaseModel):
 async def jardin_chat(
     body: JardinChatBody,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    svc: JardinService = Depends(get_jardin_service),
     user=Depends(get_current_user),
 ):
-    agent = _get_personal_agent(db, user["id"])
+    agent = svc.get_personal_agent(user["id"])
     if not agent or not agent.is_active:
         raise HTTPException(404, "Agent personnel non configuré ou inactif")
 
@@ -185,7 +185,7 @@ async def save_memory(
 async def upload_file(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    db: Session = Depends(get_db),
+    svc: JardinService = Depends(get_jardin_service),
     user=Depends(get_current_user),
 ):
     user_dir = os.path.join(UPLOAD_BASE, user["id"])
@@ -212,8 +212,7 @@ async def upload_file(
         content_md=content_md,
         indexe_memory=False,
     )
-    db.add(doc)
-    db.commit()
+    svc.add_document(doc)
 
     if content_md.strip():
         background_tasks.add_task(
@@ -238,13 +237,11 @@ async def upload_file(
 # ── Liste des fichiers ────────────────────────────────────────────────────────
 
 @router.get("/files")
-def list_files(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    docs = (
-        db.query(Document)
-        .filter_by(owner_id=user["id"])
-        .order_by(Document.created_at.desc())
-        .all()
-    )
+def list_files(
+    svc: JardinService = Depends(get_jardin_service),
+    user=Depends(get_current_user),
+):
+    docs = svc.list_user_documents(user["id"])
     return [
         {
             "id":         d.id,
@@ -260,16 +257,24 @@ def list_files(db: Session = Depends(get_db), user=Depends(get_current_user)):
 
 
 @router.get("/files/{doc_id}/markdown")
-def get_file_markdown(doc_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    doc = db.query(Document).filter_by(id=doc_id, owner_id=user["id"]).first()
+def get_file_markdown(
+    doc_id: str,
+    svc: JardinService = Depends(get_jardin_service),
+    user=Depends(get_current_user),
+):
+    doc = svc.get_user_document(doc_id, user["id"])
     if not doc:
         raise HTTPException(404)
     return {"id": doc.id, "nom": doc.nom, "content_md": doc.content_md}
 
 
 @router.delete("/files/{doc_id}", status_code=204)
-def delete_file(doc_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    doc = db.query(Document).filter_by(id=doc_id, owner_id=user["id"]).first()
+def delete_file(
+    doc_id: str,
+    svc: JardinService = Depends(get_jardin_service),
+    user=Depends(get_current_user),
+):
+    doc = svc.get_user_document(doc_id, user["id"])
     if not doc:
         raise HTTPException(404)
     try:
@@ -277,8 +282,7 @@ def delete_file(doc_id: str, db: Session = Depends(get_db), user=Depends(get_cur
             os.remove(doc.file_path)
     except Exception:
         pass
-    db.delete(doc)
-    db.commit()
+    svc.delete_document(doc)
 
 
 # ── Recherche sémantique ──────────────────────────────────────────────────────
