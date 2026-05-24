@@ -79,8 +79,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (health_router, connections_router, vault_router, gateway_router,
-          mempalace_router, conversations_router, swarm_router, voice_router,
-          uploads_router, proactive_router, push_router, summarizer_router,
-          admin_router, chat_router, persona_router, scheduled_router):
+
+# ── S99 — Versioning d'API + alias retro-compat ───────────────────────────
+# Tous les routers sont montes sur /v1/ ET sans prefixe (alias legacy). Le
+# middleware ci-dessous tagge les requetes qui passent par l'alias avec les
+# headers HTTP standard RFC 8594 `Deprecation` + `Sunset` pour que les clients
+# soient avertis. Date de sunset : ~6 mois (S99 livre 2026-05-24).
+DEPRECATION_SUNSET = "Mon, 23 Nov 2026 00:00:00 GMT"
+_DEPRECATION_EXEMPT = {
+    "/health",
+    "/metrics",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/auth/config",
+    "/",
+}
+
+
+@app.middleware("http")
+async def add_deprecation_headers(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if not path.startswith("/v1/") and path not in _DEPRECATION_EXEMPT:
+        # Le client a appele l'alias legacy → on l'avertit.
+        response.headers["Deprecation"] = "true"
+        response.headers["Sunset"] = DEPRECATION_SUNSET
+        response.headers.setdefault("Link", '</v1' + path + '>; rel="successor-version"')
+    return response
+
+
+_ROUTERS = (
+    health_router, connections_router, vault_router, gateway_router,
+    mempalace_router, conversations_router, swarm_router, voice_router,
+    uploads_router, proactive_router, push_router, summarizer_router,
+    admin_router, chat_router, persona_router, scheduled_router,
+)
+for r in _ROUTERS:
+    # Nouveau : /v1/<path>
+    app.include_router(r, prefix="/v1")
+    # Alias legacy : <path> — sera supprime apres la date de sunset.
     app.include_router(r)
