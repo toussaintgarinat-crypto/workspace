@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from openai import AsyncOpenAI
+
+from agent_personnel_shared.http_client import S2SClient, S2SError
 
 from config import settings
 
@@ -47,28 +48,26 @@ async def store_summary_in_mempalace(summary: str, connections: list, date_str: 
     if not mp:
         return False
 
-    url = (mp.get("url") or "http://localhost:8100").rstrip("/")
+    url = mp.get("url") or "http://localhost:8100"
     token = mp.get("token", "")
     room = date_str
+    client = S2SClient(base_url=url, token=token, service_name="mempalace", timeout=10.0)
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{url}/api/drawers",
-                json={
-                    "content": summary,
-                    "wing": "conversations",
-                    "room": room,
-                    "metadata": {
-                        "source": "assistant-summarizer",
-                        "date": date_str,
-                        "added_at": datetime.now(timezone.utc).isoformat(),
-                    },
+        await client.post(
+            "/v1/api/drawers",
+            json={
+                "content": summary,
+                "wing": "conversations",
+                "room": room,
+                "metadata": {
+                    "source": "assistant-summarizer",
+                    "date": date_str,
+                    "added_at": datetime.now(timezone.utc).isoformat(),
                 },
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            resp.raise_for_status()
+            },
+        )
         return True
-    except Exception as e:
+    except S2SError as e:
         logger.warning("Failed to store summary in MemPalace: %s", e)
         return False

@@ -91,7 +91,8 @@ async def sync_to_mempalace(persona: dict, active_connections: list):
     )
     if not mp_conn:
         return
-    import httpx
+    # S99 : S2SClient pour MemPalace (retry + circuit breaker).
+    from agent_personnel_shared.http_client import S2SClient, S2SError
     content = (
         "# Persona utilisateur\n"
         f"**Nom :** {persona.get('display_name', '')}\n"
@@ -101,19 +102,24 @@ async def sync_to_mempalace(persona: dict, active_connections: list):
         f"**Langue :** {persona.get('language', '')}\n"
         f"**Instructions :** {persona.get('custom_instructions', '')}\n"
     )
+    client = S2SClient(
+        base_url=mp_conn["url"],
+        token=mp_conn.get("token"),
+        service_name="mempalace",
+        timeout=10.0,
+    )
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(
-                f"{mp_conn['url'].rstrip('/')}/api/drawers",
-                json={
-                    "content": content,
-                    "wing": "ressource",
-                    "room": "persona",
-                    "metadata": {"type": "persona"},
-                },
-                headers={"Authorization": f"Bearer {mp_conn['token']}"},
-            )
-    except Exception as e:
+        await client.post(
+            "/v1/api/drawers",
+            json={
+                "content": content,
+                "wing": "ressource",
+                "room": "persona",
+                "metadata": {"type": "persona"},
+            },
+        )
+    except S2SError as e:
+        # Fire-and-forget : on log mais on continue (la persona reste en DB locale).
         logger.warning("Persona sync to MemPalace failed: %s", e)
 
 
