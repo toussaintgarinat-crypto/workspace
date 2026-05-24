@@ -19,10 +19,12 @@ async function _refreshToken() {
   try { await keycloak.updateToken(30) } catch { keycloak.logout?.() }
 }
 
+// S99 — Versioning API. On prefixe /v1/api/* (canonique). Si on retire /v1/,
+// l'alias legacy renvoie des headers Deprecation/Sunset (date sunset 2026-11-23).
 async function request(path, options = {}) {
   await _refreshToken()
   try {
-    const r = await fetch(`${BASE}/api${path}`, {
+    const r = await fetch(`${BASE}/v1/api${path}`, {
       credentials: 'include',
       ...options,
       headers: _authHeaders(options.headers),
@@ -53,7 +55,7 @@ export const api = {
   upload: async (path, formData) => {
     await _refreshToken()
     const headers = keycloak.token ? { Authorization: `Bearer ${keycloak.token}` } : {}
-    return fetch(`${BASE}/api${path}`, {
+    return fetch(`${BASE}/v1/api${path}`, {
       method: 'POST',
       credentials: 'include',
       headers,

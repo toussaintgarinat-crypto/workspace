@@ -1,6 +1,10 @@
 import { getToken, refreshIfNeeded } from './keycloak.js';
 
-const BASE_URL = '/api';
+// S99 — API versioning. Le proxy nginx/vite reecrit /api/* → backend, donc on
+// passe par /api/v1/* qui devient /v1/* cote backend (route canonique). Si on
+// retire le prefix /v1/ par erreur, l'alias legacy continue de marcher mais
+// renvoie des headers Deprecation/Sunset.
+const BASE_URL = '/api/v1';
 
 export async function apiFetch(url, options = {}) {
   await refreshIfNeeded();

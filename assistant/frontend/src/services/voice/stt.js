@@ -80,7 +80,7 @@ export class WhisperSTT {
         formData.append('language', this._language);
 
         try {
-          const res = await apiFetch('/api/voice/transcribe', { method: 'POST', body: formData });
+          const res = await apiFetch('/api/v1/voice/transcribe', { method: 'POST', body: formData });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           resolve(data.text || '');

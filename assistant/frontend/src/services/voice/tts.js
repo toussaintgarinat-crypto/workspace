@@ -48,7 +48,7 @@ export class OpenAITTS {
   async speak(text, onEnd) {
     this.stop();
     try {
-      const res = await apiFetch('/api/voice/synthesize', {
+      const res = await apiFetch('/api/v1/voice/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: this._voice }),

@@ -17,6 +17,15 @@ export const token = {
   clear: () => {},   // no-op — utiliser keycloak.logout()
 }
 
+// S99 — API versioning. Tous les endpoints sont disponibles sous /v1/api/* ;
+// le legacy /api/* fonctionne encore mais renvoie Deprecation/Sunset. On
+// reecrit ici les paths /api/* → /v1/api/* pour profiter du canonique sans
+// devoir toucher les ~150 endpoints definis plus bas.
+function _versionPath(path) {
+  if (path.startsWith('/api/')) return `/v1${path}`
+  return path
+}
+
 async function request(path, options = {}) {
   // Rafraîchit le token si expiré dans moins de 30s
   await keycloak.updateToken(30).catch(() => {})
@@ -24,7 +33,7 @@ async function request(path, options = {}) {
   const t = keycloak.token
   if (!t) throw new Error('Not authenticated')
   const orgId = activeOrg.get()
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${BASE}${_versionPath(path)}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -132,7 +141,7 @@ export const ollamaModelsApi = {
     await keycloak.updateToken(30).catch(() => {})
     const t = keycloak.token
     const orgId = activeOrg.get()
-    const res = await fetch(`${BASE}/api/llm-config/ollama/pull`, {
+    const res = await fetch(`${BASE}/v1/api/llm-config/ollama/pull`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
