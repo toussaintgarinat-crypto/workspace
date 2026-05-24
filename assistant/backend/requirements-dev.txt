@@ -1,6 +1,7 @@
 # Test dependencies (S102 — coverage min 30% sur services/)
-pytest>=8.0,<10
-pytest-asyncio>=0.24
-pytest-cov>=5.0
-respx>=0.21          # mock httpx without monkey-patching
-aiosqlite>=0.20      # in-memory DB pour tests connections_service
+# Versions pinées pour reproductibilité CI (cf. /review-infra 2026-05-24).
+pytest==8.4.2
+pytest-asyncio==0.25.3   # asyncio_mode=auto supporté (cf. pytest.ini)
+pytest-cov==6.3.0
+respx==0.22.0            # mock httpx without monkey-patching
+aiosqlite==0.22.1        # aligné runtime requirements.txt — in-memory DB tests connections_service
