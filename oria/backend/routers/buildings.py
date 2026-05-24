@@ -1,28 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
-import os
+
+from config import config as oria_config
+from models.building import Room
+from routers.auth import get_current_user
+from services.buildings_service import BuildingsService, get_buildings_service
+import services.matrix_service as matrix
 
 STRIPE_ENABLED = False
 stripe = None
 try:
     import stripe as _stripe
-    _key = os.getenv("STRIPE_SECRET_KEY")
-    if _key:
-        _stripe.api_key = _key
+    if oria_config.STRIPE_SECRET_KEY:
+        _stripe.api_key = oria_config.STRIPE_SECRET_KEY
         STRIPE_ENABLED = True
         stripe = _stripe
 except ImportError:
     pass
-from database import get_db
-from models.building import Building, Room
-from models.world import Member
-from models.user import User
-from models.abonnement import RoomAbonnement
-from routers.auth import get_current_user
-import uuid
-import services.matrix_service as matrix
 
 router = APIRouter()
 
@@ -104,39 +99,28 @@ def _serialise_room(r: Room) -> dict:
 
 # ── Rooms (avant /{building_id} pour éviter conflits) ────────────────────────
 
-def _mxids_membres_world(world_id: str, db: Session) -> list[str]:
-    """Retourne les MXID Matrix de tous les membres d'un world."""
-    membres = db.query(Member).filter(Member.world_id == world_id).all()
-    user_ids = [m.user_id for m in membres]
-    users = db.query(User).filter(User.id.in_(user_ids)).all()
-    return [u.matrix_user_id for u in users if u.matrix_user_id]
-
-
 @router.post("/rooms")
-def creer_room(data: CreerRoom, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    room = Room(
-        id=str(uuid.uuid4()),
+def creer_room(
+    data: CreerRoom,
+    svc: BuildingsService = Depends(get_buildings_service),
+    user=Depends(get_current_user),
+):
+    room = svc.add_room(
         building_id=data.building_id,
-        nom=data.nom,
-        type=data.type,
-        etage=data.etage,
-        emoji=data.emoji,
-        acces_restreint=data.acces_restreint,
+        nom=data.nom, type=data.type, etage=data.etage,
+        emoji=data.emoji, acces_restreint=data.acces_restreint,
     )
-    db.add(room)
-    db.flush()
 
     # Lier les abonnements requis
-    for abonnement_id in (data.abonnements_requis_ids or []):
-        db.add(RoomAbonnement(room_id=room.id, abonnement_id=abonnement_id))
+    svc.add_room_abonnements(room.id, data.abonnements_requis_ids or [])
 
     # Créer la Matrix Room correspondante
-    building = db.query(Building).filter(Building.id == data.building_id).first()
+    building = svc.get_building(data.building_id)
     if building:
-        creator = db.query(User).filter(User.id == user["id"]).first()
+        creator = svc.get_user(user["id"])
         creator_mxid = creator.matrix_user_id if creator else None
         if creator_mxid:
-            mxids = _mxids_membres_world(building.world_id, db)
+            mxids = svc.list_membre_mxids(building.world_id)
             matrix_room_id = matrix.create_room(
                 room_id=room.id,
                 room_name=f"{data.emoji} {data.nom}",
@@ -147,13 +131,18 @@ def creer_room(data: CreerRoom, db: Session = Depends(get_db), user=Depends(get_
             if matrix_room_id:
                 room.matrix_room_id = matrix_room_id
 
-    db.commit()
-    db.refresh(room)
+    svc.commit()
+    svc.refresh(room)
     return _serialise_room(room)
 
 @router.patch("/rooms/{room_id}")
-def modifier_room(room_id: str, data: UpdateRoom, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    r = db.query(Room).filter(Room.id == room_id).first()
+def modifier_room(
+    room_id: str,
+    data: UpdateRoom,
+    svc: BuildingsService = Depends(get_buildings_service),
+    user=Depends(get_current_user),
+):
+    r = svc.get_room(room_id)
     if not r:
         raise HTTPException(status_code=404, detail="Pièce introuvable")
     if data.nom:             r.nom             = data.nom
@@ -161,9 +150,7 @@ def modifier_room(room_id: str, data: UpdateRoom, db: Session = Depends(get_db),
     if data.emoji:           r.emoji           = data.emoji
     if data.acces_restreint: r.acces_restreint = data.acces_restreint
     if data.abonnements_requis_ids is not None:
-        db.query(RoomAbonnement).filter(RoomAbonnement.room_id == r.id).delete()
-        for abonnement_id in data.abonnements_requis_ids:
-            db.add(RoomAbonnement(room_id=r.id, abonnement_id=abonnement_id))
+        svc.replace_room_abonnements(r.id, data.abonnements_requis_ids)
 
     # Champs room payante
     if data.est_payante is not None: r.est_payante  = data.est_payante
@@ -190,25 +177,31 @@ def modifier_room(room_id: str, data: UpdateRoom, db: Session = Depends(get_db),
         except Exception:
             pass
 
-    db.commit()
-    db.refresh(r)
+    svc.commit()
+    svc.refresh(r)
     return _serialise_room(r)
 
 @router.delete("/rooms/{room_id}")
-def supprimer_room(room_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    r = db.query(Room).filter(Room.id == room_id).first()
+def supprimer_room(
+    room_id: str,
+    svc: BuildingsService = Depends(get_buildings_service),
+    user=Depends(get_current_user),
+):
+    r = svc.get_room(room_id)
     if r:
-        db.delete(r)
-        db.commit()
+        svc.delete_room(r)
     return {"status": "ok"}
 
 # ── Buildings ────────────────────────────────────────────────────────────────
 
 @router.post("/")
-def creer_building(data: CreerBuilding, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def creer_building(
+    data: CreerBuilding,
+    svc: BuildingsService = Depends(get_buildings_service),
+    user=Depends(get_current_user),
+):
     config = CONFIGS_PAR_TYPE.get(data.type, CONFIGS_PAR_TYPE["maison"])
-    building = Building(
-        id=str(uuid.uuid4()),
+    building = svc.create_building(
         world_id=data.world_id,
         quartier_id=data.quartier_id or None,
         nom=data.nom,
@@ -217,23 +210,18 @@ def creer_building(data: CreerBuilding, db: Session = Depends(get_db), user=Depe
         emoji=data.emoji or config["emoji"],
         couleur=data.couleur or config["couleur"],
     )
-    db.add(building)
-    db.flush()
 
     # Récupérer le créateur et les membres du world pour les invitations Matrix
-    creator = db.query(User).filter(User.id == user["id"]).first()
+    creator = svc.get_user(user["id"])
     creator_mxid = creator.matrix_user_id if creator else None
-    mxids = _mxids_membres_world(data.world_id, db) if creator_mxid else []
+    mxids = svc.list_membre_mxids(data.world_id) if creator_mxid else []
 
     for i, r in enumerate(config["rooms_defaut"]):
-        room = Room(
-            id=str(uuid.uuid4()),
+        room = svc.add_room(
             building_id=building.id,
             nom=r["nom"], type=r["type"],
             emoji=r["emoji"], etage=r["etage"], position=i,
         )
-        db.add(room)
-        db.flush()
 
         # Créer la Matrix Room pour chaque room par défaut
         if creator_mxid:
@@ -247,30 +235,34 @@ def creer_building(data: CreerBuilding, db: Session = Depends(get_db), user=Depe
             if matrix_room_id:
                 room.matrix_room_id = matrix_room_id
 
-    db.commit()
-    db.refresh(building)
+    svc.commit()
+    svc.refresh(building)
     rooms = [{"id": r.id, "nom": r.nom, "type": r.type, "etage": r.etage,
               "emoji": r.emoji, "matrix_room_id": r.matrix_room_id} for r in building.rooms]
     return {"id": building.id, "nom": building.nom, "type": building.type,
             "emoji": building.emoji, "couleur": building.couleur, "rooms": rooms}
 
 @router.patch("/{building_id}")
-def modifier_building(building_id: str, data: UpdateBuilding, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    b = db.query(Building).filter(Building.id == building_id).first()
+def modifier_building(
+    building_id: str,
+    data: UpdateBuilding,
+    svc: BuildingsService = Depends(get_buildings_service),
+    user=Depends(get_current_user),
+):
+    b = svc.get_building(building_id)
     if not b:
         raise HTTPException(status_code=404, detail="Bâtiment introuvable")
-    if data.nom:                     b.nom         = data.nom
-    if data.description is not None: b.description = data.description
-    if data.emoji:                   b.emoji       = data.emoji
-    if data.couleur:                 b.couleur     = data.couleur
-    db.commit()
-    db.refresh(b)
+    desc = data.description if data.description is not None else None
+    b = svc.update_building(b, nom=data.nom, description=desc, emoji=data.emoji, couleur=data.couleur)
     return {"id": b.id, "nom": b.nom, "description": b.description, "emoji": b.emoji, "couleur": b.couleur}
 
 @router.delete("/{building_id}")
-def supprimer_building(building_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    b = db.query(Building).filter(Building.id == building_id).first()
+def supprimer_building(
+    building_id: str,
+    svc: BuildingsService = Depends(get_buildings_service),
+    user=Depends(get_current_user),
+):
+    b = svc.get_building(building_id)
     if b:
-        db.delete(b)
-        db.commit()
+        svc.delete_building(b)
     return {"status": "ok"}
