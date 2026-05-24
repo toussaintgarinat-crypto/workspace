@@ -345,6 +345,38 @@ setup_cors(
     default=["http://localhost:3000", "http://localhost:8080"],
 )
 
+# ── S99 — Versioning d'API + alias retro-compat ───────────────────────────
+# MemPalace definit toutes ses routes via @app.get/post directs (pas d'APIRouter).
+# Pour ne pas dupliquer 30 decorateurs, on utilise 2 middlewares :
+# 1. Un middleware qui re-ecrit /v1/<path> → <path> AVANT le routing FastAPI
+#    (le client peut donc appeler les deux formes, sans rien casser).
+# 2. Un middleware qui ajoute Deprecation/Sunset sur les chemins non-/v1.
+# Sunset : ~6 mois apres livraison S99.
+_DEPRECATION_SUNSET_MP = "Mon, 23 Nov 2026 00:00:00 GMT"
+_DEPRECATION_EXEMPT_MP = {"/health", "/docs", "/redoc", "/openapi.json", "/"}
+
+
+@app.middleware("http")
+async def _v1_alias_and_deprecation(request: Request, call_next):
+    """Rewrite /v1/<x> → <x> et ajoute headers Deprecation sur l'alias legacy."""
+    path = request.url.path
+    via_v1 = path.startswith("/v1/")
+    if via_v1:
+        # On modifie le scope pour rediriger en interne (pas de 307).
+        new_path = path[3:] or "/"
+        request.scope["path"] = new_path
+        request.scope["raw_path"] = new_path.encode("ascii")
+
+    response = await call_next(request)
+    if via_v1:
+        return response  # nouveau client → pas de deprecation
+    if path in _DEPRECATION_EXEMPT_MP:
+        return response
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = _DEPRECATION_SUNSET_MP
+    response.headers.setdefault("Link", f'</v1{path}>; rel="successor-version"')
+    return response
+
 
 @app.on_event("startup")
 def startup() -> None:
