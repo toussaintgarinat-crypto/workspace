@@ -69,41 +69,76 @@ try:
 except Exception:
     pass
 
-app.include_router(auth.router,            prefix="/api/auth",        tags=["Auth"])
-app.include_router(worlds.router,          prefix="/api/worlds",      tags=["Worlds"])
-app.include_router(buildings.router,       prefix="/api/buildings",   tags=["Buildings"])
-app.include_router(rooms.router,           prefix="/api/rooms",       tags=["Rooms"])
-app.include_router(tokens.router,          prefix="/api/tokens",      tags=["Tokens"])
-app.include_router(quartiers.router,       prefix="/api/quartiers",   tags=["Quartiers"])
-app.include_router(invitations.router,     prefix="/api/invitations", tags=["Invitations"])
-app.include_router(files_router.router,    prefix="/api/files",       tags=["Files"])
-app.include_router(network_router.router,      prefix="/api/network",     tags=["Network"])
-app.include_router(abonnements_router.router,  prefix="/api",             tags=["Abonnements"])
 from routers.vote_router import router as vote_router
 from routers.search_router import router as search_router
 from routers.reseau_router import router as reseau_router
 from routers.llm_config_router import router as llm_config_router
-app.include_router(vote_router,       prefix="/api/votes",      tags=["Votes"])
-app.include_router(search_router,     prefix="/api/search",     tags=["Recherche"])
-app.include_router(reseau_router,     prefix="/api/reseau",     tags=["Intercommunalité"])
-app.include_router(llm_config_router, prefix="/api/llm-config", tags=["Config LLM"])
-# ── Nouvelles fonctionnalités ──────────────────────────────────
-app.include_router(agents_router,    prefix="/api/agents",    tags=["Agents IA"])
-app.include_router(documents_router, prefix="/api/documents", tags=["Documents"])
-app.include_router(discovery_router, prefix="/api/discover",  tags=["Découverte"])
-app.include_router(ipcra_router,     prefix="/api/ipcra",     tags=["IPCRA"])
 from routers.social_router import router as social_router
 from routers.jardin_router import router as jardin_router
 from routers.shared_zones_router import router as shared_zones_router
 from routers.admin import router as admin_router
-app.include_router(social_router,      prefix="/api/social",        tags=["Social"])
-app.include_router(jardin_router,      prefix="/api/jardin",        tags=["Jardin Secret"])
-app.include_router(shared_zones_router, prefix="/api/shared-zones", tags=["Zones partagées"])
-app.include_router(admin_router,       prefix="/api",               tags=["Admin"])
 from routers.coins_router import router as coins_router
-app.include_router(coins_router, prefix="/api", tags=["Coins & Rooms payantes"])
-app.include_router(conductor_router, prefix="/api/conductor", tags=["Conductor"])
-# Application Service Matrix — montée sans préfixe /api (protocole Matrix)
+
+# ── S99 — Versioning d'API + alias retro-compat ───────────────────────────
+# Chaque router est monte deux fois : sous /api/... (legacy, avec headers
+# Deprecation/Sunset) et sous /v1/api/... (canonique). Le middleware ajoute
+# les headers RFC 8594. Date de sunset ~6 mois apres livraison S99.
+DEPRECATION_SUNSET = "Mon, 23 Nov 2026 00:00:00 GMT"
+_DEPRECATION_EXEMPT_PREFIXES = ("/v1/", "/uploads/", "/ws/")
+_DEPRECATION_EXEMPT_PATHS = {"/health", "/docs", "/redoc", "/openapi.json", "/"}
+
+
+@app.middleware("http")
+async def add_deprecation_headers(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path in _DEPRECATION_EXEMPT_PATHS:
+        return response
+    if any(path.startswith(p) for p in _DEPRECATION_EXEMPT_PREFIXES):
+        return response
+    # Tout le reste — typiquement /api/... — est l'alias legacy.
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = DEPRECATION_SUNSET
+    if path.startswith("/api/"):
+        response.headers.setdefault("Link", f'</v1{path}>; rel="successor-version"')
+    return response
+
+
+# (router, prefix_suffix) — prefix_suffix s'ajoute apres /api ou /v1/api.
+_API_ROUTERS = [
+    (auth.router,                   "/auth",         ["Auth"]),
+    (worlds.router,                 "/worlds",       ["Worlds"]),
+    (buildings.router,              "/buildings",    ["Buildings"]),
+    (rooms.router,                  "/rooms",        ["Rooms"]),
+    (tokens.router,                 "/tokens",       ["Tokens"]),
+    (quartiers.router,              "/quartiers",    ["Quartiers"]),
+    (invitations.router,            "/invitations",  ["Invitations"]),
+    (files_router.router,           "/files",        ["Files"]),
+    (network_router.router,         "/network",      ["Network"]),
+    (abonnements_router.router,     "",              ["Abonnements"]),
+    (vote_router,                   "/votes",        ["Votes"]),
+    (search_router,                 "/search",       ["Recherche"]),
+    (reseau_router,                 "/reseau",       ["Intercommunalité"]),
+    (llm_config_router,             "/llm-config",   ["Config LLM"]),
+    (agents_router,                 "/agents",       ["Agents IA"]),
+    (documents_router,              "/documents",    ["Documents"]),
+    (discovery_router,              "/discover",     ["Découverte"]),
+    (ipcra_router,                  "/ipcra",        ["IPCRA"]),
+    (social_router,                 "/social",       ["Social"]),
+    (jardin_router,                 "/jardin",       ["Jardin Secret"]),
+    (shared_zones_router,           "/shared-zones", ["Zones partagées"]),
+    (admin_router,                  "",              ["Admin"]),
+    (coins_router,                  "",              ["Coins & Rooms payantes"]),
+    (conductor_router,              "/conductor",    ["Conductor"]),
+]
+for r, suffix, tags in _API_ROUTERS:
+    # Canonique
+    app.include_router(r, prefix=f"/v1/api{suffix}", tags=tags)
+    # Legacy
+    app.include_router(r, prefix=f"/api{suffix}",    tags=tags)
+
+# Application Service Matrix — montée sans préfixe (protocole Matrix). On NE
+# duplique PAS sous /v1 car ce sont les endpoints Matrix natifs imposes.
 app.include_router(matrix_as.router, tags=["Matrix AS"])
 
 # ── Yjs CRDT WebSocket ─────────────────────────────────────────
