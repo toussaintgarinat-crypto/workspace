@@ -1,0 +1,10 @@
+# Bun test config — sprint 102
+#
+# `bun test` 1.3 affiche le rapport coverage mais ne supporte PAS encore
+# `--cov-fail-under`. Le seuil 30% est enforcé via scripts/coverage-gate.ts
+# (lancé par CI et par le script npm `test:coverage`).
+
+[test]
+coverage = true
+coverageSkipTestFiles = true
+coverageReporter = ["text"]

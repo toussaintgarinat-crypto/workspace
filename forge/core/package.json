@@ -9,7 +9,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "test": "bun test"
+    "test": "bun test",
+    "test:coverage": "bun run scripts/coverage-gate.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",
