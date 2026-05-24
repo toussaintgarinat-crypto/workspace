@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, authHeaders } from '../services/api.js'
+import { formatBytes } from '@workspace/shared-ui/utils'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const ACCEPT = '.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.ppt,.pptx,.png,.jpg,.mp3,.mp4'
@@ -97,12 +98,8 @@ export default function DocumentsManager({ moi, worldId }) {
     return '📎'
   }
 
-  function formatSize(b) {
-    if (!b) return '—'
-    if (b < 1024) return `${b} o`
-    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} Ko`
-    return `${(b / 1024 / 1024).toFixed(1)} Mo`
-  }
+  // formatSize remplacé par formatBytes (@workspace/shared-ui/utils) — sprint S98
+  const formatSize = (b) => formatBytes(b, { placeholder: '—' })
 
   return (
     <div className="documents-manager">

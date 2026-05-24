@@ -522,23 +522,10 @@ export const SLASH_COMMANDS = [
   { cmd: '/summarize', label: '/summarize', desc: 'Résumer la conversation' },
 ];
 
-export function relativeDate(iso) {
-  const d = new Date(iso);
-  const now = new Date();
-  const diff = now - d;
-  if (diff < 60000) return 'À l\'instant';
-  if (diff < 3600000) return `Il y a ${Math.floor(diff / 60000)} min`;
-  if (diff < 86400000) return 'Aujourd\'hui';
-  if (diff < 172800000) return 'Hier';
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-}
+import { relativeDate as sharedRelativeDate, formatBytes } from '@workspace/shared-ui/utils';
 
-export function formatSize(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
-}
+export const relativeDate = sharedRelativeDate;
+export const formatSize = (bytes) => formatBytes(bytes, { placeholder: '' });
 
 export function stripMarkdownForTTS(text) {
   return text

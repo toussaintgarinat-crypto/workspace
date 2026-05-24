@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@workspace/shared-ui": "file:../../shared-ui",
     "keycloak-js": "^26.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

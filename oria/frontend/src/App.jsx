@@ -2,7 +2,8 @@ import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import MainLayout from './components/MainLayout.jsx'
 import EasySetupWizard from './components/EasySetupWizard.jsx'
-import DegradedBanner from './components/DegradedBanner.jsx'
+import { DegradedBanner } from '@workspace/shared-ui/components'
+import { api } from './services/api.js'
 import { initMatrixClient, startMatrixClient, stopMatrixClient } from './services/matrixClient.js'
 
 function AppInner() {
@@ -31,7 +32,7 @@ function AppInner() {
 
   return (
     <>
-      <DegradedBanner />
+      <DegradedBanner fetcher={() => api.get('/admin/degraded')} />
       <MainLayout moi={user} onMoiUpdate={refreshUser} onDeconnexion={logout} />
     </>
   )

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { isEnabled, getUser, logout } from './services/keycloak.js';
 import { registerServiceWorker, isPushSupported, requestPushPermission } from './services/push.js';
 import InstallBanner from './components/InstallBanner.jsx';
-import DegradedBanner from './components/DegradedBanner.jsx';
+import { DegradedBanner } from '@workspace/shared-ui/components';
 import ChatView from './views/ChatView.jsx';
 import ConnectView from './views/ConnectView.jsx';
 import GatewayView from './views/GatewayView.jsx';
@@ -207,7 +207,12 @@ export default function App() {
         )}
       </nav>
       <main style={s.main}>
-        <DegradedBanner />
+        <DegradedBanner
+          fetcher={async () => {
+            const r = await fetch(`${API}/admin/degraded`);
+            return r.ok ? r.json() : null;
+          }}
+        />
         {view === 'chat' && <ChatView />}
         {view === 'connections' && <ConnectView />}
         {view === 'gateway' && <GatewayView />}

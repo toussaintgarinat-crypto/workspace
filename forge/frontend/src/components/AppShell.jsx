@@ -5,7 +5,11 @@ import { sessions as sessionsApi } from '../services/api'
 import Sidebar from '../views/WorkspaceView/Sidebar'
 import SettingsPanel from '../views/WorkspaceView/SettingsPanel'
 import styles from './AppShell.module.css'
-import DegradedBanner from './DegradedBanner'
+import { DegradedBanner } from '@workspace/shared-ui/components'
+
+const fetchDegraded = (apiUrl) => fetch(`${apiUrl}/admin/degraded`, {
+  headers: { Authorization: `Bearer ${localStorage.getItem('forge_token') || ''}` },
+}).then(r => (r.ok ? r.json() : null)).catch(() => null)
 
 /**
  * Shell global — Sidebar persistante sur toutes les vues authentifiées.
@@ -68,7 +72,7 @@ export default function AppShell({ children }) {
       />
 
       <main className={styles.main}>
-        <DegradedBanner apiUrl={import.meta.env.VITE_API_URL || ''} />
+        <DegradedBanner fetcher={() => fetchDegraded(import.meta.env.VITE_API_URL || '')} />
         {children}
       </main>
 

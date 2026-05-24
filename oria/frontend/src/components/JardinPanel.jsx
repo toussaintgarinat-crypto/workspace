@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { api, authHeaders } from '../services/api.js'
+import { formatBytes } from '@workspace/shared-ui/utils'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -474,12 +475,8 @@ function docIcon(mime = '') {
   return '📎'
 }
 
-function formatSize(bytes) {
-  if (!bytes) return '0 o'
-  if (bytes < 1024) return `${bytes} o`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
-}
+// formatSize remplacé par formatBytes (@workspace/shared-ui/utils) — sprint S98
+const formatSize = (b) => formatBytes(b)
 
 function formatDate(iso) {
   if (!iso) return ''

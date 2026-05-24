@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@workspace/shared-ui": "file:../../shared-ui",
     "@xyflow/react": "^12.10.2",
     "ai": "^4.0.0",
     "i18next": "^26.0.5",
