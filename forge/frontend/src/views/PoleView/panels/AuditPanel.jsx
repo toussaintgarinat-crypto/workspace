@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { token } from '../../../services/api'
 import styles from './Panel.module.css'
 
@@ -29,6 +29,9 @@ function canReadAsText(filename) {
   return TEXT_EXTS.has(ext)
 }
 
+const DEPLOY_STEPS = ['Génération fichiers', 'Connexion SSH', 'Upload', 'Docker compose', 'Seed DB', 'Terminé']
+const STATUS_COLORS = { deploying: '#f59e0b', ready: '#10b981', error: '#ef4444' }
+
 export default function AuditPanel({ poleId }) {
   const [missions, setMissions]     = useState([])
   const [selected, setSelected]     = useState(null)
@@ -44,6 +47,21 @@ export default function AuditPanel({ poleId }) {
   const [tab, setTab]               = useState('docs') // 'docs' | 'rapport'
   const fileRef = useRef(null)
 
+  // ── Deploy state ──────────────────────────────────────────
+  const [showDeploy, setShowDeploy]       = useState(false)
+  const [deployForm, setDeployForm]       = useState({
+    serverMode: 'custom', serverId: '', serverIp: '', sshKey: '', sshUser: 'root',
+    domainMode: 'manual', domain: '',
+    adminEmail: '', adminPassword: '',
+  })
+  const [servers, setServers]             = useState([])
+  const [deploying, setDeploying]         = useState(false)
+  const [deployStep, setDeployStep]       = useState(0)
+  const [deployLog, setDeployLog]         = useState([])
+  const [deployErr, setDeployErr]         = useState('')
+  const [deployDone, setDeployDone]       = useState(null) // { instanceId, domain }
+  const [deployments, setDeployments]     = useState([])
+
   useEffect(() => {
     req(`/api/poles/${poleId}/audit`).then(data => {
       setMissions(data)
@@ -52,10 +70,15 @@ export default function AuditPanel({ poleId }) {
   }, [poleId])
 
   useEffect(() => {
-    if (!selected) { setDocs([]); setRapport(null); return }
+    if (!selected) { setDocs([]); setRapport(null); setDeployments([]); return }
     req(`/api/audit/${selected}/documents`).then(setDocs).catch(() => {})
     req(`/api/audit/${selected}/rapport`).then(setRapport).catch(() => {})
+    req(`/api/audit/${selected}/deployments`).then(setDeployments).catch(() => {})
   }, [selected])
+
+  useEffect(() => {
+    req('/api/servers').then(setServers).catch(() => {})
+  }, [])
 
   async function createMission(e) {
     e.preventDefault()
@@ -138,6 +161,80 @@ export default function AuditPanel({ poleId }) {
 
   function copyMarkdown() {
     if (rapport?.rapport?.contenu) navigator.clipboard.writeText(rapport.rapport.contenu)
+  }
+
+  function openDeploy() {
+    setDeployErr('')
+    setDeployLog([])
+    setDeployStep(0)
+    setDeployDone(null)
+    setDeploying(false)
+    setShowDeploy(true)
+  }
+
+  async function startDeploy(e) {
+    e.preventDefault()
+    setDeploying(true)
+    setDeployErr('')
+    setDeployLog([])
+    setDeployStep(0)
+    setDeployDone(null)
+
+    const t = token.get()
+    const body = {
+      serverMode:   deployForm.serverMode,
+      serverId:     deployForm.serverMode === 'parc' ? deployForm.serverId : undefined,
+      serverIp:     deployForm.serverMode === 'custom' ? deployForm.serverIp : undefined,
+      sshKey:       deployForm.serverMode === 'custom' ? deployForm.sshKey : undefined,
+      sshUser:      deployForm.sshUser,
+      domainMode:   deployForm.domainMode,
+      domain:       deployForm.domain,
+      adminEmail:   deployForm.adminEmail,
+      adminPassword: deployForm.adminPassword,
+    }
+
+    try {
+      const res = await fetch(`/api/audit/${selected}/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Erreur serveur')
+      }
+
+      const reader = res.body.getReader()
+      const dec    = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = JSON.parse(line.slice(6))
+          if (data.error) throw new Error(data.error)
+          if (data.done) {
+            setDeployDone({ instanceId: data.instanceId, domain: data.domain })
+            setDeployments(prev => [...prev, {
+              id: data.instanceId, domain: data.domain, serverIp: body.serverIp || '',
+              domainMode: deployForm.domainMode, status: 'ready',
+              adminEmail: deployForm.adminEmail, createdAt: new Date().toISOString(),
+            }])
+          } else if (data.msg) {
+            setDeployStep(data.step)
+            setDeployLog(prev => [...prev, data.msg])
+          }
+        }
+      }
+    } catch (err) {
+      setDeployErr(err.message)
+    } finally {
+      setDeploying(false)
+    }
   }
 
   const currentMission = missions.find(m => m.id === selected)
@@ -309,6 +406,13 @@ export default function AuditPanel({ poleId }) {
                       >
                         {generating ? '⏳…' : '↺ Regénérer'}
                       </button>
+                      <button
+                        className={styles.btnPrimary}
+                        style={{ fontSize: 11 }}
+                        onClick={openDeploy}
+                      >
+                        🚀 Déployer chez le client
+                      </button>
                     </div>
                   </div>
 
@@ -393,6 +497,189 @@ export default function AuditPanel({ poleId }) {
 
       {missions.length === 0 && !showForm && (
         <p className={styles.empty}>Crée une mission d'audit pour commencer.</p>
+      )}
+
+      {/* ── Instances déployées ──────────────────────────────── */}
+      {deployments.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Instances déployées ({deployments.length})
+          </h4>
+          {deployments.map(d => (
+            <div key={d.id} style={{
+              background: '#1f2937', borderRadius: 6, padding: '8px 12px', marginBottom: 6,
+              borderLeft: `3px solid ${STATUS_COLORS[d.status] || '#6b7280'}`,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#e5e7eb', fontWeight: 500 }}>
+                  {d.domain || d.serverIp}
+                </div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                  {d.adminEmail} · {new Date(d.createdAt).toLocaleDateString('fr-FR')}
+                </div>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                background: (STATUS_COLORS[d.status] || '#6b7280') + '22',
+                color: STATUS_COLORS[d.status] || '#6b7280',
+              }}>
+                {d.status === 'deploying' ? 'en cours' : d.status === 'ready' ? 'actif' : 'erreur'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Modal déploiement ────────────────────────────────── */}
+      {showDeploy && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+        }}>
+          <div style={{
+            background: '#111827', borderRadius: 10, padding: 24, width: '100%', maxWidth: 520,
+            border: '1px solid #374151', maxHeight: '90vh', overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e5e7eb', margin: 0 }}>🚀 Déployer chez le client</h3>
+              <button className={styles.micro} onClick={() => !deploying && setShowDeploy(false)} style={{ color: '#9ca3af' }}>✕</button>
+            </div>
+
+            {/* Progression */}
+            {deploying && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+                  {DEPLOY_STEPS.map((s, i) => (
+                    <div key={s} style={{
+                      flex: 1, height: 4, borderRadius: 2,
+                      background: i < deployStep ? '#6366f1' : i === deployStep - 1 ? '#818cf8' : '#374151',
+                      transition: 'background 0.3s',
+                    }} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, color: '#a5b4fc', marginBottom: 8 }}>
+                  {DEPLOY_STEPS[deployStep - 1] || 'Préparation…'}
+                </div>
+                <div style={{
+                  background: '#0f172a', borderRadius: 6, padding: '8px 10px',
+                  fontFamily: 'monospace', fontSize: 11, color: '#6b7280',
+                  maxHeight: 120, overflowY: 'auto',
+                }}>
+                  {deployLog.map((l, i) => <div key={i}>{l}</div>)}
+                </div>
+              </div>
+            )}
+
+            {/* Succès */}
+            {deployDone && (
+              <div style={{ background: '#064e3b', borderRadius: 6, padding: '10px 14px', marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#10b981', marginBottom: 4 }}>✅ Déploiement réussi !</div>
+                {deployDone.domain && (
+                  <div style={{ fontSize: 12, color: '#6ee7b7' }}>
+                    Accès : <strong>https://{deployDone.domain}</strong>
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                  Le client peut se connecter avec les identifiants fournis.
+                </div>
+              </div>
+            )}
+
+            {deployErr && <p style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>{deployErr}</p>}
+
+            {!deploying && !deployDone && (
+              <form onSubmit={startDeploy}>
+                {/* Mode serveur */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>Serveur cible</div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    {['parc', 'custom'].map(m => (
+                      <button key={m} type="button"
+                        className={deployForm.serverMode === m ? styles.btnPrimary : styles.btnGhost}
+                        style={{ fontSize: 11, flex: 1 }}
+                        onClick={() => setDeployForm(f => ({ ...f, serverMode: m }))}
+                      >
+                        {m === 'parc' ? '🖥️ Mon parc' : '🔌 Serveur client'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {deployForm.serverMode === 'parc' ? (
+                    <select className={styles.select} value={deployForm.serverId}
+                      onChange={e => setDeployForm(f => ({ ...f, serverId: e.target.value }))} required>
+                      <option value="">-- Choisir un serveur --</option>
+                      {servers.filter(s => s.status === 'libre').map(s => (
+                        <option key={s.id} value={s.id}>{s.label} — {s.ip} {s.region ? `(${s.region})` : ''}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <input className={styles.input} placeholder="IP du serveur (ex: 1.2.3.4)" required
+                        value={deployForm.serverIp} onChange={e => setDeployForm(f => ({ ...f, serverIp: e.target.value }))} />
+                      <input className={styles.input} placeholder="Utilisateur SSH (défaut: root)"
+                        value={deployForm.sshUser} onChange={e => setDeployForm(f => ({ ...f, sshUser: e.target.value }))}
+                        style={{ marginTop: 6 }} />
+                      <textarea className={styles.textarea} placeholder="Clé SSH privée (-----BEGIN...)" required
+                        value={deployForm.sshKey} onChange={e => setDeployForm(f => ({ ...f, sshKey: e.target.value }))}
+                        style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 11, minHeight: 80 }} />
+                    </>
+                  )}
+                </div>
+
+                {/* Mode domaine */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>Domaine</div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    {['manual', 'cloudflare'].map(m => (
+                      <button key={m} type="button"
+                        className={deployForm.domainMode === m ? styles.btnPrimary : styles.btnGhost}
+                        style={{ fontSize: 11, flex: 1 }}
+                        onClick={() => setDeployForm(f => ({ ...f, domainMode: m }))}
+                      >
+                        {m === 'manual' ? '✋ Manuel' : '☁️ Cloudflare auto'}
+                      </button>
+                    ))}
+                  </div>
+                  <input className={styles.input}
+                    placeholder={deployForm.domainMode === 'cloudflare' ? 'Sous-domaine (ex: client-xyz)' : 'Domaine (optionnel, ex: client.mondomaine.com)'}
+                    value={deployForm.domain}
+                    onChange={e => setDeployForm(f => ({ ...f, domain: e.target.value }))}
+                    required={deployForm.domainMode === 'cloudflare'}
+                  />
+                  {deployForm.domainMode === 'manual' && (
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>
+                      Après déploiement, pointez votre DNS vers l'IP du serveur.
+                    </p>
+                  )}
+                </div>
+
+                {/* Compte admin client */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>Compte admin client</div>
+                  <input className={styles.input} type="email" placeholder="Email admin client *" required
+                    value={deployForm.adminEmail} onChange={e => setDeployForm(f => ({ ...f, adminEmail: e.target.value }))} />
+                  <input className={styles.input} type="password" placeholder="Mot de passe initial (min. 8 car.) *" required minLength={8}
+                    value={deployForm.adminPassword} onChange={e => setDeployForm(f => ({ ...f, adminPassword: e.target.value }))}
+                    style={{ marginTop: 6 }} />
+                </div>
+
+                <div className={styles.formActions}>
+                  <button type="submit" className={styles.btnPrimary}>🚀 Lancer le déploiement</button>
+                  <button type="button" className={styles.btnGhost} onClick={() => setShowDeploy(false)}>Annuler</button>
+                </div>
+              </form>
+            )}
+
+            {(deploying || deployDone) && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                <button className={styles.btnGhost} disabled={deploying} onClick={() => setShowDeploy(false)}>
+                  {deploying ? 'Déploiement en cours…' : 'Fermer'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -24,6 +24,7 @@ import GovernancePanel from './panels/GovernancePanel'
 import DevPoleView from '../DevPoleView'
 import DevTeamPanel from './panels/DevTeamPanel'
 import DAGPanel from './panels/DAGPanel'
+import ServersPanel from './panels/ServersPanel'
 import styles from './PoleView.module.css'
 
 const DOZZLE_URL = import.meta.env.VITE_DOZZLE_URL || 'http://localhost:9998'
@@ -48,6 +49,7 @@ const DEDICATED_BY_TYPE = {
     facturation: { label: 'Facturation', icon: '🧾', component: null },
     contrats:    { label: 'Contrats',    icon: '📋', component: ContratsPanel },
     audit:       { label: 'Audit',       icon: '🔍', component: AuditPanel },
+    servers:     { label: 'Serveurs',    icon: '🖥️', component: ServersPanel },
     sentinel:    { label: 'RGPD',        icon: '🛡️', component: SentinelPanel },
   },
   sales: {
@@ -60,6 +62,7 @@ const DEDICATED_BY_TYPE = {
     contrats:    { label: 'Contrats',    icon: '📋', component: ContratsPanel },
     legal:       { label: 'Juridique IA',icon: '⚖️', component: LegalAgentPanel },
     audit:       { label: 'Audit',       icon: '🔍', component: AuditPanel },
+    servers:     { label: 'Serveurs',    icon: '🖥️', component: ServersPanel },
     sentinel:    { label: 'RGPD',        icon: '🛡️', component: SentinelPanel },
   },
   marketing: {

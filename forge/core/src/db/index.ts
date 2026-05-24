@@ -66,6 +66,37 @@ async function runMigrations() {
       statut     text      DEFAULT 'ouvert',
       created_at timestamp DEFAULT now() NOT NULL
     );
+
+    -- S104: parc serveurs auditeur + instances déployées client
+    CREATE TABLE IF NOT EXISTS managed_servers (
+      id          uuid      PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     text      NOT NULL,
+      label       text      NOT NULL,
+      ip          text      NOT NULL,
+      ssh_key     text      NOT NULL,
+      ssh_user    text      DEFAULT 'root',
+      region      text      DEFAULT '',
+      status      text      DEFAULT 'libre',
+      instance_id uuid,
+      created_at  timestamp DEFAULT now() NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS deployed_instances (
+      id                   uuid      PRIMARY KEY DEFAULT gen_random_uuid(),
+      mission_id           uuid      NOT NULL REFERENCES audit_missions(id) ON DELETE CASCADE,
+      user_id              text      NOT NULL,
+      server_ip            text      NOT NULL,
+      ssh_key              text      NOT NULL,
+      ssh_user             text      DEFAULT 'root',
+      domain               text      DEFAULT '',
+      domain_mode          text      DEFAULT 'manual',
+      status               text      DEFAULT 'deploying',
+      admin_email          text      NOT NULL,
+      admin_password_hash  text      NOT NULL,
+      notes                text      DEFAULT '',
+      deployed_at          timestamp,
+      created_at           timestamp DEFAULT now() NOT NULL
+    );
   `)
   console.log('[forge:db] migrations OK')
 }

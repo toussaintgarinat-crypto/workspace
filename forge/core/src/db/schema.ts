@@ -1062,6 +1062,38 @@ export const repetitionSilences = pgTable('repetition_silences', {
   createdAt:    timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({ uniq: unique().on(t.poleId, t.actionKey) }))
 
+// ── Serveurs managés (parc auditeur) ─────────────────────────
+export const managedServers = pgTable('managed_servers', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  userId:     text('user_id').notNull(),
+  label:      text('label').notNull(),
+  ip:         text('ip').notNull(),
+  sshKey:     text('ssh_key').notNull(),
+  sshUser:    text('ssh_user').default('root'),
+  region:     text('region').default(''),
+  status:     text('status', { enum: ['libre', 'occupe'] }).default('libre'),
+  instanceId: uuid('instance_id'),
+  createdAt:  timestamp('created_at').defaultNow().notNull(),
+})
+
+// ── Instances déployées chez le client ────────────────────────
+export const deployedInstances = pgTable('deployed_instances', {
+  id:                uuid('id').primaryKey().defaultRandom(),
+  missionId:         uuid('mission_id').notNull().references(() => auditMissions.id, { onDelete: 'cascade' }),
+  userId:            text('user_id').notNull(),
+  serverIp:          text('server_ip').notNull(),
+  sshKey:            text('ssh_key').notNull(),
+  sshUser:           text('ssh_user').default('root'),
+  domain:            text('domain').default(''),
+  domainMode:        text('domain_mode', { enum: ['cloudflare', 'manual'] }).default('manual'),
+  status:            text('status', { enum: ['deploying', 'ready', 'error'] }).default('deploying'),
+  adminEmail:        text('admin_email').notNull(),
+  adminPasswordHash: text('admin_password_hash').notNull(),
+  notes:             text('notes').default(''),
+  deployedAt:        timestamp('deployed_at'),
+  createdAt:         timestamp('created_at').defaultNow().notNull(),
+})
+
 // ── Prometheus Metrics Snapshots ──────────────────────────────
 export const metricsSnapshots = pgTable('metrics_snapshots', {
   id:        uuid('id').primaryKey().defaultRandom(),

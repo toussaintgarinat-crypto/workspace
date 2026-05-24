@@ -72,6 +72,8 @@ import repetitionRouter from '@/api/routes/repetition'
 import metricsRouter from '@/api/routes/metrics'
 import { conseilRouter } from '@/api/routes/conseil'
 import pipelineTemplatesRouter from '@/api/routes/pipeline-templates'
+import deployRouter from '@/api/routes/deploy'
+import serversRouter from '@/api/routes/servers'
 
 export const app = new Hono()
 
@@ -127,6 +129,8 @@ mountBoth('/api',                 sprintsRouter)
 mountBoth('/api',                 budgetRouter)
 mountBoth('/api',                 crmRouter)
 mountBoth('/api',                 auditRouter)
+mountBoth('/api',                 deployRouter)
+mountBoth('/api',                 serversRouter)
 mountBoth('/api',                 documentsRouter)
 mountBoth('/api',                 contratsRouter)
 mountBoth('/api',                 incidentsRouter)
