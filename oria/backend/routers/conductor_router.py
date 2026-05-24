@@ -4,18 +4,16 @@ connectés à Forge via API REST.
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from database import get_db
 from models.resident_agent import ResidentAgent
 from routers.auth import get_current_user
+from services.conductor_service import ConductorService, get_conductor_service
 from services.conductor_ws import conductor_manager
 
 router = APIRouter()
@@ -50,34 +48,38 @@ async def _call_forge_background(
 
     db = SessionLocal()
     try:
-        headers = {"Authorization": f"Bearer {forge_token}"} if forge_token else {}
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(
-                f"{forge_url.rstrip('/')}/api/agents/react",
-                json={
-                    "message": message,
-                    "sessionId": f"conductor-{agent_id}",
-                    "systemOverride": system_override,
-                },
-                headers=headers,
-            )
-            answer = ""
-            if r.status_code == 200:
-                data = r.json()
-                answer = data.get("answer", "")
-            new_status = "idle"
-    except Exception as e:
-        answer = str(e)[:200]
-        new_status = "error"
+        try:
+            headers = {"Authorization": f"Bearer {forge_token}"} if forge_token else {}
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(
+                    f"{forge_url.rstrip('/')}/api/agents/react",
+                    json={
+                        "message": message,
+                        "sessionId": f"conductor-{agent_id}",
+                        "systemOverride": system_override,
+                    },
+                    headers=headers,
+                )
+                answer = ""
+                if r.status_code == 200:
+                    data = r.json()
+                    answer = data.get("answer", "")
+                new_status = "idle"
+        except Exception as e:
+            answer = str(e)[:200]
+            new_status = "error"
 
-    agent = db.query(ResidentAgent).filter_by(id=agent_id).first()
-    if agent:
-        agent.status = new_status
-        agent.current_task = answer[:300] if new_status == "error" else ""
-        agent.last_activity = datetime.now(timezone.utc)
-        db.commit()
-        await conductor_manager.broadcast({"type": "status", "agent": _agent_dict(agent)})
-    db.close()
+        svc = ConductorService(db)
+        agent = svc.get_agent(agent_id)
+        if agent:
+            svc.update_status(
+                agent,
+                status=new_status,
+                task_description=answer if new_status == "error" else "",
+            )
+            await conductor_manager.broadcast({"type": "status", "agent": _agent_dict(agent)})
+    finally:
+        db.close()
 
 
 # ── CRUD ─────────────────────────────────────────────────────────
@@ -103,40 +105,47 @@ class UpdateResident(BaseModel):
 
 
 @router.get("/agents")
-def list_residents(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agents = db.query(ResidentAgent).order_by(ResidentAgent.pole_type).all()
-    return [_agent_dict(a) for a in agents]
+def list_residents(
+    svc: ConductorService = Depends(get_conductor_service),
+    user=Depends(get_current_user),
+):
+    return [_agent_dict(a) for a in svc.list_agents()]
 
 
 @router.post("/agents")
-def create_resident(body: CreateResident, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = ResidentAgent(**body.model_dump())
-    db.add(agent)
-    db.commit()
-    db.refresh(agent)
+def create_resident(
+    body: CreateResident,
+    svc: ConductorService = Depends(get_conductor_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.create_agent(**body.model_dump())
     return _agent_dict(agent)
 
 
 @router.patch("/agents/{agent_id}")
-def update_resident(agent_id: str, body: UpdateResident, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = db.query(ResidentAgent).filter_by(id=agent_id).first()
+def update_resident(
+    agent_id: str,
+    body: UpdateResident,
+    svc: ConductorService = Depends(get_conductor_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.get_agent(agent_id)
     if not agent:
         raise HTTPException(404, "Agent introuvable")
-    for k, v in body.model_dump(exclude_none=True).items():
-        setattr(agent, k, v)
-    agent.last_activity = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(agent)
+    agent = svc.update_agent_fields(agent, body.model_dump(exclude_none=True))
     return _agent_dict(agent)
 
 
 @router.delete("/agents/{agent_id}", status_code=204)
-def delete_resident(agent_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = db.query(ResidentAgent).filter_by(id=agent_id).first()
+def delete_resident(
+    agent_id: str,
+    svc: ConductorService = Depends(get_conductor_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.get_agent(agent_id)
     if not agent:
         raise HTTPException(404)
-    db.delete(agent)
-    db.commit()
+    svc.delete_agent(agent)
 
 
 # ── Appel d'un agent ─────────────────────────────────────────────
@@ -151,18 +160,14 @@ async def call_agent(
     agent_id: str,
     body: CallBody,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    svc: ConductorService = Depends(get_conductor_service),
     user=Depends(get_current_user),
 ):
-    agent = db.query(ResidentAgent).filter_by(id=agent_id).first()
+    agent = svc.get_agent(agent_id)
     if not agent:
         raise HTTPException(404, "Agent introuvable")
 
-    agent.status = "working"
-    agent.current_task = body.message[:200]
-    agent.last_activity = datetime.now(timezone.utc)
-    db.commit()
-
+    svc.mark_working(agent, body.message)
     await conductor_manager.broadcast({"type": "status", "agent": _agent_dict(agent)})
 
     system_override = (
@@ -179,8 +184,12 @@ async def call_agent(
 
 
 @router.get("/agents/{agent_id}/status")
-def agent_status(agent_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    agent = db.query(ResidentAgent).filter_by(id=agent_id).first()
+def agent_status(
+    agent_id: str,
+    svc: ConductorService = Depends(get_conductor_service),
+    user=Depends(get_current_user),
+):
+    agent = svc.get_agent(agent_id)
     if not agent:
         raise HTTPException(404)
     return _agent_dict(agent)
@@ -195,14 +204,14 @@ class ForgeWebhook(BaseModel):
 
 
 @router.post("/webhooks/forge")
-async def forge_webhook(body: ForgeWebhook, db: Session = Depends(get_db)):
+async def forge_webhook(
+    body: ForgeWebhook,
+    svc: ConductorService = Depends(get_conductor_service),
+):
     """Forge notifie Oria d'un changement de statut d'un agent pôle."""
-    agent = db.query(ResidentAgent).filter_by(pole_type=body.pole_type).first()
+    agent = svc.get_agent_by_pole(body.pole_type)
     if not agent:
         raise HTTPException(404, f"Agent pôle '{body.pole_type}' introuvable")
-    agent.status = body.status
-    agent.current_task = body.task_description[:300]
-    agent.last_activity = datetime.now(timezone.utc)
-    db.commit()
+    svc.update_status(agent, status=body.status, task_description=body.task_description)
     await conductor_manager.broadcast({"type": "status", "agent": _agent_dict(agent)})
     return {"ok": True}
