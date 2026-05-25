@@ -121,6 +121,36 @@ export async function runReact(
         }
       },
     }),
+    calendar_get_planning: tool({
+      description: 'Get calendar events for a date range. Use to check schedule, upcoming appointments, or plan around existing events.',
+      parameters: z.object({
+        calendar_id: z.string().describe('Calendar ID to query'),
+        start_date: z.string().describe('ISO 8601 start date, e.g. 2026-05-25'),
+        end_date: z.string().describe('ISO 8601 end date, e.g. 2026-05-31'),
+      }),
+      execute: async ({ calendar_id, start_date, end_date }) => {
+        metrics.react_tool_calls++
+        const calendarUrl = process.env.CALENDAR_URL
+        const calendarToken = process.env.CALENDAR_SERVICE_TOKEN
+        if (!calendarUrl) return 'Calendar service unavailable (CALENDAR_URL not set).'
+        try {
+          const params = new URLSearchParams({ start: start_date, end: end_date })
+          const headers: Record<string, string> = {}
+          if (calendarToken) headers['Authorization'] = `Bearer ${calendarToken}`
+          if (userId) headers['X-User-Id'] = userId
+          const res = await fetch(
+            `${calendarUrl.replace(/\/$/, '')}/calendars/${calendar_id}/events?${params}`,
+            { headers },
+          )
+          if (!res.ok) return `Calendar error ${res.status}.`
+          const events = await res.json() as Array<{ title: string; start_at: string; end_at: string; description?: string }>
+          if (!events.length) return 'No events in this period.'
+          return events.map(e => `• ${e.title} (${e.start_at} → ${e.end_at})`).join('\n')
+        } catch (err) {
+          return `Calendar fetch failed: ${String(err).slice(0, 100)}`
+        }
+      },
+    }),
     ...mcpTools,
     ...(extraTools || {}),
   }

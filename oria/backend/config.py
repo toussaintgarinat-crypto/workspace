@@ -108,6 +108,15 @@ class OriaConfig:
     def LLM_MODEL(self) -> str:
         return os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
 
+    # ─── Calendar service ────────────────────────────────────────────────────
+    @property
+    def CALENDAR_URL(self) -> str:
+        return os.getenv("CALENDAR_URL", "http://calendar:8400")
+
+    @property
+    def CALENDAR_SERVICE_TOKEN(self) -> str:
+        return os.getenv("CALENDAR_SERVICE_TOKEN", "")
+
     # ─── Stockage ─────────────────────────────────────────────────────────────
     @property
     def DOCUMENTS_DIR(self) -> str:

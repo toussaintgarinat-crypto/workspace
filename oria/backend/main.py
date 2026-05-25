@@ -78,6 +78,7 @@ from routers.jardin_router import router as jardin_router
 from routers.shared_zones_router import router as shared_zones_router
 from routers.admin import router as admin_router
 from routers.coins_router import router as coins_router
+from routers.calendar_router import router as calendar_router
 
 # ── S99 — Versioning d'API + alias retro-compat ───────────────────────────
 # Chaque router est monte deux fois : sous /api/... (legacy, avec headers
@@ -130,6 +131,7 @@ _API_ROUTERS = [
     (admin_router,                  "",              ["Admin"]),
     (coins_router,                  "",              ["Coins & Rooms payantes"]),
     (conductor_router,              "/conductor",    ["Conductor"]),
+    (calendar_router,               "/calendar",     ["Calendar"]),
 ]
 for r, suffix, tags in _API_ROUTERS:
     # Canonique
