@@ -50,7 +50,7 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
     personality = await persona_mod.get_personality(persona.get("assistant_personality", "default"))
     persona_context = persona_mod.build_persona_context(persona, personality)
 
-    agent = ReActAgent(active)
+    agent = ReActAgent(active, user_id=user.get("sub", ""))
 
     async def event_generator():
         queue: asyncio.Queue = asyncio.Queue()

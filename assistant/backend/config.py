@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # Kiwix offline knowledge base (Wikipedia LAN)
     KIWIX_URL: str = ""  # http://kiwix:8080 — vide = désactivé
 
+    # Calendar service (S106e)
+    CALENDAR_URL: str = ""  # http://calendar:8400 — vide = désactivé
+    CALENDAR_SERVICE_TOKEN: str = ""
+
     # Daily chat quota per user (0 = unlimited)
     QUOTA_FREE_DAILY: int = 50
     QUOTA_PREMIUM_DAILY: int = 500

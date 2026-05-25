@@ -11,6 +11,7 @@ from tools.mempalace import MemPalaceTools
 from tools.forge import ForgeTools
 from tools.oria import OriaTools
 from tools.kiwix import KiwixTools
+from tools.calendar import CalendarTools
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,9 @@ async def init_kiwix() -> None:
 
 
 class ReActAgent:
-    def __init__(self, connections: list[dict]):
+    def __init__(self, connections: list[dict], user_id: str = ""):
         self.connections = connections
+        self.user_id = user_id
         self._tool_handlers: dict = {}
         self._tools: list[dict] = []
         self._build_tools()
@@ -66,6 +68,14 @@ class ReActAgent:
             for tool in _kiwix_handler.get_tools():
                 self._tools.append(tool)
                 self._tool_handlers[tool["function"]["name"]] = _kiwix_handler
+
+        if settings.CALENDAR_URL and self.user_id:
+            cal_handler = CalendarTools(
+                settings.CALENDAR_URL, settings.CALENDAR_SERVICE_TOKEN, self.user_id
+            )
+            for tool in cal_handler.get_tools():
+                self._tools.append(tool)
+                self._tool_handlers[tool["function"]["name"]] = cal_handler
 
     def build_tools(self) -> list[dict]:
         return self._tools
