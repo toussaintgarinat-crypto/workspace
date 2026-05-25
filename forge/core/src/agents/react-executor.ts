@@ -62,6 +62,7 @@ export async function runReact(
   extraTools?: Record<string, ReturnType<typeof tool>>,
   skillsContext?: string,
   onStep?: (step: ReactStep) => void,
+  personalityPrompt?: string,
 ): Promise<ReactResult> {
   const steps: ReactStep[] = []
   const [ragContext, mcpTools] = await Promise.all([
@@ -124,7 +125,10 @@ export async function runReact(
     ...(extraTools || {}),
   }
 
-  const systemPrompt = `You are Forge, an expert AI assistant operating in ReAct mode (Reason + Act).
+  const baseIdentity = personalityPrompt
+    ? personalityPrompt
+    : 'You are Forge, an expert AI assistant operating in ReAct mode (Reason + Act).'
+  const systemPrompt = `${baseIdentity}
 Think carefully, use tools when you need external information, then give a final answer.
 ${skillsContext ? `\n## Active Skills\n${skillsContext}\n` : ''}
 ${ragContext ? `\n## Project Context\n${ragContext}\n` : ''}

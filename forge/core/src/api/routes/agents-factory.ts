@@ -128,24 +128,26 @@ app.get('/agent-factory/:id', async (c) => {
 })
 
 app.post('/agent-factory', zValidator('json', z.object({
-  nom:          z.string().min(1),
-  description:  z.string().optional(),
-  instructions: z.string().optional(),
-  niveau:       z.enum(['local', 'medium', 'api']).default('medium'),
-  llmPreset:    z.string().optional(),
-  poleId:       z.string().uuid().optional(),
+  nom:           z.string().min(1),
+  description:   z.string().optional(),
+  instructions:  z.string().optional(),
+  niveau:        z.enum(['local', 'medium', 'api']).default('medium'),
+  llmPreset:     z.string().optional(),
+  poleId:        z.string().uuid().optional(),
+  personalityId: z.string().uuid().optional(),
 })), async (c) => {
   const user = c.get('user')
   const body = c.req.valid('json')
   const [a] = await db.insert(agentDefinitions).values({
-    userId:       user.sub,
-    nom:          body.nom,
-    description:  body.description ?? '',
-    instructions: body.instructions ?? '',
-    niveau:       body.niveau,
-    llmPreset:    body.llmPreset ?? '',
-    poleId:       body.poleId ?? null,
-    statut:       'draft',
+    userId:        user.sub,
+    nom:           body.nom,
+    description:   body.description  ?? '',
+    instructions:  body.instructions ?? '',
+    niveau:        body.niveau,
+    llmPreset:     body.llmPreset     ?? '',
+    poleId:        body.poleId        ?? null,
+    personalityId: body.personalityId ?? null,
+    statut:        'draft',
   }).returning()
   return c.json(a, 201)
 })

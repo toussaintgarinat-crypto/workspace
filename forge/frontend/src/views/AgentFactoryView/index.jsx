@@ -25,18 +25,27 @@ const STATUT_META = {
   disabled: { label: 'Désactivé', color: '#6b7280' },
 }
 
-const BLANK_FORM = { nom: '', description: '', instructions: '', niveau: 'medium', llmPreset: '' }
+const BLANK_FORM = { nom: '', description: '', instructions: '', niveau: 'medium', llmPreset: '', personalityId: '' }
+const BLANK_PERSO_FORM = { label: '', emoji: '🤖', description: '', systemPrompt: '' }
 
 export default function AgentFactoryView() {
-  const [tab, setTab]             = useState('agents')
-  const [agents, setAgents]       = useState([])
-  const [templates, setTemplates] = useState([])
-  const [stats, setStats]         = useState({})
-  const [selected, setSelected]   = useState(null)
-  const [showForm, setShowForm]   = useState(false)
-  const [form, setForm]           = useState(BLANK_FORM)
-  const [filterSt, setFilterSt]   = useState('')
-  const [loading, setLoading]     = useState(false)
+  const [tab, setTab]                   = useState('agents')
+  const [agents, setAgents]             = useState([])
+  const [templates, setTemplates]       = useState([])
+  const [stats, setStats]               = useState({})
+  const [personalities, setPersonalities] = useState([])
+  const [selected, setSelected]         = useState(null)
+  const [showForm, setShowForm]         = useState(false)
+  const [form, setForm]                 = useState(BLANK_FORM)
+  const [filterSt, setFilterSt]         = useState('')
+  const [loading, setLoading]           = useState(false)
+
+  // Personnalités state
+  const [selectedPerso, setSelectedPerso] = useState(null)
+  const [showPersoForm, setShowPersoForm] = useState(false)
+  const [persoForm, setPersoForm]         = useState(BLANK_PERSO_FORM)
+  const [editingPersoId, setEditingPersoId] = useState(null)
+  const [persoLoading, setPersoLoading]   = useState(false)
 
   const load = useCallback(async () => {
     const params = new URLSearchParams()
@@ -46,14 +55,19 @@ export default function AgentFactoryView() {
     setStats(s ?? {})
   }, [filterSt])
 
-  useEffect(() => { load() }, [load])
+  const loadPersonalities = useCallback(async () => {
+    const items = await req('/api/personalities').catch(() => [])
+    setPersonalities(items ?? [])
+  }, [])
 
+  useEffect(() => { load() }, [load])
+  useEffect(() => { loadPersonalities() }, [loadPersonalities])
   useEffect(() => {
     req('/api/agent-factory/templates').then(setTemplates).catch(() => {})
   }, [])
 
   function useTemplate(tpl) {
-    setForm({ nom: tpl.nom, description: tpl.description, instructions: tpl.instructions, niveau: tpl.niveau, llmPreset: '' })
+    setForm({ nom: tpl.nom, description: tpl.description, instructions: tpl.instructions, niveau: tpl.niveau, llmPreset: '', personalityId: '' })
     setShowForm(true)
     setTab('agents')
   }
@@ -62,7 +76,8 @@ export default function AgentFactoryView() {
     e.preventDefault()
     setLoading(true)
     try {
-      const a = await req('/api/agent-factory', { method: 'POST', body: JSON.stringify(form) })
+      const payload = { ...form, personalityId: form.personalityId || undefined }
+      const a = await req('/api/agent-factory', { method: 'POST', body: JSON.stringify(payload) })
       setAgents(prev => [a, ...prev])
       setSelected(a)
       setForm(BLANK_FORM)
@@ -83,6 +98,57 @@ export default function AgentFactoryView() {
     if (selected?.id === id) setSelected(null)
   }
 
+  async function assignPersonality(agentId, personalityId) {
+    const a = await req(`/api/agent-factory/${agentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ personalityId: personalityId || null }),
+    })
+    setAgents(prev => prev.map(x => x.id === agentId ? a : x))
+    if (selected?.id === agentId) setSelected(a)
+  }
+
+  // Personnalités CRUD
+  function openCreatePerso() {
+    setEditingPersoId(null)
+    setPersoForm(BLANK_PERSO_FORM)
+    setShowPersoForm(true)
+  }
+
+  function openEditPerso(p) {
+    setEditingPersoId(p.id)
+    setPersoForm({ label: p.label, emoji: p.emoji ?? '🤖', description: p.description ?? '', systemPrompt: p.systemPrompt ?? '' })
+    setShowPersoForm(true)
+  }
+
+  async function savePerso(e) {
+    e.preventDefault()
+    setPersoLoading(true)
+    try {
+      if (editingPersoId) {
+        const p = await req(`/api/personalities/${editingPersoId}`, { method: 'PUT', body: JSON.stringify(persoForm) })
+        setPersonalities(prev => prev.map(x => x.id === editingPersoId ? p : x))
+        if (selectedPerso?.id === editingPersoId) setSelectedPerso(p)
+      } else {
+        const p = await req('/api/personalities', { method: 'POST', body: JSON.stringify(persoForm) })
+        setPersonalities(prev => [...prev, p])
+        setSelectedPerso(p)
+      }
+      setShowPersoForm(false)
+    } finally { setPersoLoading(false) }
+  }
+
+  async function deletePerso(id) {
+    if (!confirm('Supprimer cette personnalité ?')) return
+    await req(`/api/personalities/${id}`, { method: 'DELETE' })
+    setPersonalities(prev => prev.filter(p => p.id !== id))
+    if (selectedPerso?.id === id) setSelectedPerso(null)
+  }
+
+  const getPersonalityLabel = (id) => {
+    const p = personalities.find(p => p.id === id)
+    return p ? `${p.emoji} ${p.label}` : null
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -100,6 +166,9 @@ export default function AgentFactoryView() {
           {tab === 'agents' && (
             <button className={styles.btnPrimary} onClick={() => setShowForm(v => !v)}>+ Agent</button>
           )}
+          {tab === 'personalities' && (
+            <button className={styles.btnPrimary} onClick={openCreatePerso}>+ Personnalité</button>
+          )}
         </div>
       </header>
 
@@ -112,6 +181,10 @@ export default function AgentFactoryView() {
         <button className={`${styles.tabBtn} ${tab === 'templates' ? styles.tabActive : ''}`} onClick={() => setTab('templates')}>
           Templates
           {templates.length > 0 && <span className={styles.tabCount}>{templates.length}</span>}
+        </button>
+        <button className={`${styles.tabBtn} ${tab === 'personalities' ? styles.tabActive : ''}`} onClick={() => setTab('personalities')}>
+          Personnalités
+          {personalities.length > 0 && <span className={styles.tabCount}>{personalities.length}</span>}
         </button>
       </div>
 
@@ -130,10 +203,16 @@ export default function AgentFactoryView() {
             <form className={styles.form} onSubmit={create}>
               <input className={styles.input} placeholder="Nom de l'agent *" required value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} />
               <input className={styles.input} placeholder="Description courte" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-              <textarea className={styles.textarea} placeholder="Instructions système (prompt de base)" value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} />
+              <textarea className={styles.textarea} placeholder="Instructions supplémentaires (optionnel — la personnalité sélectionnée fournit le comportement de base)" value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <select className={styles.select} value={form.niveau} onChange={e => setForm(f => ({ ...f, niveau: e.target.value }))}>
                   {Object.entries(NIVEAU_META).map(([k, v]) => <option key={k} value={k}>{v.label} — {v.desc}</option>)}
+                </select>
+                <select className={styles.select} value={form.personalityId} onChange={e => setForm(f => ({ ...f, personalityId: e.target.value }))}>
+                  <option value="">Aucune personnalité</option>
+                  {personalities.map(p => (
+                    <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
+                  ))}
                 </select>
               </div>
               <div className={styles.formActions}>
@@ -163,6 +242,9 @@ export default function AgentFactoryView() {
                     {a.description && <div className={styles.agentDesc}>{a.description}</div>}
                     <div className={styles.agentMeta}>
                       <span style={{ color: niv.color }}>⚡ {niv.label}</span>
+                      {a.personalityId && (
+                        <span style={{ color: '#818cf8', marginLeft: 8 }}>{getPersonalityLabel(a.personalityId)}</span>
+                      )}
                     </div>
                   </div>
                 )
@@ -198,6 +280,28 @@ export default function AgentFactoryView() {
                     </div>
                   </div>
 
+                  {/* Personnalité picker inline */}
+                  <div className={styles.infoBlock}>
+                    <div className={styles.infoLabel}>Personnalité</div>
+                    <select
+                      className={styles.select}
+                      style={{ marginTop: 6 }}
+                      value={selected.personalityId ?? ''}
+                      onChange={e => assignPersonality(selected.id, e.target.value)}
+                    >
+                      <option value="">Aucune personnalité</option>
+                      {personalities.map(p => (
+                        <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
+                      ))}
+                    </select>
+                    {selected.personalityId && (() => {
+                      const perso = personalities.find(p => p.id === selected.personalityId)
+                      return perso?.description ? (
+                        <div style={{ fontSize: 12, color: '#6b6b80', marginTop: 6 }}>{perso.description}</div>
+                      ) : null
+                    })()}
+                  </div>
+
                   {selected.description && (
                     <div className={styles.infoBlock}>
                       <div className={styles.infoLabel}>Description</div>
@@ -207,7 +311,7 @@ export default function AgentFactoryView() {
 
                   {selected.instructions && (
                     <div className={styles.infoBlock}>
-                      <div className={styles.infoLabel}>Instructions système</div>
+                      <div className={styles.infoLabel}>Instructions supplémentaires</div>
                       <pre className={styles.instructions}>{selected.instructions}</pre>
                     </div>
                   )}
@@ -244,6 +348,116 @@ export default function AgentFactoryView() {
             })}
           </div>
         </div>
+      )}
+
+      {/* ── Onglet Personnalités ── */}
+      {tab === 'personalities' && (
+        <>
+          {showPersoForm && (
+            <form className={styles.form} onSubmit={savePerso}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className={styles.input}
+                  style={{ width: 60, flexShrink: 0 }}
+                  placeholder="🤖"
+                  value={persoForm.emoji}
+                  onChange={e => setPersoForm(f => ({ ...f, emoji: e.target.value }))}
+                />
+                <input
+                  className={styles.input}
+                  placeholder="Nom de la personnalité *"
+                  required
+                  value={persoForm.label}
+                  onChange={e => setPersoForm(f => ({ ...f, label: e.target.value }))}
+                />
+              </div>
+              <input
+                className={styles.input}
+                placeholder="Description courte"
+                value={persoForm.description}
+                onChange={e => setPersoForm(f => ({ ...f, description: e.target.value }))}
+              />
+              <textarea
+                className={styles.textarea}
+                style={{ minHeight: 140 }}
+                placeholder="System prompt — définit le comportement de l'agent (ex: Tu es un expert financier senior…)"
+                value={persoForm.systemPrompt}
+                onChange={e => setPersoForm(f => ({ ...f, systemPrompt: e.target.value }))}
+              />
+              <div className={styles.formActions}>
+                <button type="submit" className={styles.btnPrimary} disabled={persoLoading}>
+                  {editingPersoId ? 'Sauvegarder' : 'Créer'}
+                </button>
+                <button type="button" className={styles.btnGhost} onClick={() => { setShowPersoForm(false); setEditingPersoId(null) }}>Annuler</button>
+              </div>
+            </form>
+          )}
+
+          <div className={styles.layout}>
+            <div className={styles.list}>
+              {personalities.length === 0 && (
+                <div className={styles.empty}>Aucune personnalité.</div>
+              )}
+              {personalities.map(p => (
+                <div
+                  key={p.id}
+                  className={`${styles.agentItem} ${selectedPerso?.id === p.id ? styles.agentActive : ''}`}
+                  onClick={() => setSelectedPerso(p)}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <span className={styles.agentNom}>{p.emoji} {p.label}</span>
+                    {p.isBuiltin ? (
+                      <span className={styles.badge} style={{ background: '#818cf822', color: '#818cf8' }}>Builtin</span>
+                    ) : (
+                      <span className={styles.badge} style={{ background: '#10b98122', color: '#10b981' }}>Custom</span>
+                    )}
+                  </div>
+                  {p.description && <div className={styles.agentDesc}>{p.description}</div>}
+                </div>
+              ))}
+            </div>
+
+            {selectedPerso && (
+              <div className={styles.detail}>
+                <div className={styles.detailHeader}>
+                  <div>
+                    <h2 className={styles.detailNom}>{selectedPerso.emoji} {selectedPerso.label}</h2>
+                    {selectedPerso.description && (
+                      <div style={{ color: '#6b6b80', fontSize: 13, marginTop: 4 }}>{selectedPerso.description}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className={styles.btnSecondary} onClick={() => openEditPerso(selectedPerso)}>✏️ Éditer</button>
+                    {!selectedPerso.isBuiltin && (
+                      <button className={styles.btnDanger} onClick={() => deletePerso(selectedPerso.id)}>✕</button>
+                    )}
+                  </div>
+                </div>
+
+                <div className={styles.infoBlock}>
+                  <div className={styles.infoLabel}>System Prompt</div>
+                  {selectedPerso.systemPrompt ? (
+                    <pre className={styles.instructions}>{selectedPerso.systemPrompt}</pre>
+                  ) : (
+                    <div style={{ color: '#6b6b80', fontSize: 13, marginTop: 6 }}>Aucun prompt défini — comportement par défaut</div>
+                  )}
+                </div>
+
+                <div className={styles.infoBlock}>
+                  <div className={styles.infoLabel}>Agents utilisant cette personnalité</div>
+                  <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {agents.filter(a => a.personalityId === selectedPerso.id).map(a => (
+                      <span key={a.id} className={styles.chip} style={{ color: '#818cf8', borderColor: '#6366f1' }}>{a.nom}</span>
+                    ))}
+                    {agents.filter(a => a.personalityId === selectedPerso.id).length === 0 && (
+                      <span style={{ color: '#6b6b80', fontSize: 13 }}>Aucun agent</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )

@@ -429,19 +429,31 @@ export const veilleArticles = pgTable('veille_articles', {
   createdAt:   timestamp('created_at').defaultNow().notNull(),
 })
 
+// ── Forge Personalities ──────────────────────────────────────
+export const forgePersonalities = pgTable('forge_personalities', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  label:        text('label').notNull(),
+  emoji:        text('emoji').default('🤖'),
+  description:  text('description').default(''),
+  systemPrompt: text('system_prompt').default(''),
+  isBuiltin:    integer('is_builtin').default(0),
+  createdAt:    timestamp('created_at').defaultNow().notNull(),
+})
+
 // ── Agent Factory ────────────────────────────────────────────
 export const agentDefinitions = pgTable('agent_definitions', {
-  id:           uuid('id').primaryKey().defaultRandom(),
-  userId:       text('user_id').notNull(),
-  poleId:       uuid('pole_id').references(() => poles.id, { onDelete: 'set null' }),
-  nom:          text('nom').notNull(),
-  description:  text('description').default(''),
-  instructions: text('instructions').default(''),
-  niveau:       text('niveau', { enum: ['local', 'medium', 'api'] }).default('medium'),
-  statut:       text('statut', { enum: ['active', 'draft', 'disabled', 'error'] }).default('draft'),
-  llmPreset:    text('llm_preset').default(''),
-  createdAt:    timestamp('created_at').defaultNow().notNull(),
-  updatedAt:    timestamp('updated_at').defaultNow().notNull(),
+  id:             uuid('id').primaryKey().defaultRandom(),
+  userId:         text('user_id').notNull(),
+  poleId:         uuid('pole_id').references(() => poles.id, { onDelete: 'set null' }),
+  personalityId:  uuid('personality_id').references(() => forgePersonalities.id, { onDelete: 'set null' }),
+  nom:            text('nom').notNull(),
+  description:    text('description').default(''),
+  instructions:   text('instructions').default(''),
+  niveau:         text('niveau', { enum: ['local', 'medium', 'api'] }).default('medium'),
+  statut:         text('statut', { enum: ['active', 'draft', 'disabled', 'error'] }).default('draft'),
+  llmPreset:      text('llm_preset').default(''),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+  updatedAt:      timestamp('updated_at').defaultNow().notNull(),
 })
 
 // ── Webhooks ─────────────────────────────────────────────────

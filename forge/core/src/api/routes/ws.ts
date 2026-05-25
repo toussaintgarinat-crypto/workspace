@@ -5,7 +5,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { getModel, resolveLlmConfig } from '@/llm'
 import { getContext } from '@/memory/retriever'
 import { db } from '@/db'
-import { messages, sessions, users, organizations, skills as skillsTable, poles, ventures } from '@/db/schema'
+import { messages, sessions, users, organizations, skills as skillsTable, poles, ventures, agentDefinitions, forgePersonalities } from '@/db/schema'
 import { eq, and, or } from 'drizzle-orm'
 import { runReact } from '@/agents/react-executor'
 import { buildSkillsContext, matchesSkillTriggers } from '@/skills/executor'
@@ -80,6 +80,7 @@ wsRouter.get(
           provider?: string
           model?: string
           reactMode?: boolean
+          agentId?: string
         }
         try {
           payload = JSON.parse(event.data.toString())
@@ -88,7 +89,7 @@ wsRouter.get(
           return
         }
 
-        const { content, provider, model, reactMode } = payload
+        const { content, provider, model, reactMode, agentId } = payload
         if (!content?.trim()) return
 
         await db.insert(messages).values({ sessionId, role: 'user', content })
@@ -112,6 +113,23 @@ wsRouter.get(
         let resolvedModel    = model
         let poleContext: { nom: string; type: string } | null = null
         let ventureContext: { nom: string } | null = null
+        let agentPersonality: string | null = null
+
+        if (agentId) {
+          const [agentRow] = await db.select({
+            personalityId: agentDefinitions.personalityId,
+            instructions:  agentDefinitions.instructions,
+          }).from(agentDefinitions).where(eq(agentDefinitions.id, agentId))
+
+          if (agentRow?.personalityId) {
+            const [perso] = await db.select({ systemPrompt: forgePersonalities.systemPrompt })
+              .from(forgePersonalities).where(eq(forgePersonalities.id, agentRow.personalityId))
+            if (perso?.systemPrompt) agentPersonality = perso.systemPrompt
+          }
+          if (!agentPersonality && agentRow?.instructions) {
+            agentPersonality = agentRow.instructions
+          }
+        }
 
         if (session?.poleId) {
           const [poleRow] = await db.select().from(poles).where(eq(poles.id, session.poleId))
@@ -134,6 +152,7 @@ wsRouter.get(
             const result = await runReact(
               content, sessionId, userId!, resolvedProvider, resolvedModel, undefined, skillsContext,
               (step) => ws.send(JSON.stringify({ type: 'react_step', step })),
+              agentPersonality ?? undefined,
             )
             await db.insert(messages).values({ sessionId, role: 'assistant', content: result.answer })
             await db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, sessionId))
@@ -147,7 +166,7 @@ wsRouter.get(
 
         // Standard streaming mode
         const context = await getContext(content, sessionId)
-        const systemPrompt = buildSystemPrompt(context, skillsContext, poleContext, ventureContext)
+        const systemPrompt = buildSystemPrompt(context, skillsContext, poleContext, ventureContext, agentPersonality)
 
         try {
           const llmModel = getModel(resolvedProvider, resolvedModel) as any
@@ -178,27 +197,21 @@ wsRouter.get(
   })
 )
 
-const POLE_PERSONAS: Record<string, string> = {
-  finance:   'You are the Finance AI of Forge. You specialize in budgets, forecasts, invoices, cash flow, OKRs, and financial reporting.',
-  marketing: 'You are the Marketing AI of Forge. You specialize in campaigns, content, growth metrics, SEO, and brand strategy.',
-  sales:     'You are the Sales AI of Forge. You specialize in CRM, lead qualification, pipeline management, and deal closing.',
-  ops:       'You are the Operations AI of Forge. You specialize in project management, sprints, tasks, incidents, and process optimization.',
-  legal:     'You are the Legal AI of Forge. You specialize in contracts, compliance, audit missions, and regulatory matters.',
-  dev:       'You are the Dev AI of Forge. You specialize in code, architecture, CI/CD, and technical implementations.',
-  custom:    'You are a specialized AI of Forge.',
-}
-
 function buildSystemPrompt(
   ragContext: string,
   skillsContext: string,
   poleContext?: { nom: string; type: string } | null,
   ventureContext?: { nom: string } | null,
+  agentPersonality?: string | null,
 ): string {
   const parts: string[] = []
 
-  if (poleContext) {
-    const persona = POLE_PERSONAS[poleContext.type] ?? POLE_PERSONAS.custom
-    parts.push(`${persona}\nYou are operating within the "${poleContext.nom}" pole.`)
+  if (agentPersonality) {
+    parts.push(agentPersonality)
+    if (poleContext)   parts.push(`You are operating within the "${poleContext.nom}" pole.`)
+    if (ventureContext) parts.push(`Context: venture "${ventureContext.nom}".`)
+  } else if (poleContext) {
+    parts.push(`You are Forge, an expert AI assistant operating within the "${poleContext.nom}" pole.`)
   } else if (ventureContext) {
     parts.push(`You are Forge, an expert AI assistant operating within the venture "${ventureContext.nom}".`)
   } else {

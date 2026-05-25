@@ -74,6 +74,7 @@ import { conseilRouter } from '@/api/routes/conseil'
 import pipelineTemplatesRouter from '@/api/routes/pipeline-templates'
 import deployRouter from '@/api/routes/deploy'
 import serversRouter from '@/api/routes/servers'
+import personalitiesRouter from '@/api/routes/personalities'
 
 export const app = new Hono()
 
@@ -186,5 +187,6 @@ mountBoth('/api',                 hitlRouter)
 mountBoth('/api',                 repetitionRouter)
 mountBoth('/api/conseil',         conseilRouter)
 mountBoth('/api',                 pipelineTemplatesRouter)
+mountBoth('/api',                 personalitiesRouter)
 // Metrics monte a la racine (Prometheus) — pas de versioning.
 app.route('/',                    metricsRouter)

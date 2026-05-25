@@ -1,6 +1,6 @@
 import { app } from '@/api'
 import { initDb } from '@/db'
-import { seedToolCatalog } from '@/db/seed'
+import { seedToolCatalog, seedForgePersonalities } from '@/db/seed'
 import { initQdrant } from '@/memory'
 
 const PORT = Number(process.env.CORE_PORT) || 3001
@@ -8,6 +8,7 @@ const PORT = Number(process.env.CORE_PORT) || 3001
 async function bootstrap() {
   await initDb()
   await seedToolCatalog()
+  await seedForgePersonalities()
   await initQdrant()
 
   // Bun serve natif avec support WebSocket

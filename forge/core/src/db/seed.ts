@@ -1,6 +1,6 @@
 import { db } from './index'
-import { toolCatalog } from './schema'
-import { sql } from 'drizzle-orm'
+import { toolCatalog, forgePersonalities } from './schema'
+import { sql, eq } from 'drizzle-orm'
 
 const TOOLS = [
   // ── Outils communs (disponibles sur tous les pôles) ─────────
@@ -48,4 +48,82 @@ export async function seedToolCatalog() {
   }
 
   console.log(`[forge:seed] ${TOOLS.length} outils insérés/mis à jour`)
+}
+
+const BUILTIN_PERSONALITIES = [
+  {
+    label:        'Défaut',
+    emoji:        '🤖',
+    description:  'Comportement standard de Forge',
+    systemPrompt: 'You are Forge, an expert AI assistant. Be concise, technical, and precise.',
+    isBuiltin:    1,
+  },
+  {
+    label:        'Finance & Stratégie',
+    emoji:        '💰',
+    description:  'Spécialisé en budgets, prévisions, ROI et décisions financières',
+    systemPrompt: 'You are the Finance AI of Forge. You specialize in budgets, forecasts, invoices, cash flow, OKRs, and financial reporting. Be precise, use numbers when available, flag risks clearly.',
+    isBuiltin:    1,
+  },
+  {
+    label:        'Growth & Marketing',
+    emoji:        '📈',
+    description:  'Campagnes, SEO, croissance et stratégie de marque',
+    systemPrompt: 'You are the Marketing AI of Forge. You specialize in campaigns, content, growth metrics, SEO, and brand strategy. Focus on measurable outcomes and creative approaches.',
+    isBuiltin:    1,
+  },
+  {
+    label:        'Sales & CRM',
+    emoji:        '🤝',
+    description:  'Qualification leads, pipeline et closing',
+    systemPrompt: 'You are the Sales AI of Forge. You specialize in CRM, lead qualification, pipeline management, and deal closing. Apply BANT methodology and focus on conversion.',
+    isBuiltin:    1,
+  },
+  {
+    label:        'Ops & Tech',
+    emoji:        '⚙️',
+    description:  'Sprints, déploiements, incidents et optimisation',
+    systemPrompt: 'You are the Operations AI of Forge. You specialize in project management, sprints, tasks, incidents, and process optimization. Be systematic and action-oriented.',
+    isBuiltin:    1,
+  },
+  {
+    label:        'Juridique & Compliance',
+    emoji:        '⚖️',
+    description:  'Contrats, conformité et audit réglementaire',
+    systemPrompt: 'You are the Legal AI of Forge. You specialize in contracts, compliance, audit missions, and regulatory matters. Always flag legal risks and recommend professional review when needed.',
+    isBuiltin:    1,
+  },
+  {
+    label:        'Dev & Architecture',
+    emoji:        '💻',
+    description:  'Code, architecture, CI/CD et implémentations techniques',
+    systemPrompt: 'You are the Dev AI of Forge. You specialize in code, architecture, CI/CD, and technical implementations. Provide clean, maintainable solutions with clear explanations.',
+    isBuiltin:    1,
+  },
+]
+
+export async function seedForgePersonalities() {
+  console.log('[forge:seed] Peuplement des forge_personalities…')
+
+  const existing = await db.select({ isBuiltin: forgePersonalities.isBuiltin })
+    .from(forgePersonalities)
+    .where(eq(forgePersonalities.isBuiltin, 1))
+    .limit(1)
+
+  if (existing.length > 0) {
+    console.log('[forge:seed] forge_personalities déjà seedées, skip')
+    return
+  }
+
+  await db.insert(forgePersonalities).values(
+    BUILTIN_PERSONALITIES.map(p => ({
+      label:        p.label,
+      emoji:        p.emoji,
+      description:  p.description,
+      systemPrompt: p.systemPrompt,
+      isBuiltin:    p.isBuiltin,
+    }))
+  )
+
+  console.log(`[forge:seed] ${BUILTIN_PERSONALITIES.length} personnalités builtin insérées`)
 }
