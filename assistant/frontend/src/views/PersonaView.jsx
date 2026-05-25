@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getPersona, savePersona } from '../services/api.js';
+import { getPersona, savePersona, getPersonalities } from '../services/api.js';
 
 const s = {
   root: {
@@ -11,8 +11,10 @@ const s = {
     padding: '32px',
     boxSizing: 'border-box',
   },
-  title: { fontSize: '20px', fontWeight: 700, color: '#e0e0e0', marginBottom: '8px' },
+  title: { fontSize: '20px', fontWeight: 700, color: '#e0e0e0', marginBottom: '4px' },
   subtitle: { fontSize: '13px', color: '#6b6b6b', marginBottom: '32px' },
+  sectionTitle: { fontSize: '14px', fontWeight: 600, color: '#9ca3af', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.06em' },
+  divider: { borderTop: '1px solid #1f1f1f', margin: '28px 0' },
   section: { marginBottom: '28px' },
   label: { fontSize: '12px', color: '#9ca3af', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' },
   input: {
@@ -119,6 +121,35 @@ const s = {
     fontWeight: 500,
     zIndex: 9999,
   },
+  // Personality cards
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+    gap: '10px',
+    marginBottom: '8px',
+  },
+  card: (active) => ({
+    background: active ? '#3b0764' : '#1a1a1a',
+    border: `1px solid ${active ? '#7c3aed' : '#2a2a2a'}`,
+    borderRadius: '10px',
+    padding: '14px 12px',
+    cursor: 'pointer',
+    transition: 'border-color 0.15s, background 0.15s',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  }),
+  cardEmoji: { fontSize: '22px', lineHeight: 1 },
+  cardLabel: (active) => ({
+    fontSize: '13px',
+    fontWeight: 600,
+    color: active ? '#c4b5fd' : '#e0e0e0',
+  }),
+  cardDesc: {
+    fontSize: '11px',
+    color: '#6b6b6b',
+    lineHeight: 1.4,
+  },
 };
 
 const TONES = [
@@ -136,13 +167,16 @@ export default function PersonaView() {
     tone: 'casual',
     language: 'fr-FR',
     custom_instructions: '',
+    assistant_personality: 'default',
   });
+  const [personalities, setPersonalities] = useState([]);
   const [tagInput, setTagInput] = useState('');
   const [inferred, setInferred] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
 
   useEffect(() => {
+    getPersonalities().then(list => setPersonalities(list));
     getPersona().then(p => {
       if (!p || !p.user_sub) return;
       setForm({
@@ -152,6 +186,7 @@ export default function PersonaView() {
         tone: p.tone || 'casual',
         language: p.language || 'fr-FR',
         custom_instructions: p.custom_instructions || '',
+        assistant_personality: p.assistant_personality || 'default',
       });
       if (p.inferred_data && Object.keys(p.inferred_data).length > 0) {
         setInferred(p.inferred_data);
@@ -197,6 +232,29 @@ export default function PersonaView() {
           ✨ Profil enrichi automatiquement par l'IA
         </div>
       )}
+
+      {/* ── Personnalité de l'assistant ── */}
+      <div style={s.section}>
+        <p style={s.sectionTitle}>Personnalité de l'assistant</p>
+        <div style={s.grid}>
+          {personalities.map(p => (
+            <div
+              key={p.key}
+              style={s.card(form.assistant_personality === p.key)}
+              onClick={() => set('assistant_personality', p.key)}
+            >
+              <span style={s.cardEmoji}>{p.emoji}</span>
+              <span style={s.cardLabel(form.assistant_personality === p.key)}>{p.label}</span>
+              <span style={s.cardDesc}>{p.description}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={s.divider} />
+
+      {/* ── Profil utilisateur ── */}
+      <p style={s.sectionTitle}>Profil utilisateur</p>
 
       <div style={s.section}>
         <label style={s.label}>Nom affiché</label>

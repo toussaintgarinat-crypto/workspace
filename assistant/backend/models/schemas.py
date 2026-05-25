@@ -188,6 +188,7 @@ class PersonaBody(BaseModel):
     tone: str | None = None
     language: str | None = None
     custom_instructions: str | None = None
+    assistant_personality: str | None = None
 
 
 # ── Scheduled prompts (S69) ──────────────────────────────────────────────────

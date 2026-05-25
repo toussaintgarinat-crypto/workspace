@@ -165,6 +165,30 @@ export async function mempalaceImport(entries) {
   return res.json();
 }
 
+export async function mempalaceExportFull() {
+  const res = await apiFetch(`${BASE_URL}/mempalace/export/full`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `mempalace_full_${ts}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function mempalaceImportFull(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch(`${BASE_URL}/mempalace/import/full`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 // ── Swarm ─────────────────────────────────────────────────────────────────────
 
 export async function swarmListTasks() {
@@ -311,7 +335,13 @@ export async function fetchAvailableModels() {
   } catch { return []; }
 }
 
-// ── Persona (S66) ─────────────────────────────────────────────────────────────
+// ── Persona (S66) + Personnalités (S105) ──────────────────────────────────────
+
+export async function getPersonalities() {
+  const res = await apiFetch(`${BASE_URL}/personalities`);
+  if (!res.ok) return [];
+  return res.json();
+}
 
 export async function getPersona() {
   const res = await apiFetch(`${BASE_URL}/persona`);

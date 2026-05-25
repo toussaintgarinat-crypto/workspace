@@ -1,20 +1,42 @@
 import Tooltip from '../Tooltip.jsx';
 import { s } from './styles.js';
 
-// Header chat : toggle sidebar + titre session + bouton Compare.
+// Header chat : toggle sidebar + titre session + personnalité active + bouton Compare.
 export default function ChatHeader({
   showPanel, setShowPanel,
   currentTitle,
   compareMode, onToggleCompare,
+  activePersonality,
 }) {
   return (
     <div style={s.header}>
       <button style={s.toggleBtn} onClick={() => setShowPanel(!showPanel)} title="Sessions">☰</button>
       <span style={s.sessionTitleDisplay}>{currentTitle || 'Conversation'}</span>
+
+      {activePersonality && activePersonality.key !== 'default' && (
+        <Tooltip label={`Mode : ${activePersonality.label} — ${activePersonality.description}`} position="bottom">
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            background: '#3b076422',
+            border: '1px solid #7c3aed44',
+            borderRadius: '20px',
+            padding: '3px 10px',
+            fontSize: '12px',
+            color: '#c4b5fd',
+            cursor: 'default',
+            flexShrink: 0,
+          }}>
+            {activePersonality.emoji} {activePersonality.label}
+          </span>
+        </Tooltip>
+      )}
+
       <Tooltip label={compareMode ? 'Désactiver la comparaison' : 'Comparer des modèles côte-à-côte'} position="bottom">
         <button
           style={{
-            marginLeft: 'auto',
+            marginLeft: activePersonality && activePersonality.key !== 'default' ? '8px' : 'auto',
             background: compareMode ? '#7c3aed22' : 'none',
             border: `1px solid ${compareMode ? '#7c3aed66' : '#2a2a2a'}`,
             borderRadius: '6px',

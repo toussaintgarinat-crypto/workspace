@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { fetchAvailableModels, syncConversation, deleteConversationCloud, addMempalaceDrawer } from '../services/api.js';
+import { fetchAvailableModels, syncConversation, deleteConversationCloud, addMempalaceDrawer, getPersona, getPersonalities } from '../services/api.js';
 import ComparePanel from './ComparePanel.jsx';
 import ArtifactPanel from '../components/ArtifactPanel.jsx';
 import SessionPanel from '../components/chat/SessionPanel.jsx';
@@ -37,6 +37,7 @@ export default function ChatView() {
   const [compareMode, setCompareMode] = useState(false);
   const [compareTriggerKey, setCompareTriggerKey] = useState(0);
   const [compareUserText, setCompareUserText] = useState('');
+  const [activePersonality, setActivePersonality] = useState(null);
   const [artifactContent, setArtifactContent] = useState(null);
   const [storageMode, setStorageMode] = useState(() => localStorage.getItem('ws_storage_mode') || 'local');
   const sendMessageRef = useRef(null);
@@ -65,6 +66,13 @@ export default function ChatView() {
   });
 
   useEffect(() => { fetchAvailableModels().then(setAvailableModels); }, []);
+  useEffect(() => {
+    Promise.all([getPersona(), getPersonalities()]).then(([persona, list]) => {
+      const key = persona?.assistant_personality || 'default';
+      const found = list.find(p => p.key === key);
+      if (found) setActivePersonality(found);
+    });
+  }, []);
 
   // Cloud sync — debounced 2s
   useEffect(() => {
@@ -233,6 +241,7 @@ export default function ChatView() {
             currentTitle={currentSession?.title}
             compareMode={compareMode}
             onToggleCompare={() => { setCompareMode(m => !m); setCompareUserText(''); setCompareTriggerKey(0); }}
+            activePersonality={activePersonality}
           />
 
           {compareMode ? (

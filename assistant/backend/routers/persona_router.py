@@ -1,4 +1,4 @@
-"""Persona settings (S66)."""
+"""Persona settings (S66) + assistant personalities (S105)."""
 
 import asyncio
 
@@ -10,6 +10,11 @@ from models.schemas import PersonaBody
 import persona as persona_mod
 
 router = APIRouter(tags=["persona"])
+
+
+@router.get("/personalities")
+async def list_personalities():
+    return persona_mod.get_personalities()
 
 
 @router.get("/persona")
