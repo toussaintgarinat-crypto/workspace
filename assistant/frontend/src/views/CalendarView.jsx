@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   listCalendars, createCalendar, updateCalendar, deleteCalendar,
   listEvents, createEvent, updateEvent, deleteEvent, subscribeCalendarSSE,
+  listMembers, addMember, removeMember, createInvitation,
 } from '../services/calendarApi.js';
 
 // ── Palette de couleurs proposées ──────────────────────────────────────────────
@@ -36,11 +37,6 @@ function toLocalDatetimeValue(iso) {
 function fmtTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtDatetime(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
@@ -97,7 +93,16 @@ const s = {
     flexShrink: 0,
   }),
   calName: { fontSize: '13px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  calActions: { display: 'flex', gap: '4px', opacity: 0 },
+  roleBadge: {
+    fontSize: '9px',
+    color: '#9ca3af',
+    background: '#1f1f1f',
+    borderRadius: '3px',
+    padding: '1px 4px',
+    flexShrink: 0,
+    border: '1px solid #2a2a2a',
+  },
+  calActions: { display: 'flex', gap: '2px', opacity: 0 },
   calActionBtn: (danger) => ({
     border: 'none',
     background: 'transparent',
@@ -162,11 +167,11 @@ const s = {
     letterSpacing: '0.06em',
   },
   weekRow: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' },
-  dayCell: (isToday, isOtherMonth, hasCalendar) => ({
+  dayCell: (isToday, isOtherMonth, clickable) => ({
     minHeight: '100px',
     border: '1px solid #1a1a1a',
     padding: '6px 8px',
-    cursor: hasCalendar && !isOtherMonth ? 'pointer' : 'default',
+    cursor: clickable && !isOtherMonth ? 'pointer' : 'default',
     background: isToday ? '#1a1a2e' : 'transparent',
     transition: 'background 0.1s',
     position: 'relative',
@@ -268,6 +273,16 @@ const s = {
     outline: 'none',
     boxSizing: 'border-box',
   },
+  select: {
+    background: '#111',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    color: '#e0e0e0',
+    padding: '9px 10px',
+    fontSize: '13px',
+    outline: 'none',
+    cursor: 'pointer',
+  },
   colorRow: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' },
   colorSwatch: (c, sel) => ({
     width: '24px',
@@ -309,10 +324,6 @@ const s = {
     cursor: 'pointer',
   },
 
-  // Event detail view inside modal
-  detailMeta: { fontSize: '13px', color: '#9ca3af', marginBottom: '6px' },
-  detailValue: { color: '#e0e0e0' },
-
   // Empty
   empty: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', color: '#52525b' },
   emptyIcon: { fontSize: '40px' },
@@ -332,9 +343,18 @@ const s = {
     fontWeight: 500,
     zIndex: 9999,
   },
+
+  // Share modal members row
+  memberRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 0',
+    borderBottom: '1px solid #1f1f1f',
+  },
 };
 
-// ── Composant CalendarForm (créer/éditer un calendrier) ───────────────────────
+// ── Composant CalendarForm ─────────────────────────────────────────────────────
 function CalendarFormModal({ initial, onSave, onClose }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
@@ -379,7 +399,7 @@ function CalendarFormModal({ initial, onSave, onClose }) {
   );
 }
 
-// ── Composant EventFormModal (créer/éditer un événement) ──────────────────────
+// ── Composant EventFormModal ───────────────────────────────────────────────────
 function EventFormModal({ initial, defaultDay, onSave, onDelete, onClose }) {
   const defaultStart = defaultDay
     ? `${defaultDay}T09:00`
@@ -480,6 +500,148 @@ function EventFormModal({ initial, defaultDay, onSave, onDelete, onClose }) {
   );
 }
 
+// ── Composant ShareModal ───────────────────────────────────────────────────────
+function ShareModal({ cal, onClose }) {
+  const [members, setMembers] = useState([]);
+  const [addForm, setAddForm] = useState({ user_id: '', role: 'viewer' });
+  const [adding, setAdding] = useState(false);
+  const [invRole, setInvRole] = useState('viewer');
+  const [invLink, setInvLink] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState('');
+
+  const loadMembers = async () => {
+    try { setMembers(await listMembers(cal.id)); } catch {}
+  };
+
+  useEffect(() => { loadMembers(); }, []);
+
+  const handleAddMember = async () => {
+    if (!addForm.user_id.trim()) return;
+    setAdding(true);
+    setErr('');
+    try {
+      await addMember(cal.id, addForm);
+      await loadMembers();
+      setAddForm({ user_id: '', role: 'viewer' });
+    } catch (e) {
+      setErr(e.message || 'Erreur');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId) => {
+    if (!confirm('Retirer ce membre ?')) return;
+    await removeMember(cal.id, userId);
+    await loadMembers();
+  };
+
+  const handleGenerateInvite = async () => {
+    setGenerating(true);
+    setInvLink(null);
+    try {
+      const inv = await createInvitation(cal.id, { role: invRole, expires_in_hours: 72 });
+      const base = (import.meta.env.VITE_CALENDAR_URL || 'http://localhost:8400');
+      setInvLink(`${base}/invitations/${inv.token}/accept`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(invLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div style={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div style={s.modal}>
+        <div style={s.modalTitle}>Partager · {cal.name}</div>
+
+        {/* Membres actuels */}
+        <label style={s.label}>Membres ({members.length})</label>
+        {members.length === 0 && (
+          <div style={{ fontSize: '12px', color: '#52525b', marginBottom: '12px' }}>Aucun membre partagé</div>
+        )}
+        {members.map(m => (
+          <div key={m.id} style={s.memberRow}>
+            <span style={{ flex: 1, fontSize: '12px', color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {m.user_id}
+            </span>
+            <span style={{ fontSize: '10px', color: '#a78bfa', background: '#7c3aed22', borderRadius: '4px', padding: '2px 6px', flexShrink: 0 }}>
+              {m.role === 'editor' ? 'Éditeur' : 'Lecteur'}
+            </span>
+            <button
+              style={{ ...s.calActionBtn(true), opacity: 1, fontSize: '13px', padding: '2px 6px' }}
+              onClick={() => handleRemoveMember(m.user_id)}
+              title="Retirer"
+            >✕</button>
+          </div>
+        ))}
+
+        {/* Ajouter un membre direct */}
+        <label style={{ ...s.label, marginTop: '16px' }}>Ajouter directement</label>
+        {err && <div style={{ fontSize: '12px', color: '#f87171', marginBottom: '8px' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          <input
+            style={{ ...s.input, flex: 1, marginBottom: 0 }}
+            placeholder="user_id"
+            value={addForm.user_id}
+            onChange={e => setAddForm(f => ({ ...f, user_id: e.target.value }))}
+            onKeyDown={e => e.key === 'Enter' && handleAddMember()}
+          />
+          <select
+            style={s.select}
+            value={addForm.role}
+            onChange={e => setAddForm(f => ({ ...f, role: e.target.value }))}
+          >
+            <option value="viewer">Lecteur</option>
+            <option value="editor">Éditeur</option>
+          </select>
+          <button style={{ ...s.btnPrimary, padding: '9px 16px' }} onClick={handleAddMember} disabled={adding}>
+            {adding ? '...' : 'Ajouter'}
+          </button>
+        </div>
+
+        {/* Lien d'invitation */}
+        <label style={s.label}>Lien d'invitation (72h)</label>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+          <select
+            style={s.select}
+            value={invRole}
+            onChange={e => setInvRole(e.target.value)}
+          >
+            <option value="viewer">Lecteur</option>
+            <option value="editor">Éditeur</option>
+          </select>
+          <button style={s.btnPrimary} onClick={handleGenerateInvite} disabled={generating}>
+            {generating ? '...' : 'Générer'}
+          </button>
+        </div>
+        {invLink && (
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
+            <input
+              style={{ ...s.input, flex: 1, marginBottom: 0, fontSize: '11px', color: '#9ca3af' }}
+              readOnly
+              value={invLink}
+            />
+            <button style={{ ...s.btnPrimary, padding: '9px 14px', flexShrink: 0 }} onClick={handleCopy}>
+              {copied ? '✓' : 'Copier'}
+            </button>
+          </div>
+        )}
+
+        <div style={s.formActions}>
+          <button style={s.btnCancel} onClick={onClose}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Composant principal ────────────────────────────────────────────────────────
 export default function CalendarView() {
   const today = new Date();
@@ -489,6 +651,7 @@ export default function CalendarView() {
   const [month, setMonth] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const [showCalForm, setShowCalForm] = useState(false);
   const [editCal, setEditCal] = useState(null);
+  const [shareCalId, setShareCalId] = useState(null);
   const [eventModal, setEventModal] = useState(null); // { mode: 'create'|'edit', day?, event? }
   const [hoveredCal, setHoveredCal] = useState(null);
   const [toast, setToast] = useState('');
@@ -606,6 +769,7 @@ export default function CalendarView() {
   };
 
   const selectedCal = calendars.find(c => c.id === selectedCalId);
+  const canEdit = selectedCal && selectedCal.role !== 'viewer';
 
   return (
     <div style={s.root}>
@@ -625,17 +789,31 @@ export default function CalendarView() {
           >
             <div style={s.calDot(cal.color)} />
             <span style={s.calName} title={cal.name}>{cal.name}</span>
+            {cal.role !== 'owner' && (
+              <span style={s.roleBadge}>{cal.role === 'editor' ? 'Édit.' : 'Lect.'}</span>
+            )}
             <span style={{ ...s.calActions, opacity: hoveredCal === cal.id ? 1 : 0 }}>
-              <button
-                style={s.calActionBtn(false)}
-                onClick={(e) => { e.stopPropagation(); setEditCal(cal); }}
-                title="Modifier"
-              >✎</button>
-              <button
-                style={s.calActionBtn(true)}
-                onClick={(e) => { e.stopPropagation(); handleDeleteCal(cal.id); }}
-                title="Supprimer"
-              >✕</button>
+              {cal.role === 'owner' && (
+                <button
+                  style={s.calActionBtn(false)}
+                  onClick={(e) => { e.stopPropagation(); setShareCalId(cal.id); }}
+                  title="Partager"
+                >🔗</button>
+              )}
+              {cal.role !== 'viewer' && (
+                <button
+                  style={s.calActionBtn(false)}
+                  onClick={(e) => { e.stopPropagation(); setEditCal(cal); }}
+                  title="Modifier"
+                >✎</button>
+              )}
+              {cal.role === 'owner' && (
+                <button
+                  style={s.calActionBtn(true)}
+                  onClick={(e) => { e.stopPropagation(); handleDeleteCal(cal.id); }}
+                  title="Supprimer"
+                >✕</button>
+              )}
             </span>
           </div>
         ))}
@@ -656,7 +834,7 @@ export default function CalendarView() {
           <button style={s.navBtn} onClick={nextMonth}>›</button>
           <span style={s.monthTitle}>{MONTHS[month.month]} {month.year}</span>
           <button style={s.todayBtn} onClick={goToday}>Aujourd'hui</button>
-          {selectedCal && (
+          {selectedCal && canEdit && (
             <button
               style={{ ...s.todayBtn, background: `${selectedCal.color}22`, border: `1px solid ${selectedCal.color}44`, color: selectedCal.color }}
               onClick={() => setEventModal({ mode: 'create', day: dayKey(today.getFullYear(), today.getMonth(), today.getDate()) })}
@@ -694,9 +872,9 @@ export default function CalendarView() {
                   return (
                     <div
                       key={di}
-                      style={s.dayCell(isToday, day === null, !!selectedCalId)}
+                      style={s.dayCell(isToday, day === null, canEdit)}
                       onClick={() => {
-                        if (day && selectedCalId) {
+                        if (day && canEdit) {
                           setEventModal({ mode: 'create', day: dayKey(month.year, month.month, day) });
                         }
                       }}
@@ -733,6 +911,12 @@ export default function CalendarView() {
       {editCal && (
         <CalendarFormModal initial={editCal} onSave={handleUpdateCal} onClose={() => setEditCal(null)} />
       )}
+      {shareCalId && (() => {
+        const shareCal = calendars.find(c => c.id === shareCalId);
+        return shareCal ? (
+          <ShareModal cal={shareCal} onClose={() => setShareCalId(null)} />
+        ) : null;
+      })()}
       {eventModal?.mode === 'create' && (
         <EventFormModal
           defaultDay={eventModal.day}

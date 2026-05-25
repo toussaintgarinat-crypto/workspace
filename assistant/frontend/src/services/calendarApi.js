@@ -58,6 +58,34 @@ export const updateEvent = (id, body) =>
 export const deleteEvent = (id) =>
   calFetch(`/events/${id}`, { method: 'DELETE' });
 
+// ── Members ────────────────────────────────────────────────────────────────────
+export const listMembers = (calId) => calFetch(`/calendars/${calId}/members`);
+
+export const addMember = (calId, body) =>
+  calFetch(`/calendars/${calId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+export const removeMember = (calId, userId) =>
+  calFetch(`/calendars/${calId}/members/${userId}`, { method: 'DELETE' });
+
+// ── Invitations ────────────────────────────────────────────────────────────────
+export const listInvitations = (calId) => calFetch(`/calendars/${calId}/invitations`);
+
+export const createInvitation = (calId, body) =>
+  calFetch(`/calendars/${calId}/invitations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+export const acceptInvitation = (token) =>
+  calFetch(`/invitations/${token}/accept`, { method: 'POST' });
+
+export const getInvitation = (token) => calFetch(`/invitations/${token}`);
+
 // ── SSE helper ─────────────────────────────────────────────────────────────────
 export function subscribeCalendarSSE(calId, onEvent) {
   const url = `${CAL_URL}/sse/calendars/${calId}`;

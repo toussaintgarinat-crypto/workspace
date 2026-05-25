@@ -64,6 +64,7 @@ class CalendarInvitation(Base):
     calendar_id: Mapped[str] = mapped_column(String(36), ForeignKey("calendars.id", ondelete="CASCADE"), nullable=False)
     token: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, default=_uuid)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

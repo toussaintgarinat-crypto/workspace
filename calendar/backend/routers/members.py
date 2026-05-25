@@ -8,17 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import get_current_user
 from db import get_db
-from models.orm import Calendar, CalendarMember
+from models.orm import CalendarMember
 from models.schemas import MemberAdd, MemberOut
+from utils.access import require_calendar_access
 
 router = APIRouter(tags=["members"])
-
-
-async def _own_calendar(cal_id: str, user_id: str, db: AsyncSession) -> Calendar:
-    cal = await db.get(Calendar, cal_id)
-    if not cal or cal.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar not found")
-    return cal
 
 
 @router.get("/calendars/{cal_id}/members", response_model=list[MemberOut])
@@ -27,7 +21,7 @@ async def list_members(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    await _own_calendar(cal_id, user["sub"], db)
+    await require_calendar_access(db, cal_id, user["sub"], min_role="viewer")
     result = await db.execute(
         select(CalendarMember).where(CalendarMember.calendar_id == cal_id)
     )
@@ -41,7 +35,7 @@ async def add_member(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    await _own_calendar(cal_id, user["sub"], db)
+    await require_calendar_access(db, cal_id, user["sub"], min_role="owner")
     existing = await db.execute(
         select(CalendarMember).where(
             CalendarMember.calendar_id == cal_id,
@@ -57,18 +51,18 @@ async def add_member(
     return member
 
 
-@router.delete("/calendars/{cal_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/calendars/{cal_id}/members/{member_user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_member(
     cal_id: str,
-    user_id: str,
+    member_user_id: str,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    await _own_calendar(cal_id, user["sub"], db)
+    await require_calendar_access(db, cal_id, user["sub"], min_role="owner")
     result = await db.execute(
         select(CalendarMember).where(
             CalendarMember.calendar_id == cal_id,
-            CalendarMember.user_id == user_id,
+            CalendarMember.user_id == member_user_id,
         )
     )
     member = result.scalar_one_or_none()

@@ -38,6 +38,10 @@ class CalendarOut(BaseModel):
         from_attributes = True
 
 
+class CalendarWithRoleOut(CalendarOut):
+    role: str  # "owner" | "editor" | "viewer"
+
+
 # ── Members ───────────────────────────────────────────────────────────────────
 
 class MemberAdd(BaseModel):
@@ -68,6 +72,14 @@ class MemberOut(BaseModel):
 class InvitationCreate(BaseModel):
     email: Optional[str] = None
     expires_in_hours: Optional[int] = 72
+    role: str = "viewer"
+
+    @field_validator("role")
+    @classmethod
+    def valid_role(cls, v: str) -> str:
+        if v not in ("editor", "viewer"):
+            raise ValueError("role must be editor or viewer")
+        return v
 
 
 class InvitationOut(BaseModel):
@@ -75,6 +87,7 @@ class InvitationOut(BaseModel):
     calendar_id: str
     token: str
     email: Optional[str]
+    role: str
     created_by: str
     expires_at: Optional[datetime]
     used_at: Optional[datetime]
