@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from db import database
@@ -7,16 +8,19 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-# ── Personnalités prédéfinies de l'assistant ─────────────────────────────────
+# ── Personnalités par défaut (seed au démarrage si table vide) ────────────────
 
-PERSONALITIES: dict[str, dict] = {
-    "default": {
+_DEFAULT_PERSONALITIES = [
+    {
+        "key": "default",
         "label": "Par défaut",
         "emoji": "🤖",
         "description": "Comportement standard de l'assistant.",
         "system_prompt": "",
+        "is_builtin": True,
     },
-    "mentor": {
+    {
+        "key": "mentor",
         "label": "Mentor",
         "emoji": "🎓",
         "description": "Explique, guide, encourage. Idéal pour apprendre.",
@@ -27,8 +31,10 @@ PERSONALITIES: dict[str, dict] = {
             "et encourage l'utilisateur dans sa progression. "
             "Commence par évaluer le niveau avant de répondre."
         ),
+        "is_builtin": True,
     },
-    "expert": {
+    {
+        "key": "expert",
         "label": "Expert Technique",
         "emoji": "⚙️",
         "description": "Réponses denses, précises, sans sur-explication.",
@@ -38,8 +44,10 @@ PERSONALITIES: dict[str, dict] = {
             "donne du code plutôt que des descriptions, cite les compromis et edge cases. "
             "Évite les introductions inutiles et les reformulations du problème."
         ),
+        "is_builtin": True,
     },
-    "brainstorm": {
+    {
+        "key": "brainstorm",
         "label": "Brainstorming",
         "emoji": "💡",
         "description": "Génère des idées créatives, divergentes, sans filtre.",
@@ -50,8 +58,10 @@ PERSONALITIES: dict[str, dict] = {
             "d'abord. Structure-les en catégories si elles sont nombreuses. "
             "Propose aussi des combinaisons inattendues."
         ),
+        "is_builtin": True,
     },
-    "coach": {
+    {
+        "key": "coach",
         "label": "Coach",
         "emoji": "🏆",
         "description": "Aide à clarifier les objectifs, débloquer, décider.",
@@ -62,8 +72,10 @@ PERSONALITIES: dict[str, dict] = {
             "Reformule ce que tu entends, identifie les hypothèses implicites, "
             "propose des actions concrètes et mesurables. Ne donne pas de réponses toutes faites."
         ),
+        "is_builtin": True,
     },
-    "concis": {
+    {
+        "key": "concis",
         "label": "Concis",
         "emoji": "⚡",
         "description": "Réponses ultra-courtes. Maximum d'info, minimum de mots.",
@@ -73,8 +85,10 @@ PERSONALITIES: dict[str, dict] = {
             "Pas de bullet points sauf si absolument nécessaire. "
             "Priorité : information utile immédiatement actionnable."
         ),
+        "is_builtin": True,
     },
-    "analyste": {
+    {
+        "key": "analyste",
         "label": "Analyste",
         "emoji": "🔍",
         "description": "Décompose les problèmes, identifie les risques, structure l'analyse.",
@@ -85,9 +99,12 @@ PERSONALITIES: dict[str, dict] = {
             "présente des scénarios alternatifs. Structure toujours ta réponse : "
             "contexte → analyse → conclusions → recommandations."
         ),
+        "is_builtin": True,
     },
-}
+]
 
+
+# ── Init tables ───────────────────────────────────────────────────────────────
 
 async def init_persona_table():
     await database.execute("""
@@ -104,7 +121,6 @@ async def init_persona_table():
             updated_at TEXT NOT NULL
         )
     """)
-    # Migration: add column if it doesn't exist yet (SQLite compatible)
     try:
         await database.execute(
             "ALTER TABLE user_persona ADD COLUMN assistant_personality TEXT NOT NULL DEFAULT 'default'"
@@ -112,6 +128,113 @@ async def init_persona_table():
     except Exception:
         pass
 
+    await database.execute("""
+        CREATE TABLE IF NOT EXISTS assistant_personalities (
+            key TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            emoji TEXT NOT NULL DEFAULT '🤖',
+            description TEXT NOT NULL DEFAULT '',
+            system_prompt TEXT NOT NULL DEFAULT '',
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+    await _seed_personalities()
+
+
+async def _seed_personalities():
+    count = await database.fetch_val("SELECT COUNT(*) FROM assistant_personalities")
+    if count:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    for p in _DEFAULT_PERSONALITIES:
+        await database.execute(
+            """
+            INSERT OR IGNORE INTO assistant_personalities
+                (key, label, emoji, description, system_prompt, is_builtin, created_at)
+            VALUES (:key, :label, :emoji, :description, :system_prompt, :is_builtin, :now)
+            """,
+            {**p, "is_builtin": int(p["is_builtin"]), "now": now},
+        )
+
+
+# ── Personalities CRUD ────────────────────────────────────────────────────────
+
+def _row_to_personality(row) -> dict:
+    d = dict(row)
+    d["is_builtin"] = bool(d.get("is_builtin", 0))
+    return d
+
+
+async def get_personalities() -> list[dict]:
+    rows = await database.fetch_all(
+        "SELECT * FROM assistant_personalities ORDER BY is_builtin DESC, created_at ASC"
+    )
+    return [_row_to_personality(r) for r in rows]
+
+
+async def get_personality(key: str) -> dict:
+    row = await database.fetch_one(
+        "SELECT * FROM assistant_personalities WHERE key = :key", {"key": key}
+    )
+    if not row:
+        row = await database.fetch_one(
+            "SELECT * FROM assistant_personalities WHERE key = 'default'"
+        )
+    return _row_to_personality(row) if row else {"key": "default", "system_prompt": "", "label": "Par défaut", "emoji": "🤖", "description": "", "is_builtin": True}
+
+
+def _slugify(label: str) -> str:
+    slug = label.lower().strip()
+    slug = re.sub(r"[^a-z0-9]+", "_", slug)
+    return slug[:40].strip("_") or "custom"
+
+
+async def create_personality(label: str, emoji: str, description: str, system_prompt: str) -> dict:
+    base = _slugify(label)
+    key = base
+    i = 2
+    while await database.fetch_one("SELECT key FROM assistant_personalities WHERE key = :k", {"k": key}):
+        key = f"{base}_{i}"
+        i += 1
+    now = datetime.now(timezone.utc).isoformat()
+    await database.execute(
+        """
+        INSERT INTO assistant_personalities (key, label, emoji, description, system_prompt, is_builtin, created_at)
+        VALUES (:key, :label, :emoji, :description, :system_prompt, 0, :now)
+        """,
+        {"key": key, "label": label, "emoji": emoji, "description": description, "system_prompt": system_prompt, "now": now},
+    )
+    return await get_personality(key)
+
+
+async def update_personality(key: str, label: str, emoji: str, description: str, system_prompt: str) -> dict:
+    row = await database.fetch_one("SELECT key FROM assistant_personalities WHERE key = :key", {"key": key})
+    if not row:
+        raise ValueError(f"Personnalité '{key}' introuvable.")
+    await database.execute(
+        """
+        UPDATE assistant_personalities
+        SET label = :label, emoji = :emoji, description = :description, system_prompt = :system_prompt
+        WHERE key = :key
+        """,
+        {"key": key, "label": label, "emoji": emoji, "description": description, "system_prompt": system_prompt},
+    )
+    return await get_personality(key)
+
+
+async def delete_personality(key: str) -> None:
+    if key == "default":
+        raise ValueError("La personnalité 'default' ne peut pas être supprimée.")
+    await database.execute("DELETE FROM assistant_personalities WHERE key = :key", {"key": key})
+    # Remettre les utilisateurs qui avaient cette personnalité sur 'default'
+    await database.execute(
+        "UPDATE user_persona SET assistant_personality = 'default' WHERE assistant_personality = :key",
+        {"key": key},
+    )
+
+
+# ── User persona CRUD ─────────────────────────────────────────────────────────
 
 async def get_persona(user_sub: str) -> dict:
     row = await database.fetch_one(
@@ -180,14 +303,12 @@ async def upsert_persona(user_sub: str, **fields) -> dict:
 
 
 async def sync_to_mempalace(persona: dict, active_connections: list):
-    """Push persona snapshot to MemPalace as a Ressource drawer."""
     mp_conn = next(
         (c for c in active_connections if c.get("app_type") == "mempalace" and c.get("enabled")),
         None,
     )
     if not mp_conn:
         return
-    # S99 : S2SClient pour MemPalace (retry + circuit breaker).
     from agent_personnel_shared.http_client import S2SClient, S2SError
     content = (
         "# Persona utilisateur\n"
@@ -215,12 +336,10 @@ async def sync_to_mempalace(persona: dict, active_connections: list):
             },
         )
     except S2SError as e:
-        # Fire-and-forget : on log mais on continue (la persona reste en DB locale).
         logger.warning("Persona sync to MemPalace failed: %s", e)
 
 
 async def infer_from_conversation(messages: list, user_sub: str, llm_client) -> dict:
-    """Analyze last N user messages to infer persona fields. Fire-and-forget."""
     user_messages = [m for m in messages if m.get("role") == "user"]
     if len(user_messages) < 3:
         return {}
@@ -264,7 +383,9 @@ async def infer_from_conversation(messages: list, user_sub: str, llm_client) -> 
         return {}
 
 
-def build_persona_context(persona: dict) -> str:
+# ── System prompt builder ─────────────────────────────────────────────────────
+
+def build_persona_context(persona: dict, personality: dict | None = None) -> str:
     if not persona:
         return ""
     parts: list[str] = []
@@ -290,15 +411,7 @@ def build_persona_context(persona: dict) -> str:
     if parts:
         result = "\n\n## Profil utilisateur\n" + "\n".join(parts)
 
-    personality_key = persona.get("assistant_personality", "default")
-    personality = PERSONALITIES.get(personality_key, PERSONALITIES["default"])
-    result += personality["system_prompt"]
+    if personality:
+        result += personality.get("system_prompt", "")
 
     return result
-
-
-def get_personalities() -> list[dict]:
-    return [
-        {"key": k, "label": v["label"], "emoji": v["emoji"], "description": v["description"]}
-        for k, v in PERSONALITIES.items()
-    ]

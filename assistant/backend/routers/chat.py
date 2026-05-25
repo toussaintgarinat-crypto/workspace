@@ -47,7 +47,8 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
                 ]
 
     persona = await persona_mod.get_persona(user.get("sub", "anonymous"))
-    persona_context = persona_mod.build_persona_context(persona)
+    personality = await persona_mod.get_personality(persona.get("assistant_personality", "default"))
+    persona_context = persona_mod.build_persona_context(persona, personality)
 
     agent = ReActAgent(active)
 

@@ -343,6 +343,32 @@ export async function getPersonalities() {
   return res.json();
 }
 
+export async function createPersonality(data) {
+  const res = await apiFetch(`${BASE_URL}/personalities`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function updatePersonality(key, data) {
+  const res = await apiFetch(`${BASE_URL}/personalities/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deletePersonality(key) {
+  const res = await apiFetch(`${BASE_URL}/personalities/${encodeURIComponent(key)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function getPersona() {
   const res = await apiFetch(`${BASE_URL}/persona`);
   if (!res.ok) return {};
