@@ -1,0 +1,35 @@
+services:
+
+  # ── Calendar Backend (FastAPI) ────────────────────────────────
+  calendar:
+    build:
+      context: ..
+      dockerfile: calendar/backend/Dockerfile
+    ports:
+      - "8400:8400"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=${CALENDAR_DATABASE_URL:-}
+      - REDIS_URL=${CALENDAR_REDIS_URL:-}
+      - CORS_ORIGINS=${CALENDAR_CORS_ORIGINS:-http://localhost:8300,http://localhost:3000}
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      - KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:8080}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-calendar-app}
+      - KEYCLOAK_AUDIENCE=${KEYCLOAK_AUDIENCE:-}
+      - CALENDAR_SERVICE_TOKEN=${CALENDAR_SERVICE_TOKEN:-}
+      - ATTACHMENTS_DIR=/data/calendar/attachments
+    volumes:
+      - calendar_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8400/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  calendar_data:
