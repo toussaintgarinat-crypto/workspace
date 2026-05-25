@@ -99,6 +99,8 @@ openssl rand -base64 16   # Pour les mots de passe plus courts
 | MemPalace | [mempalace/README.md](mempalace/README.md) |
 | Oria | [oria/README.md](oria/README.md) |
 
+Versions exactes de toutes les dépendances par service : [TECH_STACK.md](TECH_STACK.md).
+
 
 ## Commandes Makefile
 
