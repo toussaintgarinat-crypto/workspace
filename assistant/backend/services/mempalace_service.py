@@ -78,4 +78,20 @@ async def mp_post(user: dict, path: str, payload: dict, timeout: float = 15):
         raise HTTPException(status_code=status, detail=str(exc)) from exc
 
 
-__all__ = ["get_mempalace_creds", "mp_get", "mp_post"]
+async def mp_post_file(user: dict, path: str, filename: str, content: bytes, content_type: str, timeout: float = 120):
+    """POST multipart vers MemPalace (upload fichier ZIP)."""
+    url, token = await get_mempalace_creds(user)
+    try:
+        return await _mp_client(url, token, timeout).post(
+            path,
+            files={"file": (filename, content, content_type)},
+        )
+    except S2SCircuitOpenError as exc:
+        logger.warning("MemPalace circuit open: %s", exc)
+        raise HTTPException(status_code=503, detail="MemPalace temporarily unavailable") from exc
+    except S2SRequestError as exc:
+        status = exc.status_code or 502
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+
+__all__ = ["get_mempalace_creds", "mp_get", "mp_post", "mp_post_file"]

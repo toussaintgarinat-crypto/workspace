@@ -1,6 +1,6 @@
 """MemPalace proxy endpoints (wings, search, drawers, export, import)."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
 
 from auth import get_current_user
@@ -9,7 +9,7 @@ from models.schemas import (
     MempalaceImportBody,
     MempalaceSearchBody,
 )
-from services.mempalace_service import mp_get, mp_post
+from services.mempalace_service import mp_get, mp_post, mp_post_file
 
 router = APIRouter(prefix="/mempalace", tags=["mempalace"])
 
@@ -76,4 +76,33 @@ async def mempalace_import(
     body: MempalaceImportBody, user: dict = Depends(get_current_user)
 ):
     r = await mp_post(user, "/v1/api/import", {"entries": body.entries}, timeout=60)
+    return r.json()
+
+
+@router.get("/export/full")
+async def mempalace_export_full(user: dict = Depends(get_current_user)):
+    r = await mp_get(user, "/v1/api/export/full", timeout=120)
+    from datetime import datetime
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        iter([r.content]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="mempalace_full_{ts}.zip"'},
+    )
+
+
+@router.post("/import/full")
+async def mempalace_import_full(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    content = await file.read()
+    r = await mp_post_file(
+        user,
+        "/v1/api/import/full",
+        filename=file.filename or "import.zip",
+        content=content,
+        content_type=file.content_type or "application/zip",
+        timeout=300,
+    )
     return r.json()

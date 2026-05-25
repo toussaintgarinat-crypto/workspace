@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { mempalaceWings, mempalaceEntries, mempalaceSearch, mempalaceExport, mempalaceImport } from '../services/api.js';
+import { mempalaceWings, mempalaceEntries, mempalaceSearch, mempalaceExport, mempalaceImport, mempalaceExportFull, mempalaceImportFull } from '../services/api.js';
 
 const IPCRA = [
   { key: 'Input',     icon: '📥', color: '#3b82f6', bg: '#1d3a5c' },
@@ -298,12 +298,18 @@ export default function MemoryView() {
   const [searching, setSearching] = useState(false);
   const [degradedSearch, setDegradedSearch] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingFull, setExportingFull] = useState(false);
   const [importModal, setImportModal] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // {entries, filename}
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [importFullModal, setImportFullModal] = useState(false);
+  const [importFullFile, setImportFullFile] = useState(null);
+  const [importingFull, setImportingFull] = useState(false);
+  const [importFullResult, setImportFullResult] = useState(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
+  const fileFullRef = useRef(null);
 
   // Build wings list merging IPCRA template + real counts
   const buildWingsList = (raw) => {
@@ -377,6 +383,33 @@ export default function MemoryView() {
     setExporting(true);
     try { await mempalaceExport(format); } catch { /* ignore */ }
     setExporting(false);
+  };
+
+  const handleExportFull = async () => {
+    setExportingFull(true);
+    try { await mempalaceExportFull(); } catch { /* ignore */ }
+    setExportingFull(false);
+  };
+
+  const handleImportFullConfirm = async () => {
+    if (!importFullFile) return;
+    setImportingFull(true);
+    try {
+      const res = await mempalaceImportFull(importFullFile);
+      setImportFullResult(res);
+      const data = await mempalaceWings();
+      if (data) setWings(buildWingsList(data));
+    } catch (err) {
+      setImportFullResult({ error: err.message });
+    }
+    setImportingFull(false);
+  };
+
+  const closeImportFull = () => {
+    setImportFullModal(false);
+    setImportFullFile(null);
+    setImportFullResult(null);
+    if (fileFullRef.current) fileFullRef.current.value = '';
   };
 
   const handleFileChange = (e) => {
@@ -463,9 +496,16 @@ export default function MemoryView() {
             <button
               style={s.importBtn}
               onClick={() => setImportModal(true)}
-              title="Importer un fichier JSON"
+              title="Importer des mémoires (JSON)"
             >
               📥 Import
+            </button>
+            <button
+              style={s.importBtn}
+              onClick={() => setImportFullModal(true)}
+              title="Importer une sauvegarde complète (ZIP)"
+            >
+              📦 Import ZIP
             </button>
             <button
               style={s.exportBtn}
@@ -474,6 +514,14 @@ export default function MemoryView() {
               title="Exporter en JSON"
             >
               {exporting ? '…' : '📤 Export'}
+            </button>
+            <button
+              style={s.exportBtn}
+              onClick={handleExportFull}
+              disabled={exportingFull}
+              title="Exporter sauvegarde complète (drawers + fichiers)"
+            >
+              {exportingFull ? '…' : '📦 ZIP'}
             </button>
           </span>
         </p>
@@ -530,6 +578,52 @@ export default function MemoryView() {
                   onClick={handleImportConfirm}
                 >
                   {importing ? 'Import…' : 'Importer'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importFullModal && (
+        <div style={s.modal} onClick={closeImportFull}>
+          <div style={s.modalBox} onClick={e => e.stopPropagation()}>
+            <p style={s.modalTitle}>📦 Import ZIP complet</p>
+            <p style={s.modalSub}>
+              Sélectionnez un fichier <code>.zip</code> exporté via "Export ZIP".<br />
+              Drawers et fichiers originaux seront restaurés. Les doublons sont ignorés.
+            </p>
+            <input
+              ref={fileFullRef}
+              type="file"
+              accept=".zip"
+              style={{ fontSize: '13px', color: '#aaa' }}
+              onChange={e => {
+                setImportFullFile(e.target.files?.[0] || null);
+                setImportFullResult(null);
+              }}
+            />
+            {importFullFile && !importFullResult && (
+              <p style={{ fontSize: '13px', color: '#10b981', margin: 0 }}>
+                {importFullFile.name} — {(importFullFile.size / 1024 / 1024).toFixed(1)} Mo
+              </p>
+            )}
+            {importFullResult && (
+              <p style={{ fontSize: '13px', color: importFullResult.error ? '#ef4444' : '#10b981', margin: 0 }}>
+                {importFullResult.error
+                  ? `Erreur : ${importFullResult.error}`
+                  : `✅ Drawers : +${importFullResult.drawers?.added} / ignorés ${importFullResult.drawers?.skipped} — Fichiers : +${importFullResult.documents?.added} / ignorés ${importFullResult.documents?.skipped}${importFullResult.documents?.errors ? ` / erreurs ${importFullResult.documents.errors}` : ''}`}
+              </p>
+            )}
+            <div style={s.modalActions}>
+              <button style={s.modalCancel} onClick={closeImportFull}>Fermer</button>
+              {!importFullResult && (
+                <button
+                  style={{ ...s.modalConfirm, opacity: importFullFile ? 1 : 0.4 }}
+                  disabled={!importFullFile || importingFull}
+                  onClick={handleImportFullConfirm}
+                >
+                  {importingFull ? 'Import…' : 'Importer'}
                 </button>
               )}
             </div>

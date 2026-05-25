@@ -959,6 +959,170 @@ def import_drawers(body: ImportBody, user: dict = Depends(_current_user)):
     return {"added": added, "skipped": skipped, "total": len(body.entries)}
 
 
+@app.get("/api/export/full")
+def export_full(user: dict = Depends(_current_user)):
+    """ZIP complet : drawers Qdrant + métadonnées SQL + fichiers originaux."""
+    import io, zipfile, json as _json
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 1. Drawers (Qdrant)
+        col = get_palace_storage(_palace(user["id"]))
+        if col:
+            res   = col.get(include=["documents", "metadatas"])
+            ids   = res.get("ids", [])
+            docs  = res.get("documents", [])
+            metas = res.get("metadatas", [])
+            drawers = [
+                {
+                    "id":       oid,
+                    "content":  doc,
+                    "wing":     meta.get("wing", ""),
+                    "room":     meta.get("room", "general"),
+                    "added_at": meta.get("added_at", ""),
+                }
+                for oid, doc, meta in zip(ids, docs, metas)
+                if not meta.get("parent_id")
+            ]
+        else:
+            drawers = []
+        zf.writestr("drawers.json", _json.dumps(drawers, ensure_ascii=False, indent=2))
+
+        # 2. Documents metadata (SQL)
+        conn = sqlite3.connect(DB_PATH)
+        rows = conn.execute(
+            "SELECT id, filename, mime_type, size, storage_backend, storage_path, chunk_count, created_at "
+            "FROM documents WHERE owner_id = ? ORDER BY created_at ASC",
+            (user["id"],),
+        ).fetchall()
+        conn.close()
+        docs_meta = [
+            {
+                "id": r[0], "filename": r[1], "mime_type": r[2], "size": r[3],
+                "storage_backend": r[4], "storage_path": r[5],
+                "chunk_count": r[6], "created_at": r[7],
+            }
+            for r in rows
+        ]
+        zf.writestr("documents_meta.json", _json.dumps(docs_meta, ensure_ascii=False, indent=2))
+
+        # 3. Fichiers binaires originaux
+        storage = _get_storage()
+        for doc in docs_meta:
+            try:
+                file_data = storage.load(doc["storage_path"])
+                zf.writestr(f"files/{doc['id']}/{doc['filename']}", file_data)
+            except Exception:
+                pass  # Fichier manquant → ignoré sans bloquer le reste
+
+    buf.seek(0)
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        iter([buf.read()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="mempalace_full_{ts}.zip"'},
+    )
+
+
+@app.post("/api/import/full")
+async def import_full(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    user: dict = Depends(_current_user),
+):
+    """Réimporte un ZIP complet (drawers + fichiers) sur une instance vierge ou existante."""
+    import io, zipfile, json as _json
+
+    raw = await file.read()
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Fichier ZIP invalide")
+
+    names = set(zf.namelist())
+    result = {
+        "drawers":   {"added": 0, "skipped": 0},
+        "documents": {"added": 0, "skipped": 0, "errors": 0},
+    }
+
+    # 1. Import drawers
+    if "drawers.json" in names:
+        drawers = _json.loads(zf.read("drawers.json"))
+        col = get_palace_storage(_palace(user["id"]), create=True)
+        if col:
+            existing_ids: set[str] = set()
+            try:
+                res = col.get(include=[])
+                existing_ids = set(res.get("ids", []))
+            except Exception:
+                pass
+            now = datetime.utcnow().isoformat()
+            for entry in drawers:
+                content = str(entry.get("content", "")).strip()
+                if not content:
+                    result["drawers"]["skipped"] += 1
+                    continue
+                drawer_id = hashlib.sha256(content.encode()).hexdigest()[:16]
+                if drawer_id in existing_ids:
+                    result["drawers"]["skipped"] += 1
+                    continue
+                wing     = entry.get("wing", "Input")
+                room     = entry.get("room", "general")
+                added_at = entry.get("added_at", now)
+                meta = {"wing": wing, "room": room, "added_at": added_at, "id": drawer_id}
+                col.add(ids=[drawer_id], documents=[content], metadatas=[meta])
+                _drawers_text_insert(user["id"], drawer_id, content, wing, room, added_at)
+                existing_ids.add(drawer_id)
+                result["drawers"]["added"] += 1
+
+    # 2. Import documents
+    if "documents_meta.json" in names:
+        docs_meta = _json.loads(zf.read("documents_meta.json"))
+        conn = sqlite3.connect(DB_PATH)
+        existing_doc_ids: set[str] = set(
+            r[0] for r in conn.execute(
+                "SELECT id FROM documents WHERE owner_id = ?", (user["id"],)
+            ).fetchall()
+        )
+        conn.close()
+
+        storage = _get_storage()
+        backend = os.environ.get("MEMPALACE_STORAGE", "local")
+
+        for doc in docs_meta:
+            doc_id   = doc["id"]
+            filename = doc["filename"]
+            mime     = doc["mime_type"]
+
+            if doc_id in existing_doc_ids:
+                result["documents"]["skipped"] += 1
+                continue
+
+            arc_path = f"files/{doc_id}/{filename}"
+            if arc_path not in names:
+                result["documents"]["errors"] += 1
+                continue
+
+            try:
+                file_data    = zf.read(arc_path)
+                storage_path = storage.save(user["id"], doc_id, filename, file_data)
+                _register_document(
+                    doc_id=doc_id, filename=filename, mime_type=mime,
+                    size=len(file_data), storage_backend=backend,
+                    storage_path=storage_path, owner_id=user["id"],
+                )
+                background_tasks.add_task(
+                    _vectorize_document, doc_id, filename, mime, file_data,
+                    user["id"], "Input", "general",
+                )
+                existing_doc_ids.add(doc_id)
+                result["documents"]["added"] += 1
+            except Exception:
+                result["documents"]["errors"] += 1
+
+    return result
+
+
 @app.delete("/api/documents/{doc_id}", status_code=204)
 def delete_document(doc_id: str, user: dict = Depends(_current_user)):
     conn = sqlite3.connect(DB_PATH)
