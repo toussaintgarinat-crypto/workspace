@@ -201,6 +201,11 @@ export default function MessageBubble({ msg, onUploadConfirm, onUploadCancel, on
                   onCancel={onUploadCancel}
                 />
               )}
+              {msg.actualModel && (
+                <div style={{ fontSize: '10px', color: '#888', marginTop: '4px', fontStyle: 'italic' }}>
+                  ⓘ modèle utilisé : {msg.actualModel}
+                </div>
+              )}
             </>
           ) : (
             <>

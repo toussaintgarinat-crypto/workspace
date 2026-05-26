@@ -20,6 +20,8 @@ export interface ReactResult {
   answer: string
   tokensIn: number
   tokensOut: number
+  actualProvider?: string
+  actualModel?: string
 }
 
 function slugify(s: string) {
@@ -165,55 +167,100 @@ ${skillsContext ? `\n## Active Skills\n${skillsContext}\n` : ''}
 ${ragContext ? `\n## Project Context\n${ragContext}\n` : ''}
 Always respond in the same language as the user.`
 
-  const result = await generateText({
-    model: getModel(provider, model) as any,
-    system: systemPrompt,
-    prompt: input,
-    tools,
-    maxSteps: 8,
-    onStepFinish: (step) => {
-      if (step.text) push({ type: 'thought', content: step.text })
-      for (const tc of step.toolCalls ?? []) {
-        push({
-          type: 'tool_call',
-          toolName: tc.toolName,
-          content: JSON.stringify((tc as any).args ?? (tc as any).input ?? {}),
+  // Parse FALLBACK_LLM_CHAIN = "groq:llama-3.3-70b-versatile,ollama:llama3.2"
+  const fallbackChain: Array<{ provider?: string; model?: string }> = []
+  const rawChain = process.env.FALLBACK_LLM_CHAIN || ''
+  if (rawChain) {
+    for (const entry of rawChain.split(',')) {
+      const colonIdx = entry.trim().indexOf(':')
+      if (colonIdx > 0) {
+        fallbackChain.push({
+          provider: entry.trim().slice(0, colonIdx),
+          model: entry.trim().slice(colonIdx + 1) || undefined,
         })
       }
-      for (const tr of step.toolResults ?? []) {
-        push({
-          type: 'tool_result',
-          toolName: tr.toolName,
-          content: typeof tr.result === 'string' ? tr.result : JSON.stringify(tr.result),
-        })
-      }
-    },
-  })
+    }
+  }
+  const providersToTry = [{ provider, model }, ...fallbackChain]
 
-  push({ type: 'answer', content: result.text })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let generateResult: any = null
+  let actualProvider = provider ?? process.env.DEFAULT_LLM_PROVIDER ?? 'ollama'
+  let actualModel = model ?? process.env.DEFAULT_LLM_MODEL ?? 'unknown'
+  let lastError: unknown
+
+  for (const attempt of providersToTry) {
+    let stepsEmitted = 0
+
+    try {
+      const result = await generateText({
+        model: getModel(attempt.provider, attempt.model) as any,
+        system: systemPrompt,
+        prompt: input,
+        tools,
+        maxSteps: 8,
+        onStepFinish: (step) => {
+          stepsEmitted++
+          if (step.text) push({ type: 'thought', content: step.text })
+          for (const tc of step.toolCalls ?? []) {
+            push({
+              type: 'tool_call',
+              toolName: tc.toolName,
+              content: JSON.stringify((tc as any).args ?? (tc as any).input ?? {}),
+            })
+          }
+          for (const tr of step.toolResults ?? []) {
+            push({
+              type: 'tool_result',
+              toolName: tr.toolName,
+              content: typeof tr.result === 'string' ? tr.result : JSON.stringify(tr.result),
+            })
+          }
+        },
+      })
+
+      generateResult = result
+      actualProvider = attempt.provider ?? process.env.DEFAULT_LLM_PROVIDER ?? 'ollama'
+      actualModel = attempt.model ?? process.env.DEFAULT_LLM_MODEL ?? 'unknown'
+      break
+    } catch (err) {
+      if (stepsEmitted > 0) throw err
+      lastError = err
+      console.warn(`[runReact] LLM ${attempt.provider}/${attempt.model} failed, trying next fallback:`, err)
+      // Reset accumulated steps before retrying
+      steps.length = 0
+    }
+  }
+
+  if (!generateResult) throw lastError ?? new Error('No LLM available')
+
+  push({ type: 'answer', content: generateResult.text })
 
   metrics.react_runs_total++
-  metrics.llm_tokens_in  += result.usage?.promptTokens    ?? 0
-  metrics.llm_tokens_out += result.usage?.completionTokens ?? 0
+  metrics.llm_tokens_in  += generateResult.usage?.promptTokens    ?? 0
+  metrics.llm_tokens_out += generateResult.usage?.completionTokens ?? 0
 
   // Governor — fire-and-forget, non-blocking
-  const _provider = provider ?? process.env.DEFAULT_LLM_PROVIDER ?? 'ollama'
-  const _model    = model    ?? process.env.DEFAULT_LLM_MODEL    ?? 'unknown'
-  const _tIn  = result.usage?.promptTokens    ?? 0
-  const _tOut = result.usage?.completionTokens ?? 0
+  const _tIn  = generateResult.usage?.promptTokens    ?? 0
+  const _tOut = generateResult.usage?.completionTokens ?? 0
   db.insert(governorUsage).values({
     userId,
-    provider: _provider,
-    model:    _model,
+    provider: actualProvider,
+    model:    actualModel,
     tokensIn:  _tIn,
     tokensOut: _tOut,
-    coutUsd:   computeCost(_provider, _model, _tIn, _tOut),
+    coutUsd:   computeCost(actualProvider, actualModel, _tIn, _tOut),
   }).catch(() => {})
+
+  const firstProvider = provider ?? process.env.DEFAULT_LLM_PROVIDER ?? 'ollama'
+  const firstModel    = model    ?? process.env.DEFAULT_LLM_MODEL    ?? 'unknown'
+  const usedFallback  = actualProvider !== firstProvider || actualModel !== firstModel
 
   return {
     steps,
-    answer: result.text,
-    tokensIn:  result.usage?.promptTokens    ?? 0,
-    tokensOut: result.usage?.completionTokens ?? 0,
+    answer: generateResult.text,
+    tokensIn:  generateResult.usage?.promptTokens    ?? 0,
+    tokensOut: generateResult.usage?.completionTokens ?? 0,
+    ...(usedFallback ? { actualProvider, actualModel } : {}),
   }
 }

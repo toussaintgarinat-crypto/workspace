@@ -97,12 +97,19 @@ export default function Conversation({ session, onArtifact, onNew }) {
   const handleThinking = useCallback(() => {}, [])
   const handleWsError  = useCallback(() => setIsStreaming(false), [])
 
+  const handleActualModel = useCallback((actualModel, actualProvider) => {
+    setMessages(prev => prev.map(m =>
+      m.id === assistantIdRef.current ? { ...m, actualModel, actualProvider } : m
+    ))
+  }, [])
+
   const { send: wsSend } = useWebSocket(session?.id ?? null, {
-    onChunk:     handleChunk,
-    onDone:      handleDone,
-    onThinking:  handleThinking,
-    onError:     handleWsError,
-    onReactStep: handleReactStep,
+    onChunk:        handleChunk,
+    onDone:         handleDone,
+    onThinking:     handleThinking,
+    onError:        handleWsError,
+    onReactStep:    handleReactStep,
+    onActualModel:  handleActualModel,
   })
 
   useEffect(() => {
@@ -336,6 +343,11 @@ function Message({ message, voiceMode }) {
           ) : (
             <p key={i}>{part.content}</p>
           )
+        )}
+        {!isUser && message.actualModel && (
+          <div style={{ fontSize: '10px', color: 'var(--text-muted, #888)', marginTop: '4px', fontStyle: 'italic' }}>
+            ⓘ modèle utilisé : {message.actualProvider}/{message.actualModel}
+          </div>
         )}
       </div>
     </div>

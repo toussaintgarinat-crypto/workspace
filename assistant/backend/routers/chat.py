@@ -155,6 +155,10 @@ async def chat(body: ChatBody, request: Request, user: dict = Depends(get_curren
                             body.model or "unknown",
                             usage_holder[0],
                         ))
+                if usage_holder:
+                    actual = usage_holder[0].get("actual_model", "")
+                    if actual:
+                        yield json.dumps({"type": "actual_model", "model": actual}, ensure_ascii=False)
                 yield json.dumps({"type": "done"}, ensure_ascii=False)
                 break
             yield json.dumps(item, ensure_ascii=False)

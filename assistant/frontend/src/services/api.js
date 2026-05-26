@@ -436,6 +436,7 @@ export async function streamChat(
   useRag = true,
   onRagSources = null,
   model = null,
+  onActualModel = null,
 ) {
   const payload = { messages, use_prompt_engineer: usePromptEngineer, rag_enabled: useRag };
   if (model) payload.model = model;
@@ -476,6 +477,7 @@ export async function streamChat(
       else if (event.type === 'tool_result') onTool(event.name, event.result, event.error || false);
       else if (event.type === 'prompt_refined' && onPromptRefined) onPromptRefined(event.data);
       else if (event.type === 'rag_sources' && onRagSources) onRagSources(event.sources);
+      else if (event.type === 'actual_model' && onActualModel) onActualModel(event.model);
       else if (event.type === 'done') { onDone(); return; }
     }
   }

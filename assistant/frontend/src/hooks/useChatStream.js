@@ -103,6 +103,17 @@ export function useChatStream({ messages, setMessages, onComplete }) {
           });
         },
         selectedModel,
+        // onActualModel
+        (actualModel) => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = assistantIdxRef.current;
+            if (idx != null && updated[idx]) {
+              updated[idx] = { ...updated[idx], actualModel };
+            }
+            return updated;
+          });
+        },
       );
     } catch (err) {
       setMessages(prev => {

@@ -16,12 +16,13 @@ export function useWebSocket(sessionId, {
   onThinking,
   onError,
   onReactStep,
+  onActualModel,
 } = {}) {
   const wsRef        = useRef(null)
   const reconnectRef = useRef(null)
   const handlersRef  = useRef({})
 
-  handlersRef.current = { onChunk, onDone, onThinking, onError, onReactStep }
+  handlersRef.current = { onChunk, onDone, onThinking, onError, onReactStep, onActualModel }
 
   const connect = useCallback(() => {
     if (!sessionId) return
@@ -40,7 +41,8 @@ export function useWebSocket(sessionId, {
           case 'done':       h.onDone?.(msg.content, msg.steps); break
           case 'thinking':   h.onThinking?.();                  break
           case 'error':      h.onError?.(msg.message);          break
-          case 'react_step': h.onReactStep?.(msg.step);         break
+          case 'react_step':   h.onReactStep?.(msg.step);                    break
+          case 'actual_model': h.onActualModel?.(msg.model, msg.provider);   break
         }
       } catch {}
     }

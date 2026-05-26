@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     GATEWAY_API_KEY: str = "sk-assistant"
     GATEWAY_MASTER_KEY: str = ""  # Required in production — no default to avoid leaking admin access
     GATEWAY_MODEL: str = "openai/gpt-4o"
+    FALLBACK_MODELS: str = ""  # Comma-separated gateway model strings tried in order on 429/5xx/timeout (e.g. openai/gpt-4o-mini,ollama/llama3.2)
     DB_PATH: str = "/data/assistant.db" if os.path.isdir("/data") else "./assistant.db"
     DATABASE_URL: str = ""  # If set, overrides DB_PATH and uses PostgreSQL via asyncpg
     CORS_ORIGINS: str = "http://localhost:8300,http://localhost:3000"

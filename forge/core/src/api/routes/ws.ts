@@ -156,6 +156,9 @@ wsRouter.get(
             )
             await db.insert(messages).values({ sessionId, role: 'assistant', content: result.answer })
             await db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, sessionId))
+            if (result.actualModel) {
+              ws.send(JSON.stringify({ type: 'actual_model', model: result.actualModel, provider: result.actualProvider }))
+            }
             ws.send(JSON.stringify({ type: 'done', content: result.answer, steps: result.steps }))
           } catch {
             metrics.errors_total++
