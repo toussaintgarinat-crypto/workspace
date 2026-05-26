@@ -123,6 +123,34 @@ async def init_db():
         )
     """)
 
+    # S113 — Conversation Folders + Tags
+    await database.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_folders (
+            id TEXT PRIMARY KEY,
+            user_sub TEXT NOT NULL,
+            name TEXT NOT NULL,
+            parent_id TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
+    await database.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_tags (
+            conversation_id TEXT NOT NULL,
+            user_sub TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            PRIMARY KEY (conversation_id, tag)
+        )
+    """)
+    if _is_pg:
+        await database.execute(
+            "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS folder_id TEXT"
+        )
+    else:
+        try:
+            await database.execute("ALTER TABLE conversations ADD COLUMN folder_id TEXT")
+        except Exception:
+            pass
+
     from persona import init_persona_table
     from scheduled import init_scheduled_table
     await init_persona_table()
@@ -289,18 +317,98 @@ async def upsert_conversation(id: str, user_sub: str, title: str, messages: list
     return {"id": id, "user_sub": user_sub, "title": title, "updated_at": now}
 
 
-async def list_conversations(user_sub: str) -> list[dict]:
-    rows = await database.fetch_all(
-        "SELECT id, title, created_at, updated_at FROM conversations WHERE user_sub = :user_sub ORDER BY updated_at DESC",
+async def list_conversations(user_sub: str, folder_id: str | None = None) -> list[dict]:
+    q = "SELECT id, title, created_at, updated_at, folder_id FROM conversations WHERE user_sub = :user_sub"
+    params: dict = {"user_sub": user_sub}
+    if folder_id is not None:
+        q += " AND folder_id = :folder_id"
+        params["folder_id"] = folder_id
+    q += " ORDER BY updated_at DESC"
+    rows = await database.fetch_all(q, params)
+
+    tag_rows = await database.fetch_all(
+        "SELECT conversation_id, tag FROM conversation_tags WHERE user_sub = :user_sub",
         {"user_sub": user_sub},
     )
-    return [dict(r) for r in rows]
+    tags_by_conv: dict[str, list[str]] = {}
+    for tr in tag_rows:
+        tags_by_conv.setdefault(tr["conversation_id"], []).append(tr["tag"])
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["tags"] = tags_by_conv.get(d["id"], [])
+        result.append(d)
+    return result
 
 
 async def delete_conversation_db(id: str, user_sub: str):
     await database.execute(
         "DELETE FROM conversations WHERE id = :id AND user_sub = :user_sub",
         {"id": id, "user_sub": user_sub},
+    )
+
+
+# ── Conversation Folders + Tags (S113) ───────────────────────────────────────
+
+async def create_folder(user_sub: str, name: str, parent_id: str | None = None) -> dict:
+    folder_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    await database.execute(
+        "INSERT INTO conversation_folders (id, user_sub, name, parent_id, created_at) VALUES (:id, :user_sub, :name, :parent_id, :now)",
+        {"id": folder_id, "user_sub": user_sub, "name": name, "parent_id": parent_id, "now": now},
+    )
+    return {"id": folder_id, "name": name, "parent_id": parent_id, "created_at": now}
+
+
+async def list_folders(user_sub: str) -> list[dict]:
+    rows = await database.fetch_all(
+        "SELECT id, name, parent_id, created_at FROM conversation_folders WHERE user_sub = :user_sub ORDER BY created_at",
+        {"user_sub": user_sub},
+    )
+    return [dict(r) for r in rows]
+
+
+async def update_folder(id: str, user_sub: str, name: str) -> dict:
+    await database.execute(
+        "UPDATE conversation_folders SET name = :name WHERE id = :id AND user_sub = :user_sub",
+        {"id": id, "user_sub": user_sub, "name": name},
+    )
+    return {"id": id, "name": name}
+
+
+async def delete_folder(id: str, user_sub: str):
+    await database.execute(
+        "UPDATE conversations SET folder_id = NULL WHERE folder_id = :id AND user_sub = :user_sub",
+        {"id": id, "user_sub": user_sub},
+    )
+    await database.execute(
+        "DELETE FROM conversation_folders WHERE id = :id AND user_sub = :user_sub",
+        {"id": id, "user_sub": user_sub},
+    )
+
+
+async def set_conversation_folder(conversation_id: str, user_sub: str, folder_id: str | None):
+    await database.execute(
+        "UPDATE conversations SET folder_id = :folder_id WHERE id = :id AND user_sub = :user_sub",
+        {"folder_id": folder_id, "id": conversation_id, "user_sub": user_sub},
+    )
+
+
+async def add_conversation_tag(conversation_id: str, user_sub: str, tag: str):
+    tag = tag.strip().lower()[:50]
+    if not tag:
+        return
+    await database.execute(
+        "INSERT INTO conversation_tags (conversation_id, user_sub, tag) VALUES (:conv_id, :user_sub, :tag) ON CONFLICT DO NOTHING",
+        {"conv_id": conversation_id, "user_sub": user_sub, "tag": tag},
+    )
+
+
+async def remove_conversation_tag(conversation_id: str, user_sub: str, tag: str):
+    await database.execute(
+        "DELETE FROM conversation_tags WHERE conversation_id = :conv_id AND user_sub = :user_sub AND tag = :tag",
+        {"conv_id": conversation_id, "user_sub": user_sub, "tag": tag},
     )
 
 

@@ -89,6 +89,25 @@ class ConversationSearchBody(BaseModel):
     limit: int = 20
 
 
+# ── Conversation Folders + Tags (S113) ────────────────────────────────────────
+
+class FolderBody(BaseModel):
+    name: str
+    parent_id: str | None = None
+
+
+class FolderUpdateBody(BaseModel):
+    name: str
+
+
+class ConversationFolderBody(BaseModel):
+    folder_id: str | None = None
+
+
+class ConversationTagBody(BaseModel):
+    tag: str
+
+
 # ── Swarm ────────────────────────────────────────────────────────────────────
 
 class SwarmTaskBody(BaseModel):

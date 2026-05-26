@@ -317,6 +317,77 @@ export async function deleteConversationCloud(id) {
   return res.json();
 }
 
+// ── Conversation Folders + Tags (S113) ────────────────────────────────────────
+
+export async function listConversationsCloud(folderId = null) {
+  const url = folderId
+    ? `${BASE_URL}/conversations?folder_id=${encodeURIComponent(folderId)}`
+    : `${BASE_URL}/conversations`;
+  const res = await apiFetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function listFolders() {
+  const res = await apiFetch(`${BASE_URL}/conversations/folders`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createFolder(name) {
+  const res = await apiFetch(`${BASE_URL}/conversations/folders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function updateFolder(id, name) {
+  const res = await apiFetch(`${BASE_URL}/conversations/folders/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteFolder(id) {
+  const res = await apiFetch(`${BASE_URL}/conversations/folders/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function setConversationFolder(id, folderId) {
+  const res = await apiFetch(`${BASE_URL}/conversations/${id}/folder`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder_id: folderId }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function addConversationTag(id, tag) {
+  const res = await apiFetch(`${BASE_URL}/conversations/${id}/tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function removeConversationTag(id, tag) {
+  const res = await apiFetch(`${BASE_URL}/conversations/${id}/tags/${encodeURIComponent(tag)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function addMempalaceDrawer(content, wing = 'Input', room = 'conversations', metadata = {}) {
   const res = await apiFetch(`${BASE_URL}/mempalace/drawers`, {
     method: 'POST',
