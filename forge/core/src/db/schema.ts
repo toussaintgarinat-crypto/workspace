@@ -1112,3 +1112,19 @@ export const metricsSnapshots = pgTable('metrics_snapshots', {
   data:      text('data').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
+
+// ── Agent Executions (sub-agent call tracing) ─────────────────
+export const agentExecutions = pgTable('agent_executions', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  parentId:    uuid('parent_id'),                 // parent execution (null = root)
+  agentId:     uuid('agent_id'),                  // FK agentDefinitions (nullable: built-in agents)
+  agentName:   text('agent_name').notNull().default('Forge'),
+  sessionId:   text('session_id').notNull(),
+  userId:      text('user_id').notNull(),
+  depth:       integer('depth').notNull().default(0),
+  input:       text('input').notNull(),
+  output:      text('output').default(''),
+  durationMs:  integer('duration_ms'),
+  status:      text('status', { enum: ['running', 'done', 'error'] }).default('running'),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+})

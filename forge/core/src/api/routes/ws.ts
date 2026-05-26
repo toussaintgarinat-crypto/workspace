@@ -81,6 +81,7 @@ wsRouter.get(
           model?: string
           reactMode?: boolean
           agentId?: string
+          parentExecutionId?: string
         }
         try {
           payload = JSON.parse(event.data.toString())
@@ -89,7 +90,7 @@ wsRouter.get(
           return
         }
 
-        const { content, provider, model, reactMode, agentId } = payload
+        const { content, provider, model, reactMode, agentId, parentExecutionId } = payload
         if (!content?.trim()) return
 
         await db.insert(messages).values({ sessionId, role: 'user', content })
@@ -115,12 +116,15 @@ wsRouter.get(
         let ventureContext: { nom: string } | null = null
         let agentPersonality: string | null = null
 
+        let resolvedAgentName: string | undefined
         if (agentId) {
           const [agentRow] = await db.select({
+            nom:           agentDefinitions.nom,
             personalityId: agentDefinitions.personalityId,
             instructions:  agentDefinitions.instructions,
           }).from(agentDefinitions).where(eq(agentDefinitions.id, agentId))
 
+          if (agentRow?.nom) resolvedAgentName = agentRow.nom
           if (agentRow?.personalityId) {
             const [perso] = await db.select({ systemPrompt: forgePersonalities.systemPrompt })
               .from(forgePersonalities).where(eq(forgePersonalities.id, agentRow.personalityId))
@@ -153,13 +157,16 @@ wsRouter.get(
               content, sessionId, userId!, resolvedProvider, resolvedModel, undefined, skillsContext,
               (step) => ws.send(JSON.stringify({ type: 'react_step', step })),
               agentPersonality ?? undefined,
+              resolvedAgentName,
+              0,
+              parentExecutionId,
             )
             await db.insert(messages).values({ sessionId, role: 'assistant', content: result.answer })
             await db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, sessionId))
             if (result.actualModel) {
               ws.send(JSON.stringify({ type: 'actual_model', model: result.actualModel, provider: result.actualProvider }))
             }
-            ws.send(JSON.stringify({ type: 'done', content: result.answer, steps: result.steps }))
+            ws.send(JSON.stringify({ type: 'done', content: result.answer, steps: result.steps, executionId: result.executionId }))
           } catch {
             metrics.errors_total++
             ws.send(JSON.stringify({ type: 'error', message: 'ReAct error' }))

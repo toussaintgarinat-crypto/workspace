@@ -4,15 +4,19 @@ import { getModel } from '@/llm'
 import { getContext } from '@/memory/retriever'
 import { metrics } from '@/metrics'
 import { db } from '@/db'
-import { mcpServers, governorUsage } from '@/db/schema'
+import { mcpServers, governorUsage, agentExecutions } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { computeCost } from '@/pricing'
 import { listMCPTools, callMCPTool, type MCPServerConfig } from '@/mcp/client'
+
+export const MAX_AGENT_DEPTH = 3
 
 export interface ReactStep {
   type: 'thought' | 'tool_call' | 'tool_result' | 'answer'
   content: string
   toolName?: string
+  agentName?: string
+  depth?: number
 }
 
 export interface ReactResult {
@@ -22,6 +26,7 @@ export interface ReactResult {
   tokensOut: number
   actualProvider?: string
   actualModel?: string
+  executionId?: string
 }
 
 function slugify(s: string) {
@@ -66,7 +71,33 @@ export async function runReact(
   skillsContext?: string,
   onStep?: (step: ReactStep) => void,
   personalityPrompt?: string,
+  agentName?: string,
+  depth?: number,
+  parentExecutionId?: string,
 ): Promise<ReactResult> {
+  const currentDepth = depth ?? 0
+  const currentAgent = agentName ?? 'Forge'
+
+  if (currentDepth >= MAX_AGENT_DEPTH) {
+    throw new Error(`Max agent call depth (${MAX_AGENT_DEPTH}) exceeded`)
+  }
+
+  // Start execution trace
+  const startMs = Date.now()
+  let executionId: string | undefined
+  try {
+    const [row] = await db.insert(agentExecutions).values({
+      parentId:  parentExecutionId ?? null,
+      agentName: currentAgent,
+      sessionId,
+      userId,
+      depth:     currentDepth,
+      input:     input.slice(0, 2000),
+      status:    'running',
+    }).returning({ id: agentExecutions.id })
+    executionId = row.id
+  } catch {}
+
   const steps: ReactStep[] = []
   const [ragContext, mcpTools] = await Promise.all([
     getContext(input, sessionId),
@@ -74,8 +105,9 @@ export async function runReact(
   ])
 
   const push = (step: ReactStep) => {
-    steps.push(step)
-    onStep?.(step)
+    const enriched = { ...step, agentName: currentAgent, depth: currentDepth }
+    steps.push(enriched)
+    onStep?.(enriched)
   }
 
   const tools = {
@@ -232,7 +264,15 @@ Always respond in the same language as the user.`
     }
   }
 
-  if (!generateResult) throw lastError ?? new Error('No LLM available')
+  if (!generateResult) {
+    if (executionId) {
+      db.update(agentExecutions).set({
+        durationMs: Date.now() - startMs,
+        status:     'error',
+      }).where(eq(agentExecutions.id, executionId)).catch(() => {})
+    }
+    throw lastError ?? new Error('No LLM available')
+  }
 
   push({ type: 'answer', content: generateResult.text })
 
@@ -256,11 +296,21 @@ Always respond in the same language as the user.`
   const firstModel    = model    ?? process.env.DEFAULT_LLM_MODEL    ?? 'unknown'
   const usedFallback  = actualProvider !== firstProvider || actualModel !== firstModel
 
+  // Finalize execution trace
+  if (executionId) {
+    db.update(agentExecutions).set({
+      output:     generateResult.text.slice(0, 2000),
+      durationMs: Date.now() - startMs,
+      status:     'done',
+    }).where(eq(agentExecutions.id, executionId)).catch(() => {})
+  }
+
   return {
     steps,
     answer: generateResult.text,
     tokensIn:  generateResult.usage?.promptTokens    ?? 0,
     tokensOut: generateResult.usage?.completionTokens ?? 0,
     ...(usedFallback ? { actualProvider, actualModel } : {}),
+    executionId,
   }
 }

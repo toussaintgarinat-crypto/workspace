@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import InputBar from './InputBar'
+import AgentCallTree from '../../components/AgentCallTree'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { token, api, activeOrg } from '../../services/api'
 import styles from './Conversation.module.css'
@@ -263,6 +264,11 @@ export default function Conversation({ session, onArtifact, onNew }) {
         {messages.map(msg => (
           <Message key={msg.id} message={msg} voiceMode={voiceMode} />
         ))}
+
+        {/* Agent call chain breadcrumb */}
+        {isStreaming && reactSteps.length > 0 && (
+          <AgentCallTree steps={reactSteps} />
+        )}
 
         {/* ReAct steps */}
         {isStreaming && reactSteps.length > 0 && (

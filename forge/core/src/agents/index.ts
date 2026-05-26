@@ -1,6 +1,7 @@
 import { Agent } from '@voltagent/core'
 import { VercelAIProvider } from '@voltagent/vercel-ai'
 import { getModel } from '@/llm'
+import { MAX_AGENT_DEPTH } from './react-executor'
 import { financeAgent } from './poles/finance'
 import { marketingAgent } from './poles/marketing'
 import { salesAgent } from './poles/sales'
@@ -10,6 +11,8 @@ import { legalAgent } from './poles/legal'
 const provider = new VercelAIProvider()
 
 // ── Orchestrateur — route vers le bon pôle ───────────────────
+// Sub-agent depth guard: MAX_AGENT_DEPTH enforced in runReact for custom ReAct flow.
+// VoltAgent sub-agents mention the limit in system instructions.
 export const orchestrator = new Agent({
   name: 'Orchestrator',
   description: 'Routes tasks to the appropriate pole agent based on the request.',
@@ -24,5 +27,6 @@ Analyze the user's request and delegate to the most relevant pole agent:
 - Ops & Tech: sprints, deployments, incidents
 - Sentinel & Legal: alerts, contracts, compliance
 
+Maximum delegation depth: ${MAX_AGENT_DEPTH} levels. Do not chain more than ${MAX_AGENT_DEPTH} agents.
 Always respond in the same language as the user.`,
 })
