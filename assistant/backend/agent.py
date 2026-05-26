@@ -97,7 +97,7 @@ class ReActAgent:
             base += persona_context
         return base
 
-    async def stream_chat(self, messages: list[dict], on_chunk: Callable, rag_context: str = "", model: str | None = None, persona_context: str = ""):
+    async def stream_chat(self, messages: list[dict], on_chunk: Callable, rag_context: str = "", model: str | None = None, persona_context: str = "") -> dict:
         client = AsyncOpenAI(
             base_url=f"{settings.GATEWAY_URL}/v1",
             api_key=settings.GATEWAY_API_KEY,
@@ -110,11 +110,15 @@ class ReActAgent:
         system_message = {"role": "system", "content": system_content}
         history = [system_message] + list(messages)
 
+        total_tokens_in = 0
+        total_tokens_out = 0
+
         for _ in range(MAX_ITERATIONS):
             kwargs: dict = {
                 "model": model or settings.GATEWAY_MODEL,
                 "messages": history,
                 "stream": True,
+                "stream_options": {"include_usage": True},
             }
             if self._tools:
                 kwargs["tools"] = self._tools
@@ -126,6 +130,9 @@ class ReActAgent:
             stream = await client.chat.completions.create(**kwargs)
             async for chunk in stream:
                 if not chunk.choices:
+                    if chunk.usage is not None:
+                        total_tokens_in  += chunk.usage.prompt_tokens     or 0
+                        total_tokens_out += chunk.usage.completion_tokens or 0
                     continue
                 delta = chunk.choices[0].delta
 
@@ -189,3 +196,5 @@ class ReActAgent:
 
                 await on_chunk({"type": "tool_result", "name": tool_name, "result": result, "error": error})
                 history.append({"role": "tool", "tool_call_id": tc["id"], "content": result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)})
+
+        return {"tokens_in": total_tokens_in, "tokens_out": total_tokens_out}

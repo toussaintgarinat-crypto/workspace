@@ -4,7 +4,8 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, Request
 from sse_starlette.sse import EventSourceResponse
 
 from agent import ReActAgent
@@ -21,8 +22,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
 
 
+async def _post_governor_usage(forge_url: str, token: str, model: str, usage: dict) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"{forge_url.rstrip('/')}/api/governor/usage",
+                json={
+                    "provider": "gateway",
+                    "model": model,
+                    "tokensIn": usage["tokens_in"],
+                    "tokensOut": usage["tokens_out"],
+                    "coutUsd": 0.0,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    except Exception:
+        pass
+
+
 @router.post("/chat")
-async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
+async def chat(body: ChatBody, request: Request, user: dict = Depends(get_current_user)):
     from metrics import chat_requests_total
     from quota import check_quota
 
@@ -30,6 +49,7 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
     await check_quota(user)
 
     active = await resolve_active_connections(user)
+    raw_token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
 
     # ── Prompt refinement ────────────────────────────────────────────────────
     raw_prompt = ""
@@ -56,6 +76,7 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
         queue: asyncio.Queue = asyncio.Queue()
         tools_used: list[str] = []
         result_parts: list[str] = []
+        usage_holder: list[dict] = []
 
         # RAG — fetch relevant memories before running the agent
         rag_context = ""
@@ -85,13 +106,14 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
 
         async def run_agent():
             try:
-                await agent.stream_chat(
+                usage = await agent.stream_chat(
                     effective_messages,
                     on_chunk,
                     rag_context=rag_context,
                     model=body.model,
                     persona_context=persona_context,
                 )
+                usage_holder.append(usage)
             except Exception as e:
                 logger.error("Agent error: %s", e)
                 await queue.put({"type": "error", "content": str(e)})
@@ -124,6 +146,15 @@ async def chat(body: ChatBody, user: dict = Depends(get_current_user)):
                         effective_messages, user.get("sub", "anonymous"), llm
                     )
                 )
+                if usage_holder and raw_token:
+                    forge_conn = next((c for c in active if c.get("app_type") == "forge"), None)
+                    if forge_conn:
+                        asyncio.create_task(_post_governor_usage(
+                            forge_conn["url"],
+                            raw_token,
+                            body.model or "unknown",
+                            usage_holder[0],
+                        ))
                 yield json.dumps({"type": "done"}, ensure_ascii=False)
                 break
             yield json.dumps(item, ensure_ascii=False)

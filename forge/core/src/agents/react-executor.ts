@@ -4,8 +4,9 @@ import { getModel } from '@/llm'
 import { getContext } from '@/memory/retriever'
 import { metrics } from '@/metrics'
 import { db } from '@/db'
-import { mcpServers } from '@/db/schema'
+import { mcpServers, governorUsage } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
+import { computeCost } from '@/pricing'
 import { listMCPTools, callMCPTool, type MCPServerConfig } from '@/mcp/client'
 
 export interface ReactStep {
@@ -194,6 +195,20 @@ Always respond in the same language as the user.`
   metrics.react_runs_total++
   metrics.llm_tokens_in  += result.usage?.promptTokens    ?? 0
   metrics.llm_tokens_out += result.usage?.completionTokens ?? 0
+
+  // Governor — fire-and-forget, non-blocking
+  const _provider = provider ?? process.env.DEFAULT_LLM_PROVIDER ?? 'ollama'
+  const _model    = model    ?? process.env.DEFAULT_LLM_MODEL    ?? 'unknown'
+  const _tIn  = result.usage?.promptTokens    ?? 0
+  const _tOut = result.usage?.completionTokens ?? 0
+  db.insert(governorUsage).values({
+    userId,
+    provider: _provider,
+    model:    _model,
+    tokensIn:  _tIn,
+    tokensOut: _tOut,
+    coutUsd:   computeCost(_provider, _model, _tIn, _tOut),
+  }).catch(() => {})
 
   return {
     steps,
