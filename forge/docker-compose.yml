@@ -55,8 +55,8 @@ services:
       - wal_archive:/var/lib/postgresql/wal_archive
       - ../infra/postgres-ha/forge/patroni.yml:/etc/patroni/patroni.yml:ro
     ports:
-      - "5432:5432"
-      - "8008:8008"
+      - "${FORGE_POSTGRES_PORT:-5432}:5432"
+      - "${FORGE_PG_PATRONI_PORT:-8008}:8008"
     depends_on:
       etcd:
         condition: service_healthy
@@ -90,34 +90,12 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # ── Keycloak (SSO / OIDC) ───────────────────────────────────
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.2.5
-    command: start-dev --import-realm
-    ports:
-      - "8080:8080"
-    environment:
-      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
-      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://pgbouncer:5432/${POSTGRES_DB:-forge}
-      - KC_DB_USERNAME=${POSTGRES_USER:-forge}
-      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-forge_secret_change_this}
-      - KC_HTTP_ENABLED=true
-      - KC_HOSTNAME_STRICT=false
-      - KC_HOSTNAME_STRICT_HTTPS=false
-    volumes:
-      - ./keycloak:/opt/keycloak/data/import
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 90s
-    restart: unless-stopped
+  # ── Keycloak : géré par infra/keycloak (réseau partagé proxy_net) ─
+  # forge::core et netbird-management résolvent `keycloak` via proxy_net.
+  # Lance d'abord : (cd ../infra/keycloak && docker compose up -d)
+  # Le doublon Keycloak interne au stack forge a été retiré pour permettre
+  # un vrai SSO entre Forge / Assistant / MemPalace / Calendar.
+  # (forge/docker-compose.standalone.yml conserve son Keycloak embarqué.)
 
   # ── Qdrant ──────────────────────────────────────────────────
   qdrant:
@@ -177,14 +155,15 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
+    networks:
+      - default
+      - proxy_net   # pour atteindre infra/keycloak::keycloak
     restart: unless-stopped
 
   # ── ML Module (Python / FastAPI) ────────────────────────────
@@ -212,7 +191,7 @@ services:
   netbird-signal:
     image: netbirdio/signal:0.71.1
     ports:
-      - "10000:10000"
+      - "${FORGE_NETBIRD_SIGNAL_PORT:-10000}:10000"
     volumes:
       - netbird_signal_data:/var/lib/netbird
     healthcheck:
@@ -227,7 +206,7 @@ services:
   netbird-management:
     image: netbirdio/management:0.71.1
     ports:
-      - "33073:33073"
+      - "${FORGE_NETBIRD_MGMT_PORT:-33073}:33073"
     entrypoint: ["/bin/sh", "/etc/netbird/entrypoint.sh"]
     command: ["--port", "33073", "--log-level", "info", "--disable-anonymous-metrics"]
     environment:
@@ -237,7 +216,6 @@ services:
       - ./netbird/management.json:/etc/netbird/management.json.template:ro
       - ./netbird/entrypoint.sh:/etc/netbird/entrypoint.sh:ro
     depends_on:
-      - keycloak
       - netbird-signal
       - coturn
     healthcheck:
@@ -246,6 +224,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - default
+      - proxy_net   # JWKS validation via infra/keycloak
     restart: unless-stopped
 
   # ── NetBird Dashboard ───────────────────────────────────────
@@ -277,7 +258,7 @@ services:
   coturn:
     image: coturn/coturn:4.11.0
     ports:
-      - "3478:3478/udp"
+      - "${FORGE_COTURN_PORT:-3478}:3478/udp"
     volumes:
       - ./netbird/turnserver.conf:/etc/coturn/turnserver.conf
     healthcheck:
@@ -312,7 +293,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:80"
+      - "${FORGE_FRONTEND_PORT:-3000}:80"
     depends_on:
       core:
         condition: service_healthy
@@ -331,3 +312,9 @@ volumes:
   netbird_mgmt_data:
   etcd_data:
   wal_archive:
+
+networks:
+  default:
+  proxy_net:
+    external: true
+    name: proxy_net

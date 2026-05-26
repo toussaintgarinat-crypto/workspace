@@ -59,8 +59,8 @@ services:
       - wal_archive:/var/lib/postgresql/wal_archive
       - ../infra/postgres-ha/forge/patroni.yml:/etc/patroni/patroni.yml:ro
     ports:
-      - "5432:5432"
-      - "8008:8008"
+      - "${FORGE_POSTGRES_PORT:-5432}:5432"
+      - "${FORGE_PG_PATRONI_PORT:-8008}:8008"
     depends_on:
       etcd:
         condition: service_healthy

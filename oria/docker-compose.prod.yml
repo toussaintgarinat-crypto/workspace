@@ -50,7 +50,7 @@ services:
         VITE_KEYCLOAK_REALM: "oria"
         VITE_KEYCLOAK_CLIENT_ID: "oria-app"
     ports:
-      - "3000:80"
+      - "${ORIA_FRONTEND_HOST_PORT:-3000}:80"
     volumes: []    # pas de hot-reload en prod
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ || exit 1"]
