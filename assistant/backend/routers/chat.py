@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 
 import httpx
 from fastapi import APIRouter, Depends, Request
@@ -68,6 +69,25 @@ async def chat(body: ChatBody, request: Request, user: dict = Depends(get_curren
 
     persona = await persona_mod.get_persona(user.get("sub", "anonymous"))
     personality = await persona_mod.get_personality(persona.get("assistant_personality", "default"))
+
+    # Inline switch: "passe en mode X" / "switch to X" / "deviens X"
+    _last = next((m for m in reversed(body.messages) if m.get("role") == "user"), None)
+    if _last:
+        _m = re.search(
+            r"(?:passe en mode|switch to|deviens)\s+(.+?)(?:\s*[,!?]|$)",
+            _last.get("content", ""),
+            re.IGNORECASE,
+        )
+        if _m:
+            _label = _m.group(1).strip().rstrip(".,!?").strip()
+            _all = await persona_mod.get_personalities()
+            _match = next(
+                (p for p in _all if p["label"].lower() == _label.lower() or p["key"].lower() == _label.lower()),
+                None,
+            )
+            if _match:
+                personality = _match
+
     persona_context = persona_mod.build_persona_context(persona, personality)
 
     agent = ReActAgent(active, user_id=user.get("sub", ""))

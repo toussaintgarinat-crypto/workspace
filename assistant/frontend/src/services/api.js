@@ -440,6 +440,16 @@ export async function deletePersonality(key) {
   return res.json();
 }
 
+export async function reorderPersonalities(keys) {
+  const res = await apiFetch(`${BASE_URL}/personalities/reorder`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keys }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function getPersona() {
   const res = await apiFetch(`${BASE_URL}/persona`);
   if (!res.ok) return {};

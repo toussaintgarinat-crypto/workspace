@@ -437,6 +437,7 @@ export const forgePersonalities = pgTable('forge_personalities', {
   description:  text('description').default(''),
   systemPrompt: text('system_prompt').default(''),
   isBuiltin:    integer('is_builtin').default(0),
+  position:     integer('position').default(0).notNull(),
   createdAt:    timestamp('created_at').defaultNow().notNull(),
 })
 

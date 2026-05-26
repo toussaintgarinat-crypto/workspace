@@ -3,14 +3,24 @@ import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { db } from '@/db'
 import { forgePersonalities, agentDefinitions } from '@/db/schema'
-import { eq, asc, desc } from 'drizzle-orm'
+import { eq, asc, desc, sql } from 'drizzle-orm'
 
 const app = new Hono()
 
 app.get('/personalities', async (c) => {
   const items = await db.select().from(forgePersonalities)
-    .orderBy(desc(forgePersonalities.isBuiltin), asc(forgePersonalities.label))
+    .orderBy(asc(forgePersonalities.position), desc(forgePersonalities.isBuiltin), asc(forgePersonalities.label))
   return c.json(items)
+})
+
+app.patch('/personalities/reorder', zValidator('json', z.object({
+  ids: z.array(z.string()).min(1),
+})), async (c) => {
+  const { ids } = c.req.valid('json')
+  await Promise.all(ids.map((id, idx) =>
+    db.update(forgePersonalities).set({ position: idx }).where(eq(forgePersonalities.id, id))
+  ))
+  return c.json({ ok: true })
 })
 
 app.post('/personalities', zValidator('json', z.object({

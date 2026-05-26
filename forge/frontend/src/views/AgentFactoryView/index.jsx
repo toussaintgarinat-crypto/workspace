@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { token } from '../../services/api'
 import styles from './AgentFactory.module.css'
 
@@ -28,6 +31,32 @@ const STATUT_META = {
 const BLANK_FORM = { nom: '', description: '', instructions: '', niveau: 'medium', llmPreset: '', personalityId: '' }
 const BLANK_PERSO_FORM = { label: '', emoji: '🤖', description: '', systemPrompt: '' }
 
+function SortablePersoItem({ p, isActive, onClick, onEdit, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${styles.agentItem} ${isActive ? styles.agentActive : ''}`}
+      onClick={onClick}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span {...attributes} {...listeners} style={{ cursor: 'grab', color: '#4b5563', fontSize: 14, userSelect: 'none' }} title="Réordonner">⠿</span>
+          <span className={styles.agentNom}>{p.emoji} {p.label}</span>
+        </div>
+        {p.isBuiltin ? (
+          <span className={styles.badge} style={{ background: '#818cf822', color: '#818cf8' }}>Builtin</span>
+        ) : (
+          <span className={styles.badge} style={{ background: '#10b98122', color: '#10b981' }}>Custom</span>
+        )}
+      </div>
+      {p.description && <div className={styles.agentDesc}>{p.description}</div>}
+    </div>
+  )
+}
+
 export default function AgentFactoryView() {
   const [tab, setTab]                   = useState('agents')
   const [agents, setAgents]             = useState([])
@@ -46,6 +75,8 @@ export default function AgentFactoryView() {
   const [persoForm, setPersoForm]         = useState(BLANK_PERSO_FORM)
   const [editingPersoId, setEditingPersoId] = useState(null)
   const [persoLoading, setPersoLoading]   = useState(false)
+
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   const load = useCallback(async () => {
     const params = new URLSearchParams()
@@ -142,6 +173,17 @@ export default function AgentFactoryView() {
     await req(`/api/personalities/${id}`, { method: 'DELETE' })
     setPersonalities(prev => prev.filter(p => p.id !== id))
     if (selectedPerso?.id === id) setSelectedPerso(null)
+  }
+
+  async function handlePersoDragEnd({ active: a, over }) {
+    if (!over || a.id === over.id) return
+    const oldIdx = personalities.findIndex(p => p.id === a.id)
+    const newIdx = personalities.findIndex(p => p.id === over.id)
+    const reordered = arrayMove(personalities, oldIdx, newIdx)
+    setPersonalities(reordered)
+    try {
+      await req('/api/personalities/reorder', { method: 'PATCH', body: JSON.stringify({ ids: reordered.map(p => p.id) }) })
+    } catch { loadPersonalities() }
   }
 
   const getPersonalityLabel = (id) => {
@@ -398,23 +440,20 @@ export default function AgentFactoryView() {
               {personalities.length === 0 && (
                 <div className={styles.empty}>Aucune personnalité.</div>
               )}
-              {personalities.map(p => (
-                <div
-                  key={p.id}
-                  className={`${styles.agentItem} ${selectedPerso?.id === p.id ? styles.agentActive : ''}`}
-                  onClick={() => setSelectedPerso(p)}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <span className={styles.agentNom}>{p.emoji} {p.label}</span>
-                    {p.isBuiltin ? (
-                      <span className={styles.badge} style={{ background: '#818cf822', color: '#818cf8' }}>Builtin</span>
-                    ) : (
-                      <span className={styles.badge} style={{ background: '#10b98122', color: '#10b981' }}>Custom</span>
-                    )}
-                  </div>
-                  {p.description && <div className={styles.agentDesc}>{p.description}</div>}
-                </div>
-              ))}
+              <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handlePersoDragEnd}>
+                <SortableContext items={personalities.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                  {personalities.map(p => (
+                    <SortablePersoItem
+                      key={p.id}
+                      p={p}
+                      isActive={selectedPerso?.id === p.id}
+                      onClick={() => setSelectedPerso(p)}
+                      onEdit={openEditPerso}
+                      onDelete={deletePerso}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
             </div>
 
             {selectedPerso && (

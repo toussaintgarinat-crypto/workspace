@@ -20,6 +20,10 @@ class PersonalityBody(BaseModel):
     system_prompt: str = ""
 
 
+class ReorderBody(BaseModel):
+    keys: list[str]
+
+
 # ── Personnalités ─────────────────────────────────────────────────────────────
 
 @router.get("/personalities")
@@ -49,6 +53,12 @@ async def update_personality(key: str, body: PersonalityBody, _user: dict = Depe
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch("/personalities/reorder")
+async def reorder_personalities(body: ReorderBody, _user: dict = Depends(get_current_user)):
+    await persona_mod.reorder_personalities(body.keys)
+    return {"ok": True}
 
 
 @router.delete("/personalities/{key}")

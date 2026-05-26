@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { getPersona, savePersona, getPersonalities, createPersonality, updatePersonality, deletePersonality } from '../services/api.js';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { getPersona, savePersona, getPersonalities, createPersonality, updatePersonality, deletePersonality, reorderPersonalities } from '../services/api.js';
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +116,31 @@ function PersonalityModal({ initial, onSave, onClose, loading }) {
   );
 }
 
+// ── Sortable personality card ─────────────────────────────────────────────────
+
+function SortablePersonalityCard({ p, active, onClick, onEdit, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.key });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={{ ...s.card(active), ...style }} onClick={onClick}>
+      <div style={s.cardActions}>
+        <span {...attributes} {...listeners} style={{ cursor: 'grab', fontSize: '12px', color: '#4b5563', userSelect: 'none' }} title="Réordonner">⠿</span>
+        <button style={s.iconBtn} title="Modifier" onClick={e => onEdit(e, p)}>✏️</button>
+        {p.key !== 'default' && (
+          <button style={s.iconBtn} title="Supprimer" onClick={e => onDelete(e, p.key)}>🗑️</button>
+        )}
+      </div>
+      <span style={s.cardEmoji}>{p.emoji}</span>
+      <span style={s.cardLabel(active)}>{p.label}</span>
+      <span style={s.cardDesc}>{p.description}</span>
+    </div>
+  );
+}
+
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function PersonaView() {
@@ -128,6 +156,8 @@ export default function PersonaView() {
   const [toast, setToast] = useState('');
   const [modal, setModal] = useState(null); // null | { mode: 'create' } | { mode: 'edit', personality }
   const [modalLoading, setModalLoading] = useState(false);
+
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const loadPersonalities = () => getPersonalities().then(setPersonalities);
 
@@ -198,6 +228,16 @@ export default function PersonaView() {
     setModal({ mode: 'edit', personality });
   };
 
+  const handleDragEnd = async ({ active: a, over }) => {
+    if (!over || a.id === over.id) return;
+    const oldIdx = personalities.findIndex(p => p.key === a.id);
+    const newIdx = personalities.findIndex(p => p.key === over.id);
+    const reordered = arrayMove(personalities, oldIdx, newIdx);
+    setPersonalities(reordered);
+    try { await reorderPersonalities(reordered.map(p => p.key)); }
+    catch { loadPersonalities(); }
+  };
+
   return (
     <div style={s.root}>
       <h2 style={s.title}>Mon profil</h2>
@@ -208,29 +248,26 @@ export default function PersonaView() {
       {/* ── Personnalités ── */}
       <div style={s.section}>
         <p style={s.sectionTitle}>Personnalité de l'assistant</p>
-        <div style={s.grid}>
-          {personalities.map(p => (
-            <div
-              key={p.key}
-              style={s.card(form.assistant_personality === p.key)}
-              onClick={() => set('assistant_personality', p.key)}
-            >
-              <div style={s.cardActions}>
-                <button style={s.iconBtn} title="Modifier" onClick={e => handleEdit(e, p)}>✏️</button>
-                {p.key !== 'default' && (
-                  <button style={s.iconBtn} title="Supprimer" onClick={e => handleDelete(e, p.key)}>🗑️</button>
-                )}
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={personalities.map(p => p.key)} strategy={rectSortingStrategy}>
+            <div style={s.grid}>
+              {personalities.map(p => (
+                <SortablePersonalityCard
+                  key={p.key}
+                  p={p}
+                  active={form.assistant_personality === p.key}
+                  onClick={() => set('assistant_personality', p.key)}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))}
+              <div style={s.addCard} onClick={() => setModal({ mode: 'create' })}>
+                <span style={{ fontSize: '24px' }}>+</span>
+                <span>Nouvelle personnalité</span>
               </div>
-              <span style={s.cardEmoji}>{p.emoji}</span>
-              <span style={s.cardLabel(form.assistant_personality === p.key)}>{p.label}</span>
-              <span style={s.cardDesc}>{p.description}</span>
             </div>
-          ))}
-          <div style={s.addCard} onClick={() => setModal({ mode: 'create' })}>
-            <span style={{ fontSize: '24px' }}>+</span>
-            <span>Nouvelle personnalité</span>
-          </div>
-        </div>
+          </SortableContext>
+        </DndContext>
       </div>
 
       <div style={s.divider} />

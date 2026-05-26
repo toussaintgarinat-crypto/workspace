@@ -136,9 +136,16 @@ async def init_persona_table():
             description TEXT NOT NULL DEFAULT '',
             system_prompt TEXT NOT NULL DEFAULT '',
             is_builtin INTEGER NOT NULL DEFAULT 0,
+            position INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         )
     """)
+    try:
+        await database.execute(
+            "ALTER TABLE assistant_personalities ADD COLUMN position INTEGER NOT NULL DEFAULT 0"
+        )
+    except Exception:
+        pass
     await _seed_personalities()
 
 
@@ -168,9 +175,17 @@ def _row_to_personality(row) -> dict:
 
 async def get_personalities() -> list[dict]:
     rows = await database.fetch_all(
-        "SELECT * FROM assistant_personalities ORDER BY is_builtin DESC, created_at ASC"
+        "SELECT * FROM assistant_personalities ORDER BY position ASC, is_builtin DESC, created_at ASC"
     )
     return [_row_to_personality(r) for r in rows]
+
+
+async def reorder_personalities(keys: list[str]) -> None:
+    for idx, key in enumerate(keys):
+        await database.execute(
+            "UPDATE assistant_personalities SET position = :pos WHERE key = :key",
+            {"pos": idx, "key": key},
+        )
 
 
 async def get_personality(key: str) -> dict:
