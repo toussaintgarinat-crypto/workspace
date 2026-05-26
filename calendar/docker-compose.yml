@@ -23,6 +23,9 @@ services:
       - ATTACHMENTS_DIR=/data/calendar/attachments
     volumes:
       - calendar_data:/data
+    networks:
+      - default
+      - proxy_net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8400/health"]
@@ -33,3 +36,9 @@ services:
 
 volumes:
   calendar_data:
+
+networks:
+  default:
+  proxy_net:
+    external: true
+    name: proxy_net

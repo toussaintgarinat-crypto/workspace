@@ -17,6 +17,7 @@ DC := docker compose --env-file $(ENV_FILE)
         start-forge stop-forge logs-forge \
         start-assistant stop-assistant logs-assistant scale-assistant deploy-assistant \
         start-mempalace stop-mempalace logs-mempalace \
+        start-calendar stop-calendar logs-calendar \
         start-oria stop-oria logs-oria \
         observability-network start-observability stop-observability logs-observability \
         backup restore \
@@ -34,7 +35,7 @@ help:
 	@echo "  make seed-envs                — générer <service>/.env depuis .env racine (onboarding)"
 	@echo "  make start                    — démarrer tous les services"
 	@echo "  make stop                     — arrêter tous les services"
-	@echo "  make start-<service>          — démarrer un service (gateway|forge|assistant|mempalace|oria)"
+	@echo "  make start-<service>          — démarrer un service (gateway|forge|assistant|mempalace|calendar|oria)"
 	@echo "  make stop-<service>           — arrêter un service"
 	@echo "  make logs-<service>           — voir les logs d'un service"
 	@echo "  make scale-assistant N=3      — scaler le backend assistant à N réplicas (nécessite ASSISTANT_DATABASE_URL + ASSISTANT_REDIS_URL)"
@@ -71,6 +72,8 @@ seed-envs:
 	   grep '^GATEWAY_URL=' $(ENV_FILE) 2>/dev/null || echo 'GATEWAY_URL=http://localhost:4000'; \
 	   grep -E '^(KEYCLOAK_URL|KEYCLOAK_REALM|KEYCLOAK_AUDIENCE)=' $(ENV_FILE) 2>/dev/null; \
 	  } > mempalace/.env; echo "  ✓ mempalace/.env"
+	@{ grep -E '^(CALENDAR_DATABASE_URL|CALENDAR_REDIS_URL|CALENDAR_CORS_ORIGINS|CALENDAR_SERVICE_TOKEN|AUTH_ENABLED|KEYCLOAK_URL|KEYCLOAK_REALM|KEYCLOAK_CLIENT_ID|KEYCLOAK_AUDIENCE)=' $(ENV_FILE) 2>/dev/null; \
+	  } > calendar/.env; echo "  ✓ calendar/.env"
 	@{ grep '^ORIA_POSTGRES_USER=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_POSTGRES_USER=/POSTGRES_USER=/'; \
 	   grep '^ORIA_POSTGRES_PASSWORD=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_POSTGRES_PASSWORD=/POSTGRES_PASSWORD=/'; \
 	   grep '^ORIA_POSTGRES_DB=' $(ENV_FILE) 2>/dev/null | sed 's/^ORIA_POSTGRES_DB=/POSTGRES_DB=/'; \
@@ -90,9 +93,9 @@ seed-envs:
 
 # ── ALL ──────────────────────────────────────────────────────
 
-start: proxy-network observability-network start-gateway start-mempalace start-forge start-assistant start-oria
+start: proxy-network observability-network start-gateway start-mempalace start-forge start-calendar start-assistant start-oria
 
-stop: stop-gateway stop-mempalace stop-forge stop-assistant stop-oria
+stop: stop-gateway stop-mempalace stop-forge stop-calendar stop-assistant stop-oria
 
 restart: stop start
 
@@ -190,6 +193,28 @@ stop-mempalace:
 
 logs-mempalace:
 	docker compose -f mempalace/docker-compose.yml -p mempalace logs -f
+
+# ── CALENDAR ─────────────────────────────────────────────────
+# Service indépendant (port 8400). Branché sur proxy_net pour que
+# l'assistant résolve http://calendar:8400 via DNS Docker.
+
+start-calendar: proxy-network
+	CALENDAR_DATABASE_URL=$$(grep '^CALENDAR_DATABASE_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-) \
+	CALENDAR_REDIS_URL=$$(grep '^CALENDAR_REDIS_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-) \
+	CALENDAR_CORS_ORIGINS=$$(grep '^CALENDAR_CORS_ORIGINS=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo 'http://localhost:8300,http://localhost:3000') \
+	CALENDAR_SERVICE_TOKEN=$$(grep '^CALENDAR_SERVICE_TOKEN=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-) \
+	AUTH_ENABLED=$$(grep '^AUTH_ENABLED=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo false) \
+	KEYCLOAK_URL=$$(grep '^KEYCLOAK_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo http://localhost:8080) \
+	KEYCLOAK_REALM=$$(grep '^KEYCLOAK_REALM=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo forge) \
+	KEYCLOAK_CLIENT_ID=$$(grep '^KEYCLOAK_CLIENT_ID=' $(ENV_FILE) 2>/dev/null | cut -d= -f2- || echo calendar-app) \
+	KEYCLOAK_AUDIENCE=$$(grep '^KEYCLOAK_AUDIENCE=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-) \
+	docker compose -f calendar/docker-compose.yml -p calendar up -d
+
+stop-calendar:
+	docker compose -f calendar/docker-compose.yml -p calendar down
+
+logs-calendar:
+	docker compose -f calendar/docker-compose.yml -p calendar logs -f
 
 # ── ORIA ─────────────────────────────────────────────────────
 
