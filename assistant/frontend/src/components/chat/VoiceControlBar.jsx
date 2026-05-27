@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import Tooltip from '../Tooltip.jsx';
 import { s } from './styles.js';
 import { loadVoiceSettings, saveVoiceSettings } from '../../services/voice/index.js';
@@ -12,10 +13,11 @@ export default function VoiceControlBar({
   setTtsEnabled,
   micMode,
 }) {
+  const { t } = useTranslation();
   const isPTT = micMode === 'push_to_talk';
   const micLabel = isPTT
-    ? (isRecording ? 'Relâcher pour envoyer' : 'Maintenir pour parler')
-    : (isRecording ? 'Cliquer pour arrêter' : 'Démarrer le dialogue ouvert');
+    ? (isRecording ? t('voice.release') : t('voice.holdToSpeak'))
+    : (isRecording ? t('voice.clickToStop') : t('voice.startOpenDialog'));
 
   return (
     <>
@@ -40,7 +42,7 @@ export default function VoiceControlBar({
         </button>
       </Tooltip>
 
-      <Tooltip label={ttsEnabled ? 'Lecture vocale activée' : 'Lecture vocale désactivée'} position="top">
+      <Tooltip label={ttsEnabled ? t('voice.voiceOn') : t('voice.voiceOff')} position="top">
         <button
           style={s.ttsBtn(ttsEnabled)}
           onClick={() => {

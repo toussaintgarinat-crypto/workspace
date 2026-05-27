@@ -8,7 +8,7 @@ import ar from './locales/ar.json'
 import pt from './locales/pt.json'
 import ja from './locales/ja.json'
 
-const LANG_KEY = 'forge_lang'
+const LANG_KEY = 'oria_lang'
 const savedLang = localStorage.getItem(LANG_KEY) || 'fr'
 
 i18n

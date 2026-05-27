@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -46,28 +47,24 @@ const s = {
   modalFooter: { display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' },
 };
 
-const TONES = [
-  { value: 'casual', label: 'Décontracté' },
-  { value: 'formal', label: 'Formel' },
-  { value: 'technical', label: 'Technique' },
-  { value: 'friendly', label: 'Chaleureux' },
-];
+// TONES built inside component with t() — see PersonaView
 
 const EMPTY_MODAL = { label: '', emoji: '🤖', description: '', system_prompt: '' };
 
 // ── Composant Modal ───────────────────────────────────────────────────────────
 
 function PersonalityModal({ initial, onSave, onClose, loading }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState(initial || EMPTY_MODAL);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={s.modal}>
-        <div style={s.modalTitle}>{initial ? 'Modifier la personnalité' : 'Nouvelle personnalité'}</div>
+        <div style={s.modalTitle}>{initial ? t('persona.editPersonality') : t('persona.newPersonality')}</div>
 
         <div>
-          <label style={s.label}>Nom</label>
+          <label style={s.label}>{t('persona.name')}</label>
           <div style={s.modalRow}>
             <input
               style={s.emojiInput}
@@ -86,7 +83,7 @@ function PersonalityModal({ initial, onSave, onClose, loading }) {
         </div>
 
         <div>
-          <label style={s.label}>Description courte</label>
+          <label style={s.label}>{t('persona.shortDescription')}</label>
           <input
             style={s.input}
             value={form.description}
@@ -96,7 +93,7 @@ function PersonalityModal({ initial, onSave, onClose, loading }) {
         </div>
 
         <div>
-          <label style={s.label}>Instructions système (system prompt)</label>
+          <label style={s.label}>{t('persona.systemPrompt')}</label>
           <textarea
             style={s.promptTextarea}
             value={form.system_prompt}
@@ -106,9 +103,9 @@ function PersonalityModal({ initial, onSave, onClose, loading }) {
         </div>
 
         <div style={s.modalFooter}>
-          <button style={s.btnGhost} onClick={onClose}>Annuler</button>
+          <button style={s.btnGhost} onClick={onClose}>{t('persona.cancel')}</button>
           <button style={s.btn} onClick={() => onSave(form)} disabled={loading || !form.label.trim()}>
-            {loading ? 'Enregistrement...' : 'Enregistrer'}
+            {loading ? t('persona.savingPersonality') : t('persona.save')}
           </button>
         </div>
       </div>
@@ -144,6 +141,13 @@ function SortablePersonalityCard({ p, active, onClick, onEdit, onDelete }) {
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function PersonaView() {
+  const { t } = useTranslation();
+  const TONES = [
+    { value: 'casual', label: t('persona.toneRelaxed') },
+    { value: 'formal', label: t('persona.toneFormal') },
+    { value: 'technical', label: t('persona.toneTechnical') },
+    { value: 'friendly', label: t('persona.toneWarm') },
+  ];
   const [form, setForm] = useState({
     display_name: '', role: '', expertise_domains: [],
     tone: 'casual', language: 'fr-FR', custom_instructions: '',
@@ -189,8 +193,8 @@ export default function PersonaView() {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await savePersona(form); showToast('Profil sauvegardé'); }
-    catch { showToast('Erreur lors de la sauvegarde'); }
+    try { await savePersona(form); showToast(t('persona.profileSaved')); }
+    catch { showToast(t('persona.saveError')); }
     finally { setSaving(false); }
   };
 
@@ -201,26 +205,26 @@ export default function PersonaView() {
     try {
       if (modal.mode === 'create') {
         await createPersonality(data);
-        showToast('Personnalité créée');
+        showToast(t('persona.profileSaved'));
       } else {
         await updatePersonality(modal.personality.key, data);
-        showToast('Personnalité mise à jour');
+        showToast(t('persona.profileSaved'));
       }
       await loadPersonalities();
       setModal(null);
-    } catch { showToast('Erreur lors de la sauvegarde'); }
+    } catch { showToast(t('persona.saveError')); }
     finally { setModalLoading(false); }
   };
 
   const handleDelete = async (e, key) => {
     e.stopPropagation();
-    if (!confirm('Supprimer cette personnalité ?')) return;
+    if (!confirm(t('persona.deleteConfirm'))) return;
     try {
       await deletePersonality(key);
       if (form.assistant_personality === key) set('assistant_personality', 'default');
       await loadPersonalities();
-      showToast('Personnalité supprimée');
-    } catch (err) { showToast(err.message || 'Erreur'); }
+      showToast(t('persona.profileSaved'));
+    } catch (err) { showToast(err.message || t('common.error')); }
   };
 
   const handleEdit = (e, personality) => {
@@ -240,14 +244,14 @@ export default function PersonaView() {
 
   return (
     <div style={s.root}>
-      <h2 style={s.title}>Mon profil</h2>
-      <p style={s.subtitle}>Ces informations personnalisent le comportement de l'assistant.</p>
+      <h2 style={s.title}>{t('persona.title')}</h2>
+      <p style={s.subtitle}>{t('persona.description')}</p>
 
-      {inferred && <div style={s.inferBadge}>✨ Profil enrichi automatiquement par l'IA</div>}
+      {inferred && <div style={s.inferBadge}>{t('persona.enriched')}</div>}
 
       {/* ── Personnalités ── */}
       <div style={s.section}>
-        <p style={s.sectionTitle}>Personnalité de l'assistant</p>
+        <p style={s.sectionTitle}>{t('persona.assistantPersonality')}</p>
         <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={personalities.map(p => p.key)} strategy={rectSortingStrategy}>
             <div style={s.grid}>
@@ -263,7 +267,7 @@ export default function PersonaView() {
               ))}
               <div style={s.addCard} onClick={() => setModal({ mode: 'create' })}>
                 <span style={{ fontSize: '24px' }}>+</span>
-                <span>Nouvelle personnalité</span>
+                <span>{t('persona.newPersonality')}</span>
               </div>
             </div>
           </SortableContext>
@@ -273,20 +277,20 @@ export default function PersonaView() {
       <div style={s.divider} />
 
       {/* ── Profil utilisateur ── */}
-      <p style={s.sectionTitle}>Profil utilisateur</p>
+      <p style={s.sectionTitle}>{t('persona.userProfile')}</p>
 
       <div style={s.section}>
-        <label style={s.label}>Nom affiché</label>
+        <label style={s.label}>{t('persona.displayName')}</label>
         <input style={s.input} value={form.display_name} onChange={e => set('display_name', e.target.value)} placeholder="Ex: Alice" />
       </div>
 
       <div style={s.section}>
-        <label style={s.label}>Rôle / Titre</label>
+        <label style={s.label}>{t('persona.roleTitle')}</label>
         <input style={s.input} value={form.role} onChange={e => set('role', e.target.value)} placeholder="Ex: Développeur fullstack, Chef de projet..." />
       </div>
 
       <div style={s.section}>
-        <label style={s.label}>Domaines d'expertise</label>
+        <label style={s.label}>{t('persona.expertise')}</label>
         <div style={s.tagRow}>
           {form.expertise_domains.map(t => (
             <span key={t} style={s.tag}>
@@ -307,24 +311,24 @@ export default function PersonaView() {
       </div>
 
       <div style={s.section}>
-        <label style={s.label}>Ton préféré</label>
+        <label style={s.label}>{t('persona.tone')}</label>
         <select style={s.select} value={form.tone} onChange={e => set('tone', e.target.value)}>
           {TONES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
       </div>
 
       <div style={s.section}>
-        <label style={s.label}>Langue préférée</label>
+        <label style={s.label}>{t('persona.preferredLanguage')}</label>
         <input style={s.input} value={form.language} onChange={e => set('language', e.target.value)} placeholder="Ex: fr-FR, en-US" />
       </div>
 
       <div style={s.section}>
-        <label style={s.label}>Instructions personnalisées</label>
+        <label style={s.label}>{t('persona.customInstructions')}</label>
         <textarea style={s.textarea} value={form.custom_instructions} onChange={e => set('custom_instructions', e.target.value)} placeholder="Ex: Toujours répondre avec des exemples de code. Ne pas utiliser de bullet points..." />
       </div>
 
       <button style={s.btn} onClick={handleSave} disabled={saving}>
-        {saving ? 'Sauvegarde...' : 'Sauvegarder le profil'}
+        {saving ? t('persona.saving') : t('persona.saveProfile')}
       </button>
 
       {toast && <div style={s.toast}>{toast}</div>}

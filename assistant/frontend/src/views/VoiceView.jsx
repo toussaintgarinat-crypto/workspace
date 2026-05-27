@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { loadVoiceSettings, saveVoiceSettings, DEFAULT_VOICE_SETTINGS } from '../services/voice/index.js';
 import { getVoiceSettings, saveVoiceSettingsToBackend } from '../services/api.js';
 
@@ -124,6 +125,7 @@ const s = {
 };
 
 export default function VoiceView() {
+  const { t } = useTranslation();
   const [localSettings, setLocalSettings] = useState(() => ({
     ...DEFAULT_VOICE_SETTINGS,
     ...loadVoiceSettings(),
@@ -208,17 +210,17 @@ export default function VoiceView() {
 
   return (
     <div style={s.root}>
-      <div style={s.title}>🎙️ Voice I/O</div>
+      <div style={s.title}>{t('voiceView.title')}</div>
       <div style={s.subtitle}>
-        Configurez la reconnaissance et la synthèse vocale. Gratuit par défaut via les APIs navigateur.
+        {t('voiceView.subtitle')}
       </div>
 
       {/* STT Section */}
       <div style={s.section}>
-        <div style={s.sectionTitle}>Reconnaissance vocale (STT)</div>
+        <div style={s.sectionTitle}>{t('voiceView.stt')}</div>
 
         <div style={s.row}>
-          <span style={s.label}>Provider</span>
+          <span style={s.label}>{t('voiceView.provider')}</span>
           <div style={s.toggle()}>
             <button
               style={s.toggleBtn(localSettings.sttProvider === 'webspeech')}
@@ -244,17 +246,17 @@ export default function VoiceView() {
 
         {localSettings.sttProvider === 'webspeech' && (
           <div style={s.hint}>
-            Gratuit · Natif navigateur · Chrome / Edge recommandé
+            {t('voiceView.hintFreeNative')}
             {webSpeechAvailable
-              ? <span style={{ color: '#22c55e', marginLeft: '8px' }}>✓ Disponible</span>
-              : <span style={{ color: '#ef4444', marginLeft: '8px' }}>✗ Non supporté</span>}
+              ? <span style={{ color: '#22c55e', marginLeft: '8px' }}>{t('voiceView.available')}</span>
+              : <span style={{ color: '#ef4444', marginLeft: '8px' }}>{t('voiceView.notSupported')}</span>}
           </div>
         )}
 
         {localSettings.sttProvider === 'openai_whisper' && (
           <>
             <div style={s.row}>
-              <span style={s.label}>Clé API OpenAI</span>
+              <span style={s.label}>{t('voiceView.openaiKey')}</span>
               <input
                 style={s.input}
                 type="password"
@@ -263,7 +265,7 @@ export default function VoiceView() {
                 onChange={e => setSttKey(e.target.value)}
               />
             </div>
-            <div style={s.hint}>Stockée chiffrée AES-256 · Modèle : whisper-1</div>
+            <div style={s.hint}>{t('voiceView.hintOpenAI')}</div>
           </>
         )}
 
@@ -277,19 +279,19 @@ export default function VoiceView() {
         )}
 
         <div style={s.row}>
-          <span style={s.label}>Mode de conversation</span>
+          <span style={s.label}>{t('voiceView.conversationMode')}</span>
           <div style={s.toggle()}>
             <button
               style={s.toggleBtn(localSettings.micMode === 'open_dialogue')}
               onClick={() => setLocal('micMode', 'open_dialogue')}
             >
-              💬 Dialogue ouvert
+              {t('voiceView.openDialog')}
             </button>
             <button
               style={s.toggleBtn(localSettings.micMode === 'push_to_talk')}
               onClick={() => setLocal('micMode', 'push_to_talk')}
             >
-              🔘 Push-to-talk
+              {t('voiceView.pushToTalk')}
             </button>
           </div>
         </div>
@@ -309,20 +311,20 @@ export default function VoiceView() {
         {localSettings.sttProvider === 'webspeech' && (
           <div style={s.footer}>
             <button style={s.testBtn} onClick={testSTT} disabled={testing === 'stt'}>
-              {testing === 'stt' ? '⏳ Test…' : '▶ Tester le micro'}
+              {testing === 'stt' ? t('voiceView.testing') : t('voiceView.testMic')}
             </button>
             <div style={s.statusDot(webSpeechAvailable)} />
-            <span style={s.statusLabel}>{webSpeechAvailable ? 'API disponible' : 'API indisponible'}</span>
+            <span style={s.statusLabel}>{webSpeechAvailable ? t('voiceView.apiAvailable') : t('voiceView.apiUnavailable')}</span>
           </div>
         )}
       </div>
 
       {/* TTS Section */}
       <div style={s.section}>
-        <div style={s.sectionTitle}>Synthèse vocale (TTS)</div>
+        <div style={s.sectionTitle}>{t('voiceView.tts')}</div>
 
         <div style={s.row}>
-          <span style={s.label}>Provider</span>
+          <span style={s.label}>{t('voiceView.provider')}</span>
           <div style={s.toggle()}>
             <button
               style={s.toggleBtn(localSettings.ttsProvider === 'webspeech')}
@@ -348,17 +350,17 @@ export default function VoiceView() {
 
         {localSettings.ttsProvider === 'webspeech' && (
           <div style={s.hint}>
-            Gratuit · Natif navigateur
+            {t('voiceView.hintFreeNative')}
             {webSpeechTTSAvailable
-              ? <span style={{ color: '#22c55e', marginLeft: '8px' }}>✓ Disponible</span>
-              : <span style={{ color: '#ef4444', marginLeft: '8px' }}>✗ Non supporté</span>}
+              ? <span style={{ color: '#22c55e', marginLeft: '8px' }}>{t('voiceView.available')}</span>
+              : <span style={{ color: '#ef4444', marginLeft: '8px' }}>{t('voiceView.notSupported')}</span>}
           </div>
         )}
 
         {localSettings.ttsProvider === 'openai_tts' && (
           <>
             <div style={s.row}>
-              <span style={s.label}>Clé API OpenAI</span>
+              <span style={s.label}>{t('voiceView.openaiKey')}</span>
               <input
                 style={s.input}
                 type="password"
@@ -367,10 +369,10 @@ export default function VoiceView() {
                 onChange={e => setTtsKey(e.target.value)}
               />
             </div>
-            <div style={s.hint}>Stockée chiffrée AES-256 · Modèle : tts-1</div>
+            <div style={s.hint}>{t('voiceView.hintOpenAI')}</div>
 
             <div style={s.row}>
-              <span style={s.label}>Voix</span>
+              <span style={s.label}>{t('voiceView.voice')}</span>
               <select
                 style={s.select}
                 value={localSettings.ttsVoice}
@@ -387,7 +389,7 @@ export default function VoiceView() {
         {localSettings.ttsProvider === 'kokoro' && (
           <>
             <div style={s.row}>
-              <span style={s.label}>Voix</span>
+              <span style={s.label}>{t('voiceView.voice')}</span>
               <select
                 style={s.select}
                 value={localSettings.ttsVoice}
@@ -409,19 +411,19 @@ export default function VoiceView() {
         {localSettings.ttsProvider === 'webspeech' && (
           <div style={s.footer}>
             <button style={s.testBtn} onClick={testTTS} disabled={testing === 'tts'}>
-              {testing === 'tts' ? '⏳ Test…' : '▶ Tester la voix'}
+              {testing === 'tts' ? t('voiceView.testing') : t('voiceView.testVoice')}
             </button>
             <div style={s.statusDot(webSpeechTTSAvailable)} />
-            <span style={s.statusLabel}>{webSpeechTTSAvailable ? 'API disponible' : 'API indisponible'}</span>
+            <span style={s.statusLabel}>{webSpeechTTSAvailable ? t('voiceView.apiAvailable') : t('voiceView.apiUnavailable')}</span>
           </div>
         )}
       </div>
 
       {/* Language Section */}
       <div style={s.section}>
-        <div style={s.sectionTitle}>Langue</div>
+        <div style={s.sectionTitle}>{t('voiceView.language')}</div>
         <div style={s.row}>
-          <span style={s.label}>Langue vocale</span>
+          <span style={s.label}>{t('voiceView.voiceLanguage')}</span>
           <select
             style={s.select}
             value={localSettings.language}
@@ -435,7 +437,7 @@ export default function VoiceView() {
       </div>
 
       <button style={s.saveBtn(saved)} onClick={handleSave}>
-        {saved ? '✓ Sauvegardé' : 'Sauvegarder'}
+        {saved ? t('voiceView.saved') : t('voiceView.save')}
       </button>
     </div>
   );

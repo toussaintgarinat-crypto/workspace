@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import WorldSidebar from './WorldSidebar.jsx'
+import LanguagePicker from './LanguagePicker.jsx'
 import ChannelPanel from './ChannelPanel.jsx'
 import RoomView from './RoomView.jsx'
 import MembersPanel from './MembersPanel.jsx'
@@ -30,6 +32,7 @@ import JardinPanel from './JardinPanel.jsx'
 import ConductorView from './ConductorView.jsx'
 
 export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
+  const { t } = useTranslation()
   const [worlds, setWorlds]                 = useState([])
   const [worldActif, setWorldActif]         = useState(null)
   const [roomsOuvertes, setRoomsOuvertes]   = useState([])   // [{ room, building }]
@@ -240,14 +243,14 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
       ? <AgentManager world={worldActif} moi={moi} onAgentsChange={() => {
           api.get(`/agents/world/${worldActif.id}`).then(d => setWorldAgents(Array.isArray(d) ? d : []))
         }} />
-      : <div className="need-world-msg"><span>🤖</span><p>Sélectionne un monde dans la sidebar pour gérer ses agents.</p></div>
+      : <div className="need-world-msg"><span>🤖</span><p>{t('main.needWorld')}</p></div>
   } else if (showIPCRA) {
     contenuPrincipal = (
       <IPCRAPanel worldId={worldActif?.id} agents={worldAgents} />
     )
   } else if (showMap) {
     if (!worldActif) {
-      contenuPrincipal = <div className="need-world-msg"><span>🗺</span><p>Sélectionne un monde dans la sidebar pour voir sa carte.</p></div>
+      contenuPrincipal = <div className="need-world-msg"><span>🗺</span><p>{t('main.needWorldMap')}</p></div>
     } else {
       contenuPrincipal = (
         <WorldMap
@@ -313,7 +316,7 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
               <div
                 className="resize-handle"
                 onMouseDown={e => startResize(i, e)}
-                title="Glisser pour redimensionner"
+                title={t('main.resizeHandle')}
               />
             )}
           </div>
@@ -327,12 +330,12 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
           <>
             <span className="main-welcome-emoji">{worldActif.emoji}</span>
             <h2>{worldActif.nom}</h2>
-            <p>Sélectionne une salle dans le panel de gauche</p>
+            <p>{t('main.selectRoom')}</p>
           </>
         ) : (
           <>
             <span className="main-welcome-emoji">🌍</span>
-            <p>Crée ou rejoins une commune pour commencer</p>
+            <p>{t('main.createOrJoin')}</p>
           </>
         )}
       </div>
@@ -412,6 +415,7 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
 
       <Toast />
       <SyncStatus />
+      <LanguagePicker style={{ position: 'fixed', bottom: 12, left: 68, zIndex: 100 }} />
     </div>
   )
 }

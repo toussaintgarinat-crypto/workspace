@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { s, IPCRA_WINGS, formatSize } from './styles.js';
 
@@ -9,6 +10,7 @@ function hasCodeBlock(content) {
 // ── UploadProposal ────────────────────────────────────────────────────────────
 
 function UploadProposal({ proposal, onConfirm, onCancel }) {
+  const { t } = useTranslation();
   const [wing, setWing] = useState(proposal.proposed_wing || 'Ressource');
   const [room, setRoom] = useState(proposal.proposed_room || 'documents');
   const [editing, setEditing] = useState(false);
@@ -21,7 +23,7 @@ function UploadProposal({ proposal, onConfirm, onCancel }) {
     return (
       <div style={s.uploadCard}>
         <div style={s.uploadCardTitle}>📄 {proposal.filename}</div>
-        <div style={s.uploadStatusOk}>✓ Classé dans {proposal.final_wing} › {proposal.final_room}</div>
+        <div style={s.uploadStatusOk}>{t('message.classified', { wing: proposal.final_wing, room: proposal.final_room })}</div>
       </div>
     );
   }
@@ -30,7 +32,7 @@ function UploadProposal({ proposal, onConfirm, onCancel }) {
     return (
       <div style={s.uploadCard}>
         <div style={s.uploadCardTitle}>
-          <span className="tool-spin">◐</span> {proposal.filename} — Analyse en cours…
+          <span className="tool-spin">◐</span> {proposal.filename} — {t('message.analyzing')}
         </div>
       </div>
     );
@@ -55,7 +57,7 @@ function UploadProposal({ proposal, onConfirm, onCancel }) {
       </div>
       {proposal.summary && <div style={s.uploadCardSummary}>{proposal.summary}</div>}
       <div style={s.uploadCardProposal}>
-        Proposition : <span style={s.uploadCardWing}>{wing}</span> › {room}
+        {t('message.proposal', { wing, room })}
       </div>
       {editing && (
         <div style={s.uploadEditRow}>
@@ -66,20 +68,20 @@ function UploadProposal({ proposal, onConfirm, onCancel }) {
             style={s.uploadRoomInput}
             value={room}
             onChange={e => setRoom(e.target.value)}
-            placeholder="sous-catégorie"
+            placeholder={t('message.subcategory')}
           />
         </div>
       )}
       {error && <div style={s.uploadStatusErr}>✗ {error}</div>}
       <div style={s.uploadCardActions}>
         <button style={s.uploadCardBtn('confirm')} onClick={handleConfirm} disabled={saving}>
-          {saving ? 'Enregistrement…' : 'Confirmer'}
+          {saving ? t('persona.savingPersonality') : t('common.confirm')}
         </button>
         <button style={s.uploadCardBtn('edit')} onClick={() => setEditing(!editing)}>
-          {editing ? 'Fermer' : 'Modifier'}
+          {editing ? t('common.close') : t('common.edit')}
         </button>
         <button style={s.uploadCardBtn('cancel')} onClick={onCancel} disabled={saving}>
-          Annuler
+          {t('common.cancel')}
         </button>
       </div>
     </div>
@@ -89,10 +91,11 @@ function UploadProposal({ proposal, onConfirm, onCancel }) {
 // ── RagChip ───────────────────────────────────────────────────────────────────
 
 function RagChip({ sources }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <div style={{ textAlign: 'right' }}>
-      <button style={s.ragChip} onClick={() => setOpen(!open)} title="Souvenirs contextuels injectés">
+      <button style={s.ragChip} onClick={() => setOpen(!open)} title={t('message.memories')}>
         🧠 {sources.length}
       </button>
       {open && (
@@ -116,6 +119,7 @@ function RagChip({ sources }) {
 // ── ToolCard ──────────────────────────────────────────────────────────────────
 
 function ToolCard({ tool }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const { name, args, result, status } = tool;
   const isRunning = status === 'running';
@@ -143,13 +147,13 @@ function ToolCard({ tool }) {
           <div style={s.toolBody}>
             {args && Object.keys(args).length > 0 && (
               <>
-                <div style={s.toolLabel}>Paramètres</div>
+                <div style={s.toolLabel}>{t('message.parameters')}</div>
                 <pre style={s.toolPre}>{JSON.stringify(args, null, 2)}</pre>
               </>
             )}
             {result !== undefined && result !== null && (
               <>
-                <div style={s.toolLabel}>Résultat</div>
+                <div style={s.toolLabel}>{t('message.result')}</div>
                 <pre style={s.toolPre}>
                   {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
                 </pre>
@@ -165,6 +169,7 @@ function ToolCard({ tool }) {
 // ── MessageBubble ─────────────────────────────────────────────────────────────
 
 export default function MessageBubble({ msg, onUploadConfirm, onUploadCancel, onOpenArtifact }) {
+  const { t } = useTranslation();
   return (
     <div className="msg-enter" style={s.msgWrapper(msg.role)}>
       <div style={{ maxWidth: '72%' }}>
@@ -191,7 +196,7 @@ export default function MessageBubble({ msg, onUploadConfirm, onUploadCancel, on
                   }}
                   onClick={() => onOpenArtifact(msg.content)}
                 >
-                  ◻ Ouvrir le canvas
+                  {t('message.openCanvas')}
                 </button>
               )}
               {msg.uploadProposal && (
@@ -203,7 +208,7 @@ export default function MessageBubble({ msg, onUploadConfirm, onUploadCancel, on
               )}
               {msg.actualModel && (
                 <div style={{ fontSize: '10px', color: '#888', marginTop: '4px', fontStyle: 'italic' }}>
-                  ⓘ modèle utilisé : {msg.actualModel}
+                  {t('message.modelUsed', { model: msg.actualModel })}
                 </div>
               )}
             </>
@@ -211,7 +216,7 @@ export default function MessageBubble({ msg, onUploadConfirm, onUploadCancel, on
             <>
               <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
               {msg.refined && (
-                <div style={s.refinedBadge}>✦ affiné</div>
+                <div style={s.refinedBadge}>{t('message.refined')}</div>
               )}
             </>
           )}

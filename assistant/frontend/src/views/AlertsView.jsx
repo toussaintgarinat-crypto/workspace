@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { isPushSupported, requestPushPermission, unsubscribeFromPush } from '../services/push.js';
 import { apiFetch } from '../services/api.js';
 
@@ -199,17 +200,18 @@ function Toggle({ active, onChange }) {
   );
 }
 
-function timeAgo(iso) {
+function timeAgo(iso, t) {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return 'à l\'instant';
-  if (m < 60) return `il y a ${m}min`;
+  if (m < 1) return t('alerts.justNow');
+  if (m < 60) return t('alerts.minutesAgo', { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `il y a ${h}h`;
-  return `il y a ${Math.floor(h / 24)}j`;
+  if (h < 24) return t('alerts.hoursAgo', { n: h });
+  return t('alerts.daysAgo', { n: Math.floor(h / 24) });
 }
 
 function ProactiveConfigModal({ onClose, onSaved }) {
+  const { t } = useTranslation();
   const [cfg, setCfg] = useState(DEFAULT_CONFIG);
   const [saving, setSaving] = useState(false);
 
@@ -256,19 +258,19 @@ function ProactiveConfigModal({ onClose, onSaved }) {
     <div style={s.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={s.modalBox}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={s.modalTitle}>Configuration — Mode Proactif</span>
+          <span style={s.modalTitle}>{t('alerts.configTitle')}</span>
           <button style={{ ...s.btn(), padding: '4px 10px' }} onClick={onClose}>✕</button>
         </div>
 
         {/* Global toggle */}
         <div style={s.section}>
-          <span style={s.sectionTitle}>Surveillance</span>
+          <span style={s.sectionTitle}>{t('alerts.monitoring')}</span>
           <div style={s.row}>
-            <span style={s.label}>Activer le mode proactif</span>
+            <span style={s.label}>{t('alerts.enableProactive')}</span>
             <Toggle active={cfg.enabled} onChange={v => update('enabled', v)} />
           </div>
           <div style={s.row}>
-            <span style={s.label}>Intervalle (minutes)</span>
+            <span style={s.label}>{t('alerts.interval')}</span>
             <input
               style={{ ...s.input, width: '80px' }}
               type="number" min={5} max={1440}
@@ -277,7 +279,7 @@ function ProactiveConfigModal({ onClose, onSaved }) {
             />
           </div>
           <div style={s.row}>
-            <span style={s.label}>Rappel si actif depuis (heures, 0 = désactivé)</span>
+            <span style={s.label}>{t('alerts.reminder')}</span>
             <input
               style={{ ...s.input, width: '80px' }}
               type="number" min={0} max={168}
@@ -289,12 +291,12 @@ function ProactiveConfigModal({ onClose, onSaved }) {
 
         {/* Events */}
         <div style={s.section}>
-          <span style={s.sectionTitle}>Événements surveillés</span>
+          <span style={s.sectionTitle}>{t('alerts.events')}</span>
           {[
-            { key: 'forge.overdue_tasks', label: 'Forge — Tâches en retard' },
-            { key: 'forge.overdue_sprints', label: 'Forge — Sprints dépassés' },
-            { key: 'oria.unread_messages', label: 'Oria — Messages récents non consultés' },
-            { key: 'mempalace.stale_entries', label: 'MemPalace — Entrées sans suite (7j+)' },
+            { key: 'forge.overdue_tasks', label: t('alerts.forgeTasks') },
+            { key: 'forge.overdue_sprints', label: t('alerts.forgeSprints') },
+            { key: 'oria.unread_messages', label: t('alerts.oriaMessages') },
+            { key: 'mempalace.stale_entries', label: t('alerts.mempalaceEntries') },
           ].map(({ key, label }) => {
             const [src, evt] = key.split('.');
             const checked = cfg.events_config?.[src]?.[evt] ?? false;
@@ -314,11 +316,11 @@ function ProactiveConfigModal({ onClose, onSaved }) {
 
         {/* Channels */}
         <div style={s.section}>
-          <span style={s.sectionTitle}>Canaux de notification</span>
+          <span style={s.sectionTitle}>{t('alerts.channels')}</span>
 
           {/* In-app always on */}
           <div style={s.row}>
-            <span style={s.label}>In-app (chat Alertes)</span>
+            <span style={s.label}>{t('alerts.inApp')}</span>
             <input type="checkbox" style={s.checkbox} checked disabled />
           </div>
 
@@ -368,9 +370,9 @@ function ProactiveConfigModal({ onClose, onSaved }) {
         </div>
 
         <div style={s.modalActions}>
-          <button style={s.btn()} onClick={onClose}>Annuler</button>
+          <button style={s.btn()} onClick={onClose}>{t('alerts.cancel')}</button>
           <button style={s.btn('primary')} onClick={save} disabled={saving}>
-            {saving ? 'Sauvegarde…' : 'Sauvegarder'}
+            {saving ? t('alerts.saving') : t('alerts.save')}
           </button>
         </div>
       </div>
@@ -379,6 +381,7 @@ function ProactiveConfigModal({ onClose, onSaved }) {
 }
 
 export default function AlertsView() {
+  const { t } = useTranslation();
   const [alerts, setAlerts] = useState([]);
   const [filter, setFilter] = useState('all');
   const [showConfig, setShowConfig] = useState(false);
@@ -450,7 +453,7 @@ export default function AlertsView() {
 
       <div style={s.header}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={s.title}>Alertes</span>
+          <span style={s.title}>{t('alerts.title')}</span>
           {unread > 0 && (
             <span style={{ background: '#7c3aed', color: '#fff', borderRadius: '10px', fontSize: '11px', fontWeight: 700, padding: '2px 7px' }}>
               {unread}
@@ -460,33 +463,33 @@ export default function AlertsView() {
         <div style={s.headerActions}>
           {enabled && (
             <button style={s.btn()} onClick={manualCheck} disabled={checking}>
-              {checking ? '⏳' : '🔍 Vérifier'}
+              {checking ? '⏳' : t('alerts.check')}
             </button>
           )}
           {pushPerm !== 'unsupported' && pushPerm !== 'denied' && (
             <button
               style={s.btn(pushPerm === 'granted' ? 'primary' : 'default')}
               onClick={handlePushToggle}
-              title={pushPerm === 'granted' ? 'Désactiver les push' : 'Activer les notifications push'}
+              title={pushPerm === 'granted' ? t('alerts.disablePush') : t('alerts.enablePush')}
             >
-              {pushPerm === 'granted' ? '🔔 Push actif' : '🔔 Push off'}
+              {pushPerm === 'granted' ? t('alerts.pushOn') : t('alerts.pushOff')}
             </button>
           )}
-          <button style={s.btn('primary')} onClick={() => setShowConfig(true)}>⚙️ Config</button>
+          <button style={s.btn('primary')} onClick={() => setShowConfig(true)}>{t('alerts.config')}</button>
         </div>
       </div>
 
       {!enabled && (
         <div style={{ padding: '10px 20px', background: '#1e1a0a', borderBottom: '1px solid #3a2a00', fontSize: '13px', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>⚠️</span>
-          <span>Mode proactif désactivé — active-le dans ⚙️ Config pour recevoir des alertes automatiques.</span>
+          <span>{t('alerts.proactiveDisabled')}</span>
         </div>
       )}
 
       <div style={s.filterBar}>
         {['all', 'forge', 'oria', 'mempalace', 'assistant'].map(src => (
           <button key={src} style={s.filterChip(filter === src)} onClick={() => setFilter(src)}>
-            {src === 'all' ? 'Tout' : SOURCE_LABELS[src]}
+            {src === 'all' ? t('alerts.all') : SOURCE_LABELS[src]}
           </button>
         ))}
       </div>
@@ -495,7 +498,7 @@ export default function AlertsView() {
         {filtered.length === 0 ? (
           <div style={s.empty}>
             <span style={{ fontSize: '32px' }}>🔔</span>
-            <span style={{ fontSize: '14px' }}>Aucune alerte{filter !== 'all' ? ` pour ${SOURCE_LABELS[filter]}` : ''}</span>
+            <span style={{ fontSize: '14px' }}>{t('alerts.none')}{filter !== 'all' ? ` ${SOURCE_LABELS[filter]}` : ''}</span>
           </div>
         ) : (
           filtered.map(alert => (
@@ -508,7 +511,7 @@ export default function AlertsView() {
                 {!alert.read && <span style={s.unreadDot} />}
                 <span style={s.sourceBadge(alert.source)}>{SOURCE_LABELS[alert.source] || alert.source}</span>
                 <span style={s.alertTitle}>{alert.title}</span>
-                <span style={s.alertTime}>{timeAgo(alert.created_at)}</span>
+                <span style={s.alertTime}>{timeAgo(alert.created_at, t)}</span>
               </div>
               <div style={s.alertBody}>{alert.body}</div>
             </div>

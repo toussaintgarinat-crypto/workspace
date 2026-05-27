@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getVaultTokens, storeVaultToken, deleteVaultToken, oauthCallback } from '../services/api.js';
 
 const APPS = [
@@ -74,6 +75,7 @@ const s = {
 };
 
 function MPLoginForm({ onConnected }) {
+  const { t } = useTranslation();
   const [url, setUrl]   = useState('http://localhost:8100');
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
@@ -89,7 +91,7 @@ function MPLoginForm({ onConnected }) {
         body: new URLSearchParams({ username: user, password: pass }),
       });
       const data = await r.json();
-      if (!data.access_token) { setErr(data.detail || 'Échec connexion'); return; }
+      if (!data.access_token) { setErr(data.detail || t('connect.connectionFailed')); return; }
       await storeVaultToken('mempalace', data.access_token, data.refresh_token);
       onConnected();
     } catch (e) {
@@ -102,26 +104,27 @@ function MPLoginForm({ onConnected }) {
   return (
     <div>
       <div style={s.field}>
-        <span style={s.label2}>URL MemPalace</span>
+        <span style={s.label2}>{t('connect.mempalaceUrl')}</span>
         <input style={s.input} value={url} onChange={e => setUrl(e.target.value)} />
       </div>
       <div style={s.field}>
-        <span style={s.label2}>Nom d'utilisateur</span>
+        <span style={s.label2}>{t('connect.username')}</span>
         <input style={s.input} value={user} onChange={e => setUser(e.target.value)} placeholder="forge" />
       </div>
       <div style={s.field}>
-        <span style={s.label2}>Mot de passe</span>
+        <span style={s.label2}>{t('connect.password')}</span>
         <input style={s.input} type="password" value={pass} onChange={e => setPass(e.target.value)} />
       </div>
       {err && <div style={s.err}>{err}</div>}
       <button style={s.btn()} onClick={login} disabled={loading}>
-        {loading ? 'Connexion…' : 'Se connecter'}
+        {loading ? t('connect.connecting') : t('connect.connect')}
       </button>
     </div>
   );
 }
 
 function AppCard({ app, connected, onRefresh }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -163,7 +166,7 @@ function AppCard({ app, connected, onRefresh }) {
             <div style={s.appDesc}>{app.desc}</div>
           </div>
         </div>
-        <span style={s.badge(connected)}>{connected ? '✓ Connecté' : 'Non connecté'}</span>
+        <span style={s.badge(connected)}>{connected ? t('connect.connected') : t('connect.notConnected')}</span>
       </div>
 
       {!connected && (
@@ -171,28 +174,26 @@ function AppCard({ app, connected, onRefresh }) {
           {app.keycloak ? (
             <div style={s.row}>
               <button style={s.btn()} onClick={connectPKCE} disabled={busy}>
-                Connexion via Keycloak
+                {t('connect.connectKeycloak')}
               </button>
             </div>
           ) : (
             <>
               <button style={{ ...s.btn('secondary'), marginBottom: '12px' }} onClick={() => setOpen(v => !v)}>
-                {open ? 'Annuler' : 'Entrer les identifiants'}
+                {open ? t('connect.cancel') : t('connect.enterCredentials')}
               </button>
               {open && <MPLoginForm onConnected={() => { setOpen(false); onRefresh(); }} />}
             </>
           )}
           <div style={s.note}>
-            {app.keycloak
-              ? 'Redirige vers Keycloak pour autoriser l\'accès. Le token est chiffré dans le vault.'
-              : 'Connexion directe à l\'API MemPalace. Le token est chiffré AES-256 dans le vault.'}
+            {app.keycloak ? t('connect.keycloakHint') : t('connect.mempalaceHint')}
           </div>
         </>
       )}
 
       {connected && (
         <button style={s.btn('danger')} onClick={disconnect} disabled={busy}>
-          Déconnecter
+          {t('connect.disconnect')}
         </button>
       )}
     </div>
@@ -200,6 +201,7 @@ function AppCard({ app, connected, onRefresh }) {
 }
 
 export default function ConnectView() {
+  const { t } = useTranslation();
   const [vault, setVault]   = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -242,13 +244,13 @@ export default function ConnectView() {
 
   const isConnected = type => vault.some(v => v.app_type === type);
 
-  if (loading) return <div style={{ ...s.wrap, color: '#6b6b6b', paddingTop: '60px', textAlign: 'center' }}>Chargement…</div>;
+  if (loading) return <div style={{ ...s.wrap, color: '#6b6b6b', paddingTop: '60px', textAlign: 'center' }}>{t('connect.loading')}</div>;
 
   return (
     <div style={s.wrap}>
-      <div style={s.h1}>Connexions</div>
+      <div style={s.h1}>{t('connect.title')}</div>
       <div style={s.sub}>
-        Liez vos apps à l'assistant. Les tokens sont chiffrés AES-256 dans le vault local.
+        {t('connect.subtitle')}
       </div>
       <div style={s.grid}>
         {APPS.map(app => (

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import Tooltip from '../Tooltip.jsx';
 import { s } from './styles.js';
 
@@ -8,13 +9,14 @@ export default function ChatHeader({
   compareMode, onToggleCompare,
   activePersonality,
 }) {
+  const { t } = useTranslation();
   return (
     <div style={s.header}>
-      <button style={s.toggleBtn} onClick={() => setShowPanel(!showPanel)} title="Sessions">☰</button>
-      <span style={s.sessionTitleDisplay}>{currentTitle || 'Conversation'}</span>
+      <button style={s.toggleBtn} onClick={() => setShowPanel(!showPanel)} title={t('chat.sessions')}>☰</button>
+      <span style={s.sessionTitleDisplay}>{currentTitle || t('chat.defaultTitle')}</span>
 
       {activePersonality && activePersonality.key !== 'default' && (
-        <Tooltip label={`Mode : ${activePersonality.label} — ${activePersonality.description}`} position="bottom">
+        <Tooltip label={t('chat.mode', { label: activePersonality.label, description: activePersonality.description })} position="bottom">
           <span style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -33,7 +35,7 @@ export default function ChatHeader({
         </Tooltip>
       )}
 
-      <Tooltip label={compareMode ? 'Désactiver la comparaison' : 'Comparer des modèles côte-à-côte'} position="bottom">
+      <Tooltip label={compareMode ? t('chat.disableCompare') : t('chat.compareModels')} position="bottom">
         <button
           style={{
             marginLeft: activePersonality && activePersonality.key !== 'default' ? '8px' : 'auto',
@@ -58,11 +60,12 @@ export default function ChatHeader({
 }
 
 // Sélecteur de modèle (sous la zone messages, avant l'input).
-export function ModelSelector({ availableModels, selectedModel, onSelectModel }) {
+export function ModelSelector({ availableModels, selectedModel, onSelectModel, config }) {
+  const { t } = useTranslation();
   if (!availableModels.length) return null;
   return (
     <div style={{ padding: '4px 20px 0', background: '#0f0f0f', display: 'flex', alignItems: 'center', gap: '8px' }}>
-      <span style={{ fontSize: '11px', color: '#555', flexShrink: 0 }}>Modèle</span>
+      <span style={{ fontSize: '11px', color: '#555', flexShrink: 0 }}>{t('chat.model')}</span>
       <select
         value={selectedModel}
         onChange={e => onSelectModel(e.target.value)}
@@ -78,7 +81,7 @@ export function ModelSelector({ availableModels, selectedModel, onSelectModel })
           flex: 1,
         }}
       >
-        <option value="">Défaut ({'{'}config serveur{'}'}</option>
+        <option value="">{t('chat.defaultModel', { config: config || 'serveur' })}</option>
         {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
     </div>

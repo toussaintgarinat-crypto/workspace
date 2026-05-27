@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mempalaceWings, mempalaceEntries, mempalaceSearch, mempalaceExport, mempalaceImport, mempalaceExportFull, mempalaceImportFull } from '../services/api.js';
 
 const IPCRA = [
@@ -287,6 +288,7 @@ const s = {
 };
 
 export default function MemoryView() {
+  const { t } = useTranslation();
   const [connected, setConnected] = useState(null); // null=loading, true, false
   const [wings, setWings] = useState([]);
   const [activeWing, setActiveWing] = useState(null);
@@ -460,7 +462,7 @@ export default function MemoryView() {
       <div style={s.root}>
         <div style={s.disconnected}>
           <span style={{ fontSize: '24px' }}>🧠</span>
-          <span style={{ color: '#555', fontSize: '13px' }}>Chargement…</span>
+          <span style={{ color: '#555', fontSize: '13px' }}>{t('memory.loading')}</span>
         </div>
       </div>
     );
@@ -471,9 +473,9 @@ export default function MemoryView() {
       <div style={s.root}>
         <div style={s.disconnected}>
           <span style={{ fontSize: '32px' }}>🧠</span>
-          <span style={{ fontSize: '14px', color: '#888' }}>MemPalace non connecté</span>
+          <span style={{ fontSize: '14px', color: '#888' }}>{t('memory.notConnected')}</span>
           <span style={s.connectHint}>
-            Configurez la connexion dans <strong>🔗 Connexions</strong>
+            {t('memory.configureConnection')}
           </span>
         </div>
       </div>
@@ -487,8 +489,8 @@ export default function MemoryView() {
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span>🧠</span> Mémoire
             {degradedSearch && (
-              <span style={s.degradedBadge} title="Qdrant indisponible — recherche par mots-clés">
-                🔍 Recherche dégradée
+              <span style={s.degradedBadge} title={t('memory.degradedSearch')}>
+                {t('memory.degradedSearch')}
               </span>
             )}
           </span>
@@ -496,32 +498,28 @@ export default function MemoryView() {
             <button
               style={s.importBtn}
               onClick={() => setImportModal(true)}
-              title="Importer des mémoires (JSON)"
             >
-              📥 Import
+              {t('memory.import')}
             </button>
             <button
               style={s.importBtn}
               onClick={() => setImportFullModal(true)}
-              title="Importer une sauvegarde complète (ZIP)"
             >
-              📦 Import ZIP
+              {t('memory.importZip')}
             </button>
             <button
               style={s.exportBtn}
               onClick={() => handleExport('json')}
               disabled={exporting}
-              title="Exporter en JSON"
             >
-              {exporting ? '…' : '📤 Export'}
+              {exporting ? '…' : t('memory.export')}
             </button>
             <button
               style={s.exportBtn}
               onClick={handleExportFull}
               disabled={exportingFull}
-              title="Exporter sauvegarde complète (drawers + fichiers)"
             >
-              {exportingFull ? '…' : '📦 ZIP'}
+              {exportingFull ? '…' : t('memory.exportZip')}
             </button>
           </span>
         </p>
@@ -529,7 +527,7 @@ export default function MemoryView() {
           <input
             ref={inputRef}
             style={s.searchInput}
-            placeholder={activeWing ? `Rechercher dans ${activeWing}…` : 'Recherche sémantique…'}
+            placeholder={activeWing ? t('memory.searchInWing', { wing: activeWing }) : t('memory.semanticSearch')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -543,10 +541,9 @@ export default function MemoryView() {
       {importModal && (
         <div style={s.modal} onClick={closeImport}>
           <div style={s.modalBox} onClick={e => e.stopPropagation()}>
-            <p style={s.modalTitle}>📥 Importer des mémoires</p>
+            <p style={s.modalTitle}>{t('memory.importTitle')}</p>
             <p style={s.modalSub}>
-              Sélectionnez un fichier JSON exporté depuis MemPalace.<br />
-              Les entrées en double (même contenu) seront ignorées.
+              {t('memory.selectJsonFile')}
             </p>
             <input
               ref={fileRef}
@@ -570,14 +567,14 @@ export default function MemoryView() {
               </p>
             )}
             <div style={s.modalActions}>
-              <button style={s.modalCancel} onClick={closeImport}>Fermer</button>
+              <button style={s.modalCancel} onClick={closeImport}>{t('memory.close')}</button>
               {!importResult && (
                 <button
                   style={{ ...s.modalConfirm, opacity: importPreview?.entries?.length ? 1 : 0.4 }}
                   disabled={!importPreview?.entries?.length || importing}
                   onClick={handleImportConfirm}
                 >
-                  {importing ? 'Import…' : 'Importer'}
+                  {importing ? '…' : t('memory.importBtn')}
                 </button>
               )}
             </div>
@@ -588,10 +585,9 @@ export default function MemoryView() {
       {importFullModal && (
         <div style={s.modal} onClick={closeImportFull}>
           <div style={s.modalBox} onClick={e => e.stopPropagation()}>
-            <p style={s.modalTitle}>📦 Import ZIP complet</p>
+            <p style={s.modalTitle}>{t('memory.importZipTitle')}</p>
             <p style={s.modalSub}>
-              Sélectionnez un fichier <code>.zip</code> exporté via "Export ZIP".<br />
-              Drawers et fichiers originaux seront restaurés. Les doublons sont ignorés.
+              {t('memory.importZip')}
             </p>
             <input
               ref={fileFullRef}
@@ -616,14 +612,14 @@ export default function MemoryView() {
               </p>
             )}
             <div style={s.modalActions}>
-              <button style={s.modalCancel} onClick={closeImportFull}>Fermer</button>
+              <button style={s.modalCancel} onClick={closeImportFull}>{t('memory.close')}</button>
               {!importFullResult && (
                 <button
                   style={{ ...s.modalConfirm, opacity: importFullFile ? 1 : 0.4 }}
                   disabled={!importFullFile || importingFull}
                   onClick={handleImportFullConfirm}
                 >
-                  {importingFull ? 'Import…' : 'Importer'}
+                  {importingFull ? '…' : t('memory.importBtn')}
                 </button>
               )}
             </div>
@@ -652,30 +648,30 @@ export default function MemoryView() {
           {!activeWing && searchResults === null ? (
             <div style={s.empty}>
               <span style={{ fontSize: '24px' }}>←</span>
-              <span>Sélectionnez une wing</span>
+              <span>{t('memory.selectWing')}</span>
             </div>
           ) : loadingEntries ? (
             <div style={s.empty}>
-              <span>Chargement…</span>
+              <span>{t('memory.loading')}</span>
             </div>
           ) : (
             <>
               <div style={s.entriesList}>
                 {searchResults !== null && (
                   <div style={{ fontSize: '11px', color: '#555', paddingBottom: '4px' }}>
-                    {searchResults.length} résultat{searchResults.length !== 1 ? 's' : ''} pour «{searchQuery}»
+                    {t('memory.results', { count: searchResults.length, query: searchQuery })}
                     <button
                       onClick={() => { setSearchResults(null); setSearchQuery(''); setDegradedSearch(false); }}
                       style={{ marginLeft: '8px', background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontSize: '11px' }}
                     >
-                      ✕ effacer
+                      {t('memory.clearSearch')}
                     </button>
                   </div>
                 )}
                 {displayItems.length === 0 ? (
                   <div style={{ ...s.empty, paddingTop: '40px' }}>
                     <span style={{ fontSize: '20px' }}>🕳️</span>
-                    <span>{searchResults !== null ? 'Aucun résultat' : 'Wing vide'}</span>
+                    <span>{searchResults !== null ? t('memory.noResults') : t('memory.wingEmpty')}</span>
                   </div>
                 ) : (
                   displayItems.map((item, i) => (

@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "@workspace/shared-ui": "file:../../shared-ui",
+    "i18next": "^26.0.0",
+    "react-i18next": "^15.0.0",
     "@livekit/components-react": "^2.6.0",
     "@livekit/components-styles": "^1.0.8",
     "keycloak-js": "^26.2.4",

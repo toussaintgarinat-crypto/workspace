@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import MainLayout from './components/MainLayout.jsx'
 import EasySetupWizard from './components/EasySetupWizard.jsx'
@@ -7,6 +8,7 @@ import { api } from './services/api.js'
 import { initMatrixClient, startMatrixClient, stopMatrixClient } from './services/matrixClient.js'
 
 function AppInner() {
+  const { t } = useTranslation()
   const { user, loading, logout, matrixCreds, refreshUser } = useAuth()
 
   useEffect(() => {
@@ -20,7 +22,7 @@ function AppInner() {
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#6b6b80' }}>
-      Chargement…
+      {t('app.loading')}
     </div>
   )
 

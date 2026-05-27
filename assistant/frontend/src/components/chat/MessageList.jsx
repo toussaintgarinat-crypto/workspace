@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import MessageBubble from './MessageBubble.jsx';
 import { s, SUGGESTIONS } from './styles.js';
 
@@ -11,6 +12,7 @@ export default function MessageList({
   onUploadCancel,
   onOpenArtifact,
 }) {
+  const { t } = useTranslation();
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -20,7 +22,7 @@ export default function MessageList({
   if (isEmpty) {
     return (
       <div style={s.emptyState}>
-        <p style={s.emptyTitle}>Bonjour, comment puis-je vous aider ?</p>
+        <p style={s.emptyTitle}>{t('chat.greeting')}</p>
         <div style={s.suggestions}>
           {SUGGESTIONS.map((sug) => (
             <button key={sug} style={s.suggestionBtn} onClick={() => onSuggestion(sug)}>

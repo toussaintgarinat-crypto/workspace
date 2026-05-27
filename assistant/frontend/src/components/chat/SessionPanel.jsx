@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { s, STORAGE_MODES, relativeDate } from './styles.js';
 import { useFolders } from '../../hooks/useFolders.js';
 
@@ -14,6 +15,7 @@ export default function SessionPanel({
   searchQuery, onSearchChange, searchResults, searchLoading,
   storageMode, onStorageModeChange,
 }) {
+  const { t } = useTranslation();
   const {
     folders, selectedFolder, setSelectedFolder, convMeta,
     createFolder, removeFolder, moveToFolder, addTag, removeTag,
@@ -55,7 +57,7 @@ export default function SessionPanel({
     <div style={s.panelInner}>
       <div style={s.panelHeader}>
         <button style={s.newBtn} onClick={onNew}>
-          <span>＋</span> Nouvelle conversation
+          {t('chat.newConversation')}
         </button>
       </div>
 
@@ -65,7 +67,7 @@ export default function SessionPanel({
           style={s.searchInput}
           value={searchQuery}
           onChange={e => onSearchChange(e.target.value)}
-          placeholder="Rechercher…"
+          placeholder={t('common.search')}
         />
       </div>
 
@@ -76,7 +78,7 @@ export default function SessionPanel({
             style={s.folderPill(selectedFolder === null)}
             onClick={() => setSelectedFolder(null)}
           >
-            Tout
+            {t('chat.all')}
           </button>
           {folders.map(f => (
             <span key={f.id} style={s.folderPillWrap}>
@@ -89,7 +91,7 @@ export default function SessionPanel({
               <button
                 style={s.folderPillX}
                 onClick={e => { e.stopPropagation(); removeFolder(f.id).catch(() => {}); }}
-                title="Supprimer ce dossier"
+                title={t('chat.deleteFolder')}
               >
                 ×
               </button>
@@ -102,13 +104,13 @@ export default function SessionPanel({
                 style={s.folderNameInput}
                 value={newFolderName}
                 onChange={e => setNewFolderName(e.target.value)}
-                placeholder="Nom…"
+                placeholder={t('chat.folderName')}
                 onBlur={() => { if (!newFolderName.trim()) setShowNewFolder(false); }}
               />
               <button type="submit" style={s.folderPill(false)}>✓</button>
             </form>
           ) : (
-            <button style={s.folderAddBtn} onClick={() => setShowNewFolder(true)} title="Nouveau dossier">
+            <button style={s.folderAddBtn} onClick={() => setShowNewFolder(true)} title={t('chat.newFolder')}>
               ＋
             </button>
           )}
@@ -147,7 +149,7 @@ export default function SessionPanel({
                         key={tag}
                         style={s.tagChip(tagColor(tag))}
                         onClick={() => removeTag(session.id, tag).catch(() => {})}
-                        title="Cliquer pour supprimer"
+                        title={t('chat.clickToDelete')}
                       >
                         {tag}
                       </span>
@@ -156,7 +158,7 @@ export default function SessionPanel({
                       <button
                         style={s.tagAddBtn}
                         onClick={() => { setTagInputFor(session.id); setTagDraft(''); }}
-                        title="Ajouter un tag"
+                        title={t('chat.addTag')}
                       >
                         +
                       </button>
@@ -190,7 +192,7 @@ export default function SessionPanel({
                     <button
                       style={s.folderIconBtn}
                       onClick={() => setFolderDropFor(p => p === session.id ? null : session.id)}
-                      title="Déplacer dans un dossier"
+                      title={t('chat.moveToFolder')}
                     >
                       📁
                     </button>
@@ -200,7 +202,7 @@ export default function SessionPanel({
                           style={s.folderDropItem(!meta.folder_id)}
                           onClick={() => { moveToFolder(session.id, null).catch(() => {}); setFolderDropFor(null); }}
                         >
-                          Aucun dossier
+                          {t('chat.noFolder')}
                         </div>
                         {folders.map(f => (
                           <div
@@ -219,7 +221,7 @@ export default function SessionPanel({
                   <button
                     style={s.deleteBtn}
                     onClick={() => onDelete(session.id)}
-                    title="Supprimer"
+                    title={t('common.delete')}
                   >
                     ×
                   </button>
@@ -231,12 +233,12 @@ export default function SessionPanel({
 
         {searchResults !== null && searchResults.length === 0 && (
           <div style={{ padding: '16px 10px', color: '#444', fontSize: '12px', textAlign: 'center' }}>
-            Aucun résultat
+            {t('chat.noResults')}
           </div>
         )}
         {isCloud && selectedFolder !== null && listToShow.length === 0 && searchResults === null && (
           <div style={{ padding: '16px 10px', color: '#444', fontSize: '12px', textAlign: 'center' }}>
-            Ce dossier est vide
+            {t('chat.folderEmpty')}
           </div>
         )}
       </div>

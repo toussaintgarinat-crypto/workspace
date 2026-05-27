@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   gatewayListModels, gatewayAddModel, gatewayDeleteModel,
   gatewayListKeys, gatewayAddKey, gatewayDeleteKey,
@@ -110,6 +111,7 @@ const s = {
 // ── Models tab ────────────────────────────────────────────────────────────────
 
 function ModelsTab() {
+  const { t } = useTranslation();
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
@@ -177,9 +179,9 @@ function ModelsTab() {
   return (
     <div style={s.section}>
       {loading ? (
-        <p style={s.empty}>Chargement…</p>
+        <p style={s.empty}>{t('gateway.loading')}</p>
       ) : models.length === 0 ? (
-        <p style={s.empty}>Aucun modèle configuré.</p>
+        <p style={s.empty}>{t('gateway.noModels')}</p>
       ) : (
         models.map((m) => {
           const id = m.model_info?.id || m.model_name;
@@ -194,7 +196,7 @@ function ModelsTab() {
                 onClick={() => handleDelete(id)}
                 disabled={deleting === id}
               >
-                {deleting === id ? '…' : 'Supprimer'}
+                {deleting === id ? '…' : t('gateway.delete')}
               </button>
             </div>
           );
@@ -202,15 +204,15 @@ function ModelsTab() {
       )}
 
       <div style={s.addCard}>
-        <p style={s.addTitle}>Ajouter un modèle</p>
+        <p style={s.addTitle}>{t('gateway.addModel')}</p>
 
         <div style={s.row}>
           <div style={{ ...s.fieldRow, flex: 1 }}>
-            <span style={s.fieldLabel}>Nom logique</span>
+            <span style={s.fieldLabel}>{t('gateway.logicalName')}</span>
             <input style={s.input} placeholder="openai/gpt-5" value={modelName} onChange={(e) => setModelName(e.target.value)} />
           </div>
           <div style={{ ...s.fieldRow, flex: 1 }}>
-            <span style={s.fieldLabel}>Provider</span>
+            <span style={s.fieldLabel}>{t('gateway.provider')}</span>
             <select style={s.select} value={providerIdx} onChange={(e) => onProviderChange(Number(e.target.value))}>
               {PROVIDERS.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
             </select>
@@ -218,27 +220,27 @@ function ModelsTab() {
         </div>
 
         <div style={s.fieldRow}>
-          <span style={s.fieldLabel}>ID modèle chez le provider</span>
+          <span style={s.fieldLabel}>{t('gateway.providerModelId')}</span>
           <input style={s.input} placeholder="openai/gpt-5 ou llama3.2" value={modelId} onChange={(e) => setModelId(e.target.value)} />
         </div>
 
         {(provider.label === 'Ollama Mac' || provider.label === 'Ollama HP') && (
           <div style={s.fieldRow}>
-            <span style={s.fieldLabel}>URL Ollama</span>
+            <span style={s.fieldLabel}>{t('gateway.ollamaUrl')}</span>
             <input style={s.input} placeholder="http://host.docker.internal:11434" value={apiBase} onChange={(e) => setApiBase(e.target.value)} />
           </div>
         )}
 
         {provider.needsKey && (
           <div style={s.fieldRow}>
-            <span style={s.fieldLabel}>Clé API</span>
+            <span style={s.fieldLabel}>{t('gateway.apiKey')}</span>
             <input style={s.input} type="password" placeholder="sk-or-…" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
           </div>
         )}
 
         {error && <p style={s.error}>{error}</p>}
         <button style={s.addBtn(adding)} onClick={handleAdd} disabled={adding}>
-          {adding ? 'Ajout…' : 'Ajouter'}
+          {adding ? t('gateway.adding') : t('gateway.add')}
         </button>
       </div>
     </div>
@@ -248,6 +250,7 @@ function ModelsTab() {
 // ── Keys tab ──────────────────────────────────────────────────────────────────
 
 function KeysTab() {
+  const { t } = useTranslation();
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
@@ -306,9 +309,9 @@ function KeysTab() {
   return (
     <div style={s.section}>
       {loading ? (
-        <p style={s.empty}>Chargement…</p>
+        <p style={s.empty}>{t('gateway.loading')}</p>
       ) : keys.length === 0 ? (
-        <p style={s.empty}>Aucune clé configurée.</p>
+        <p style={s.empty}>{t('gateway.noKeys')}</p>
       ) : (
         keys.map((k) => {
           const key = k.token || k.key || k.api_key || '';
@@ -325,7 +328,7 @@ function KeysTab() {
                 onClick={() => handleDelete(key)}
                 disabled={deleting === key}
               >
-                {deleting === key ? '…' : 'Supprimer'}
+                {deleting === key ? '…' : t('gateway.delete')}
               </button>
             </div>
           );
@@ -333,19 +336,19 @@ function KeysTab() {
       )}
 
       <div style={s.addCard}>
-        <p style={s.addTitle}>Créer une clé virtuelle</p>
+        <p style={s.addTitle}>{t('gateway.createKey')}</p>
 
         <div style={s.row}>
           <div style={{ ...s.fieldRow, flex: 2 }}>
-            <span style={s.fieldLabel}>Alias</span>
+            <span style={s.fieldLabel}>{t('gateway.alias')}</span>
             <input style={s.input} placeholder="monapp" value={alias} onChange={(e) => setAlias(e.target.value)} />
           </div>
           <div style={{ ...s.fieldRow, flex: 1 }}>
-            <span style={s.fieldLabel}>Budget ($)</span>
+            <span style={s.fieldLabel}>{t('gateway.budget')}</span>
             <input style={s.input} type="number" min="0" step="1" value={budget} onChange={(e) => setBudget(e.target.value)} />
           </div>
           <div style={{ ...s.fieldRow, flex: 1 }}>
-            <span style={s.fieldLabel}>Durée</span>
+            <span style={s.fieldLabel}>{t('gateway.duration')}</span>
             <select style={s.select} value={duration} onChange={(e) => setDuration(e.target.value)}>
               {DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
@@ -353,20 +356,20 @@ function KeysTab() {
         </div>
 
         <div style={s.fieldRow}>
-          <span style={s.fieldLabel}>Modèles autorisés (vide = tous)</span>
+          <span style={s.fieldLabel}>{t('gateway.allowedModels')}</span>
           <input style={s.input} placeholder="openai/gpt-4o, ollama/llama3.2" value={models} onChange={(e) => setModels(e.target.value)} />
         </div>
 
         {newKey && (
           <div style={{ ...s.fieldRow, marginBottom: '10px' }}>
-            <span style={s.fieldLabel}>Clé générée — copiez-la maintenant</span>
+            <span style={s.fieldLabel}>{t('gateway.keyGenerated')}</span>
             <input style={{ ...s.input, color: '#10b981', fontFamily: 'monospace' }} readOnly value={newKey} onClick={(e) => e.target.select()} />
           </div>
         )}
 
         {error && <p style={s.error}>{error}</p>}
         <button style={s.addBtn(adding)} onClick={handleAdd} disabled={adding}>
-          {adding ? 'Création…' : 'Créer'}
+          {adding ? t('gateway.creating') : t('gateway.create')}
         </button>
       </div>
     </div>
@@ -376,18 +379,19 @@ function KeysTab() {
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export default function GatewayView() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState('models');
 
   return (
     <div style={s.container}>
       <div style={s.header}>
-        <h2 style={s.title}>Gateway IA</h2>
-        <p style={s.desc}>Gérez les modèles et les clés virtuelles du proxy LiteLLM</p>
+        <h2 style={s.title}>{t('gateway.title')}</h2>
+        <p style={s.desc}>{t('gateway.subtitle')}</p>
       </div>
 
       <div style={s.tabs}>
-        <button style={s.tab(tab === 'models')} onClick={() => setTab('models')}>Modèles</button>
-        <button style={s.tab(tab === 'keys')} onClick={() => setTab('keys')}>Clés virtuelles</button>
+        <button style={s.tab(tab === 'models')} onClick={() => setTab('models')}>{t('gateway.models')}</button>
+        <button style={s.tab(tab === 'keys')} onClick={() => setTab('keys')}>{t('gateway.virtualKeys')}</button>
       </div>
 
       {tab === 'models' ? <ModelsTab /> : <KeysTab />}

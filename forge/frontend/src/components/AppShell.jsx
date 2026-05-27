@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { sessions as sessionsApi } from '../services/api'
 import Sidebar from '../views/WorkspaceView/Sidebar'
 import SettingsPanel from '../views/WorkspaceView/SettingsPanel'
+import LanguagePicker from './LanguagePicker'
 import styles from './AppShell.module.css'
 import { DegradedBanner } from '@workspace/shared-ui/components'
 
@@ -77,6 +78,8 @@ export default function AppShell({ children }) {
       </main>
 
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+      <LanguagePicker style={{ position: 'fixed', bottom: 12, left: sidebarCollapsed ? 12 : 220, zIndex: 100 }} />
     </div>
   )
 }

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { isEnabled, getUser, logout } from './services/keycloak.js';
 import { registerServiceWorker, isPushSupported, requestPushPermission } from './services/push.js';
 import InstallBanner from './components/InstallBanner.jsx';
+import LanguagePicker from './components/LanguagePicker.jsx';
 import { DegradedBanner } from '@workspace/shared-ui/components';
 import ChatView from './views/ChatView.jsx';
 import ConnectView from './views/ConnectView.jsx';
@@ -75,6 +77,7 @@ const s = {
 };
 
 export default function App() {
+  const { t } = useTranslation();
   const [view, setView] = useState('chat');
   const [unreadAlerts, setUnreadAlerts] = useState(0);
 
@@ -108,49 +111,49 @@ export default function App() {
         <button
           style={s.navBtn(view === 'chat')}
           onClick={() => setView('chat')}
-          title="Chat"
+          title={t('nav.chat')}
         >
           💬
         </button>
         <button
           style={s.navBtn(view === 'connections')}
           onClick={() => setView('connections')}
-          title="Connexions"
+          title={t('nav.connections')}
         >
           🔗
         </button>
         <button
           style={s.navBtn(view === 'gateway')}
           onClick={() => setView('gateway')}
-          title="Gateway IA"
+          title={t('nav.gateway')}
         >
           ⚡
         </button>
         <button
           style={s.navBtn(view === 'memory')}
           onClick={() => setView('memory')}
-          title="Mémoire"
+          title={t('nav.memory')}
         >
           🧠
         </button>
         <button
           style={s.navBtn(view === 'swarm')}
           onClick={() => setView('swarm')}
-          title="Swarm Mode"
+          title={t('nav.swarm')}
         >
           🤖
         </button>
         <button
           style={s.navBtn(view === 'voice')}
           onClick={() => setView('voice')}
-          title="Voice I/O"
+          title={t('nav.voice')}
         >
           🎙️
         </button>
         <button
           style={{ ...s.navBtn(view === 'alerts'), position: 'relative' }}
           onClick={() => setView('alerts')}
-          title="Alertes proactives"
+          title={t('nav.alerts')}
         >
           🔔
           {unreadAlerts > 0 && (
@@ -177,21 +180,21 @@ export default function App() {
         <button
           style={s.navBtn(view === 'persona')}
           onClick={() => setView('persona')}
-          title="Mon profil"
+          title={t('nav.persona')}
         >
           🎭
         </button>
         <button
           style={s.navBtn(view === 'scheduled')}
           onClick={() => setView('scheduled')}
-          title="Prompts planifiés"
+          title={t('nav.scheduled')}
         >
           ⏰
         </button>
         <button
           style={s.navBtn(view === 'calendar')}
           onClick={() => setView('calendar')}
-          title="Calendrier"
+          title={t('nav.calendar')}
         >
           📅
         </button>
@@ -199,7 +202,7 @@ export default function App() {
           <button
             style={{ ...s.navBtn(view === 'admin'), marginTop: isEnabled() ? undefined : 'auto' }}
             onClick={() => setView('admin')}
-            title="Admin"
+            title={t('nav.admin')}
           >
             ⚙
           </button>
@@ -208,11 +211,14 @@ export default function App() {
           <button
             style={{ ...s.navBtn(false), marginTop: 'auto' }}
             onClick={logout}
-            title={`Déconnexion — ${getUser()?.preferred_username ?? ''}`}
+            title={t('nav.logout', { user: getUser()?.preferred_username ?? '' })}
           >
             👤
           </button>
         )}
+        <div style={{ marginTop: '8px', paddingBottom: '4px' }}>
+          <LanguagePicker />
+        </div>
       </nav>
       <main style={s.main}>
         <DegradedBanner

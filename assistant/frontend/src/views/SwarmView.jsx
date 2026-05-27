@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const STATUSES = ['backlog', 'ready', 'running', 'review', 'done'];
-
-const COL_LABEL = { backlog: 'Backlog', ready: 'Prêt', running: 'En cours', review: 'Review', done: 'Terminé' };
 
 const COL_STATUSES = {
   backlog:  ['backlog'],
@@ -45,6 +44,7 @@ function relTime(iso) {
 // ── Task card ─────────────────────────────────────────────────────────────────
 
 function TaskCard({ task, onCancel, onDone, onLog }) {
+  const { t } = useTranslation();
   const isRunning   = task.status === 'running';
   const isReview    = task.status === 'review';
   const isError     = task.status === 'error';
@@ -93,7 +93,7 @@ function TaskCard({ task, onCancel, onDone, onLog }) {
         }} />
         {isRunning && (
           <span style={{ fontSize: '11px', color: '#f59e0b', animation: 'pulse 1.5s infinite' }}>
-            Agent en cours…
+            {t('swarm.agentRunning')}
           </span>
         )}
         {!isRunning && (
@@ -113,7 +113,7 @@ function TaskCard({ task, onCancel, onDone, onLog }) {
                 color: '#10b981', cursor: 'pointer',
               }}
             >
-              ✓ Approuver
+              {t('swarm.approve')}
             </button>
           )}
           {hasLog && (
@@ -125,7 +125,7 @@ function TaskCard({ task, onCancel, onDone, onLog }) {
                 color: '#a78bfa', cursor: 'pointer',
               }}
             >
-              📄 Log
+              {t('swarm.log')}
             </button>
           )}
           {canCancel && (
@@ -148,7 +148,7 @@ function TaskCard({ task, onCancel, onDone, onLog }) {
 
 // ── Column ────────────────────────────────────────────────────────────────────
 
-function KanbanColumn({ colKey, tasks, onCancel, onDone, onLog }) {
+function KanbanColumn({ colKey, label, tasks, onCancel, onDone, onLog }) {
   const count = tasks.length;
   return (
     <div style={{
@@ -165,7 +165,7 @@ function KanbanColumn({ colKey, tasks, onCancel, onDone, onLog }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexShrink: 0 }}>
         <span style={{ fontSize: '12px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {COL_LABEL[colKey]}
+          {label}
         </span>
         {count > 0 && (
           <span style={{
@@ -193,6 +193,7 @@ function KanbanColumn({ colKey, tasks, onCancel, onDone, onLog }) {
 // ── Create form ───────────────────────────────────────────────────────────────
 
 function CreateForm({ onClose, onCreate }) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [role, setRole] = useState('builder');
   const [instructions, setInstructions] = useState('');
@@ -241,7 +242,7 @@ function CreateForm({ onClose, onCreate }) {
           <input
             value={title}
             onChange={e => setTitle(e.target.value)}
-            placeholder="Titre de la tâche…"
+            placeholder={t('swarm.taskTitle')}
             style={{ ...inputStyle, flex: 1 }}
             autoFocus
           />
@@ -260,7 +261,7 @@ function CreateForm({ onClose, onCreate }) {
         <textarea
           value={instructions}
           onChange={e => setInstructions(e.target.value)}
-          placeholder="Instructions pour l'agent…"
+          placeholder={t('swarm.instructions')}
           rows={3}
           style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
         />
@@ -273,7 +274,7 @@ function CreateForm({ onClose, onCreate }) {
               background: 'transparent', border: '1px solid #333', color: '#6b6b6b', cursor: 'pointer',
             }}
           >
-            Annuler
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
@@ -285,7 +286,7 @@ function CreateForm({ onClose, onCreate }) {
               opacity: (!title.trim() || !instructions.trim()) ? 0.5 : 1,
             }}
           >
-            {loading ? 'Création…' : 'Lancer l\'agent'}
+            {loading ? t('swarm.creating') : t('swarm.launch')}
           </button>
         </div>
       </form>
@@ -296,6 +297,7 @@ function CreateForm({ onClose, onCreate }) {
 // ── Log modal ─────────────────────────────────────────────────────────────────
 
 function LogModal({ task, onClose }) {
+  const { t } = useTranslation();
   return (
     <div
       onClick={onClose}
@@ -333,7 +335,7 @@ function LogModal({ task, onClose }) {
           fontSize: '13px', color: '#c9d1d9', lineHeight: 1.6,
           whiteSpace: 'pre-wrap', fontFamily: 'monospace',
         }}>
-          {task.log || '(aucun log)'}
+          {task.log || t('swarm.noLog')}
         </div>
       </div>
     </div>
@@ -343,6 +345,14 @@ function LogModal({ task, onClose }) {
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export default function SwarmView() {
+  const { t } = useTranslation();
+  const COL_LABEL = {
+    backlog: t('swarm.backlog'),
+    ready: t('swarm.ready'),
+    running: t('swarm.inProgress'),
+    review: t('swarm.review'),
+    done: t('swarm.done'),
+  };
   const [tasks, setTasks] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [logTask, setLogTask] = useState(null);
@@ -402,7 +412,7 @@ export default function SwarmView() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 600, color: '#e5e5e5' }}>🤖 Swarm</span>
+          <span style={{ fontSize: '15px', fontWeight: 600, color: '#e5e5e5' }}>{t('swarm.title')}</span>
           {runningCount > 0 && (
             <span style={{
               fontSize: '11px', color: '#f59e0b',
@@ -410,7 +420,7 @@ export default function SwarmView() {
               borderRadius: '10px', padding: '2px 8px',
               animation: 'pulse 1.5s infinite',
             }}>
-              {runningCount} actif{runningCount > 1 ? 's' : ''}
+              {runningCount} {runningCount > 1 ? t('swarm.activeMany') : t('swarm.activeOne')}
             </span>
           )}
         </div>
@@ -422,7 +432,7 @@ export default function SwarmView() {
             color: '#fff', cursor: 'pointer', fontWeight: 500,
           }}
         >
-          {showForm ? '✕ Fermer' : '+ Nouvelle tâche'}
+          {showForm ? t('swarm.close') : t('swarm.newTask')}
         </button>
       </div>
 
@@ -438,6 +448,7 @@ export default function SwarmView() {
           <KanbanColumn
             key={s}
             colKey={s}
+            label={COL_LABEL[s]}
             tasks={byCol[s]}
             onCancel={handleCancel}
             onDone={handleDone}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '../services/api.js';
 import { getToken, refreshIfNeeded } from '../services/keycloak.js';
 
@@ -153,6 +154,7 @@ function fmtBytes(kb) {
 }
 
 export default function AdminView() {
+  const { t } = useTranslation();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -211,7 +213,7 @@ export default function AdminView() {
     const ctrl = new AbortController();
     updateAbortRef.current = ctrl;
 
-    setUpdateState({ status: 'pending', message: 'Envoi de la requête…', progress: 5 });
+    setUpdateState({ status: 'pending', message: t('admin.updateSending'), progress: 5 });
 
     try {
       const r = await apiFetch(`${API}/admin/update`, {
@@ -220,7 +222,7 @@ export default function AdminView() {
         body: JSON.stringify({ target_tag: targetTag }),
       });
       if (r.status === 503) {
-        setUpdateState({ status: 'error', message: 'Module updater non installé.', progress: 0 });
+        setUpdateState({ status: 'error', message: t('admin.updaterNotInstalled'), progress: 0 });
         return;
       }
       if (!r.ok) {
@@ -265,31 +267,31 @@ export default function AdminView() {
   return (
     <div style={s.root}>
       <div style={s.header}>
-        <h2 style={s.title}>⚙ Admin</h2>
+        <h2 style={s.title}>{t('admin.title')}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {lastRefresh && (
             <span style={{ fontSize: '11px', color: '#555' }}>
               {lastRefresh.toLocaleTimeString()}
             </span>
           )}
-          <button style={s.refreshBtn} onClick={load}>↻ Rafraîchir</button>
+          <button style={s.refreshBtn} onClick={load}>{t('admin.refresh')}</button>
         </div>
       </div>
 
       <div style={s.body}>
-        {loading && !data && <div style={s.spinner}>Chargement…</div>}
+        {loading && !data && <div style={s.spinner}>{t('admin.loading')}</div>}
 
         {error && (
           <div style={s.errorBanner}>
             {error === 'Admin role required'
-              ? '🔒 Accès refusé — rôle Keycloak "admin" requis.'
-              : `Erreur : ${error}`}
+              ? t('admin.accessDenied')
+              : t('admin.error', { error })}
           </div>
         )}
 
         {data?.auth_warning && (
           <div style={s.warning}>
-            ⚠ AUTH_ENABLED=false — endpoint non protégé (mode développement)
+            {t('admin.authDisabled')}
           </div>
         )}
 
@@ -297,14 +299,14 @@ export default function AdminView() {
           <>
             {/* Replica / Leader */}
             <div style={s.card}>
-              <div style={s.cardTitle}>Réplica & Scheduler</div>
+              <div style={s.cardTitle}>{t('admin.replica')}</div>
               <div style={s.grid}>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Replica ID</span>
+                  <span style={s.statLabel}>{t('admin.replicaId')}</span>
                   <span style={{ ...s.statValue, fontSize: '14px' }}>{fmt(data.replica_id)}</span>
                 </div>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Rôle scheduler</span>
+                  <span style={s.statLabel}>{t('admin.schedulerRole')}</span>
                   <span style={s.statValue}>
                     <span style={s.badge(data.is_leader)}>
                       {data.is_leader ? 'LEADER' : 'FOLLOWER'}
@@ -312,7 +314,7 @@ export default function AdminView() {
                   </span>
                 </div>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Leader actuel</span>
+                  <span style={s.statLabel}>{t('admin.currentLeader')}</span>
                   <span style={{ ...s.statValue, fontSize: '14px' }}>{fmt(data.leader_id)}</span>
                 </div>
               </div>
@@ -320,38 +322,38 @@ export default function AdminView() {
 
             {/* SSE Clients */}
             <div style={s.card}>
-              <div style={s.cardTitle}>Clients SSE connectés</div>
+              <div style={s.cardTitle}>{t('admin.sseClients')}</div>
               <div style={s.grid}>
                 {Object.entries(data.sse_clients || {}).map(([stream, count]) => (
                   <div key={stream} style={s.stat}>
                     <span style={s.statLabel}>{stream}</span>
                     <span style={s.statValue}>{count}</span>
-                    <span style={s.statSub}>clients</span>
+                    <span style={s.statSub}>{t('admin.clients')}</span>
                   </div>
                 ))}
                 {!Object.keys(data.sse_clients || {}).length && (
-                  <span style={s.empty}>Aucun client SSE</span>
+                  <span style={s.empty}>{t('admin.noSseClients')}</span>
                 )}
               </div>
             </div>
 
             {/* Redis */}
             <div style={s.card}>
-              <div style={s.cardTitle}>Redis</div>
+              <div style={s.cardTitle}>{t('admin.redis')}</div>
               {!data.redis ? (
-                <span style={s.empty}>Redis non connecté (mode single-instance)</span>
+                <span style={s.empty}>{t('admin.redisDisconnected')}</span>
               ) : (
                 <div style={s.grid}>
                   <div style={s.stat}>
-                    <span style={s.statLabel}>Mémoire</span>
+                    <span style={s.statLabel}>{t('admin.memory')}</span>
                     <span style={s.statValue}>{fmt(data.redis.memory)}</span>
                   </div>
                   <div style={s.stat}>
-                    <span style={s.statLabel}>Clients</span>
+                    <span style={s.statLabel}>{t('admin.clients')}</span>
                     <span style={s.statValue}>{fmt(data.redis.connected_clients)}</span>
                   </div>
                   <div style={s.stat}>
-                    <span style={s.statLabel}>Ops/sec</span>
+                    <span style={s.statLabel}>{t('admin.opsPerSec')}</span>
                     <span style={s.statValue}>{fmt(data.redis.ops_per_sec)}</span>
                   </div>
                 </div>
@@ -361,15 +363,15 @@ export default function AdminView() {
             {/* Pub/sub channels */}
             {data.redis && (
               <div style={s.card}>
-                <div style={s.cardTitle}>Channels pub/sub</div>
+                <div style={s.cardTitle}>{t('admin.pubsubChannels')}</div>
                 {!Object.keys(data.pubsub_channels || {}).length ? (
-                  <span style={s.empty}>Aucun channel actif</span>
+                  <span style={s.empty}>{t('admin.noChannels')}</span>
                 ) : (
                   <table style={s.table}>
                     <thead>
                       <tr>
-                        <th style={s.th}>Channel</th>
-                        <th style={s.th}>Subscribers</th>
+                        <th style={s.th}>{t('admin.channel')}</th>
+                        <th style={s.th}>{t('admin.subscribers')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -389,13 +391,13 @@ export default function AdminView() {
 
         {/* Mise à jour */}
         <div style={s.card}>
-          <div style={s.cardTitle}>Mise à jour</div>
+          <div style={s.cardTitle}>{t('admin.update')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <input
               style={s.tagInput}
               value={targetTag}
               onChange={(e) => setTargetTag(e.target.value)}
-              placeholder="tag (ex: latest)"
+              placeholder={t('admin.updateTag')}
               disabled={updateState && !['done', 'error'].includes(updateState.status)}
             />
             <button
@@ -403,7 +405,7 @@ export default function AdminView() {
               onClick={triggerUpdate}
               disabled={updateState && !['done', 'error'].includes(updateState.status)}
             >
-              ↑ Mettre à jour
+              {t('admin.updateBtn')}
             </button>
             {updateState && (
               <span style={{ fontSize: '12px', color: updateState.status === 'error' ? '#ef4444' : updateState.status === 'done' ? '#4ade80' : '#a0a0a0' }}>
@@ -420,26 +422,26 @@ export default function AdminView() {
 
         {/* Stockage */}
         <div style={s.card}>
-          <div style={s.cardTitle}>Stockage</div>
+          <div style={s.cardTitle}>{t('admin.storage')}</div>
           {diskError && <span style={{ color: '#ef4444', fontSize: '12px' }}>{diskError}</span>}
-          {!diskData && !diskError && <span style={s.empty}>Module disk-collector non installé</span>}
+          {!diskData && !diskError && <span style={s.empty}>{t('admin.diskCollectorNotInstalled')}</span>}
           {diskData && (
             <>
               <div style={s.grid}>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Utilisé</span>
+                  <span style={s.statLabel}>{t('admin.used')}</span>
                   <span style={s.statValue}>{fmtBytes(diskData.used_kb)}</span>
                 </div>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Disponible</span>
+                  <span style={s.statLabel}>{t('admin.available')}</span>
                   <span style={s.statValue}>{fmtBytes(diskData.avail_kb)}</span>
                 </div>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Total</span>
+                  <span style={s.statLabel}>{t('admin.total')}</span>
                   <span style={s.statValue}>{fmtBytes(diskData.total_kb)}</span>
                 </div>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Occupation</span>
+                  <span style={s.statLabel}>{t('admin.usage')}</span>
                   <span style={s.statValue}>{diskData.use_pct ?? '—'}%</span>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../services/api.js'
 import CreateBuildingModal from './CreateBuildingModal.jsx'
 import CreateQuartierModal from './CreateQuartierModal.jsx'
@@ -14,6 +15,7 @@ export default function ChannelPanel({
   onEntrerRoom, onWorldMisAJour,
   onOuvrirMembers, onOuvrirDM, onOuvrirDocs, onOuvrirOutil,
 }) {
+  const { t } = useTranslation()
   const [collapsed, setCollapsed]         = useState({})
   const [creerBuilding, setCreerBuilding] = useState(false)
   const [creerQuartier, setCreerQuartier] = useState(false)
@@ -32,19 +34,19 @@ export default function ChannelPanel({
   }
 
   async function supprimerBuilding(building) {
-    if (!confirm(`Supprimer « ${building.nom} » ?`)) return
+    if (!confirm(t('channel.deleteBuilding', { name: building.nom }))) return
     await api.del(`/buildings/${building.id}`)
     onWorldMisAJour()
   }
 
   async function supprimerRoom(room) {
-    if (!confirm(`Supprimer « ${room.nom} » ?`)) return
+    if (!confirm(t('channel.deleteRoom', { name: room.nom }))) return
     await api.del(`/buildings/rooms/${room.id}`)
     onWorldMisAJour()
   }
 
   async function supprimerQuartier(q) {
-    if (!confirm(`Supprimer le quartier « ${q.nom} » ?`)) return
+    if (!confirm(t('channel.deleteDistrict', { name: q.nom }))) return
     await api.del(`/quartiers/${q.id}`)
     onWorldMisAJour()
   }
@@ -53,7 +55,7 @@ export default function ChannelPanel({
     <div className="channel-panel vide">
       <div className="channel-panel-empty">
         <span>🌍</span>
-        <p>Sélectionne une commune</p>
+        <p>{t('channel.selectWorld')}</p>
       </div>
     </div>
   )
@@ -71,17 +73,17 @@ export default function ChannelPanel({
         </div>
         <div className="channel-panel-header-actions">
           {estProprietaire && (
-            <button className="channel-panel-icon-btn" onClick={() => setShowInvite(true)} title="Inviter">✉</button>
+            <button className="channel-panel-icon-btn" onClick={() => setShowInvite(true)} title={t('channel.inviteTitle')}>✉</button>
           )}
           {estProprietaire && (
-            <button className="channel-panel-icon-btn" onClick={() => setShowAbonnements(true)} title="Gérer les abonnements">💳</button>
+            <button className="channel-panel-icon-btn" onClick={() => setShowAbonnements(true)} title={t('channel.manageSubscriptions')}>💳</button>
           )}
           <button
             className="channel-panel-icon-btn"
             onClick={() => onOuvrirDocs?.('world', world.id, world.nom)}
-            title="Documents commune"
+            title={t('channel.worldDocs')}
           >📁</button>
-          <button className="channel-panel-icon-btn" onClick={onOuvrirMembers} title="Agents &amp; Élus" style={{ position: 'relative' }}>
+          <button className="channel-panel-icon-btn" onClick={onOuvrirMembers} title={t('channel.membersAgents')} style={{ position: 'relative' }}>
             👥 <span>{world.membres?.length || 0}</span>
             {dmUnreadTotal > 0 && (
               <span className="unread-badge" style={{ position: 'absolute', top: -4, right: -4 }}>
@@ -127,9 +129,9 @@ export default function ChannelPanel({
               <span className="channel-category-nom">{q.nom}</span>
               {estProprietaire && (
                 <div className="channel-category-actions" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => { setQuartierCible(q.id); setCreerBuilding(true) }} title="Ajouter un service">＋</button>
-                  <button onClick={() => setEditQuartier(q)} title="Modifier">✎</button>
-                  <button onClick={() => supprimerQuartier(q)} title="Supprimer">✕</button>
+                  <button onClick={() => { setQuartierCible(q.id); setCreerBuilding(true) }} title={t('channel.addService')}>＋</button>
+                  <button onClick={() => setEditQuartier(q)} title={t('common.edit')}>✎</button>
+                  <button onClick={() => supprimerQuartier(q)} title={t('common.delete')}>✕</button>
                 </div>
               )}
             </div>
@@ -157,23 +159,23 @@ export default function ChannelPanel({
         ))}
 
         {/* Outils */}
-        <div className="channel-section-title">Outils</div>
+        <div className="channel-section-title">{t('channel.tools')}</div>
         <div className="channel-outils">
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('search')}>
-            <span>🔍</span> Recherche
+            <span>🔍</span> {t('channel.search')}
           </button>
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('calendar')}>
-            <span>📅</span> Calendrier
+            <span>📅</span> {t('channel.calendar')}
           </button>
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('reseau-docs')}>
-            <span>🏘</span> Réseau
+            <span>🏘</span> {t('channel.network')}
           </button>
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('shared-zones')}>
-            <span>🔗</span> Zones
+            <span>🔗</span> {t('channel.zones')}
           </button>
           {estProprietaire && (
             <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('llm-config')}>
-              <span>🤖</span> Config IA
+              <span>🤖</span> {t('channel.aiConfig')}
             </button>
           )}
         </div>
@@ -182,10 +184,10 @@ export default function ChannelPanel({
         {estProprietaire && (
           <div className="channel-panel-admin">
             <button onClick={() => { setQuartierCible(null); setCreerBuilding(true) }}>
-              <span>＋</span> Ajouter un service
+              <span>＋</span> {t('channel.addService')}
             </button>
             <button onClick={() => setCreerQuartier(true)}>
-              <span>🏘</span> Ajouter une direction
+              <span>🏘</span> {t('channel.addDistrict')}
             </button>
           </div>
         )}
@@ -241,6 +243,7 @@ function BuildingSection({
   onOuvrirDocs,
   collapsed, toggleCollapse,
 }) {
+  const { t } = useTranslation()
   // Si buildings est fourni, on affiche plusieurs bâtiments sans header de quartier
   if (buildings) {
     return buildings.map(b => (
@@ -278,12 +281,12 @@ function BuildingSection({
           <div className="channel-category-actions" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => onOuvrirDocs?.('building', building.id, building.nom)}
-              title="Documents service"
+              title={t('channel.buildingDocs')}
             >📁</button>
             {estProprietaire && (<>
-              <button onClick={onAjouterRoom} title="Ajouter une salle">＋</button>
-              <button onClick={onEditerBuilding} title="Modifier">✎</button>
-              <button onClick={onSupprimerBuilding} title="Supprimer">✕</button>
+              <button onClick={onAjouterRoom} title={t('channel.addRoom')}>＋</button>
+              <button onClick={onEditerBuilding} title={t('common.edit')}>✎</button>
+              <button onClick={onSupprimerBuilding} title={t('common.delete')}>✕</button>
             </>)}
           </div>
         </div>
@@ -302,7 +305,7 @@ function BuildingSection({
                   className="channel-room-btn"
                   onClick={() => bloque ? null : onEntrerRoom(room)}
                   style={bloque ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                  title={bloque ? `Abonnement requis : ${(room.abonnements_requis || []).map(a => a.nom).join(' ou ')}` : room.nom}
+                  title={bloque ? t('channel.subscribe', { plans: (room.abonnements_requis || []).map(a => a.nom).join(' ou ') }) : room.nom}
                 >
                   <span className="channel-room-icone">{icone}</span>
                   <span className="channel-room-nom">{room.nom}</span>
@@ -314,8 +317,8 @@ function BuildingSection({
                 </button>
                 {estProprietaire && (
                   <div className="channel-room-actions">
-                    <button onClick={() => onEditerRoom(room)} title="Modifier">✎</button>
-                    <button onClick={() => onSupprimerRoom(room)} title="Supprimer">✕</button>
+                    <button onClick={() => onEditerRoom(room)} title={t('common.edit')}>✎</button>
+                    <button onClick={() => onSupprimerRoom(room)} title={t('common.delete')}>✕</button>
                   </div>
                 )}
               </div>

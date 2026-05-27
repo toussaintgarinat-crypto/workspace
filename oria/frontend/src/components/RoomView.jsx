@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { LiveKitRoom } from '@livekit/components-react'
 import { api, authHeaders } from '../services/api.js'
 import { useMatrixRoom } from '../hooks/useMatrixRoom.js'
@@ -12,6 +13,7 @@ const API_URL     = import.meta.env.VITE_API_URL      || 'http://localhost:8000'
 const EMOJIS_REACTION = ['👍','❤️','😂','😮','😢','🔥','🎉','👏']
 
 export default function RoomView({ room, building, world, moi, onQuitter }) {
+  const { t } = useTranslation()
   const [token, setToken]         = useState(null)
   const [onglet, setOnglet]       = useState(room.type === 'texte' ? 'chat' : 'vocal')
   const [fichiers, setFichiers]   = useState([])
@@ -115,7 +117,7 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
     return (
       <div className="room-view" style={{ display: 'flex', alignItems: 'center',
                                           justifyContent: 'center', color: '#72767d' }}>
-        Vérification de l'accès...
+        {t('room.checkingAccess')}
       </div>
     )
   }
@@ -135,8 +137,8 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
           <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
           <h2 style={{ color: '#fff', marginBottom: 8 }}>{room.emoji} {room.nom}</h2>
           <p style={{ color: '#b5bac1', fontSize: 14, marginBottom: 20 }}>
-            Cette room est en accès payant.
-            {prix ? ` Accès à partir de ${prix} ${devise}${type === 'abonnement' ? '/mois' : ''}.` : ''}
+            {t('room.paidRoom')}
+            {prix ? ` ${t('room.paidFrom', { price: prix, currency: devise })}${type === 'abonnement' ? t('room.paidMonthly') : ''}.` : ''}
           </p>
           <button
             onClick={demanderCheckout}
@@ -146,13 +148,13 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
               fontWeight: 700, cursor: 'pointer',
             }}
           >
-            💳 Payer et accéder
+            {t('room.payAccess')}
           </button>
           <div style={{ marginTop: 16 }}>
             <button onClick={onQuitter}
               style={{ background: 'none', border: 'none', color: '#72767d',
                        cursor: 'pointer', fontSize: 13 }}>
-              ← Retour
+              {t('common.back')}
             </button>
           </div>
         </div>
@@ -166,7 +168,7 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
         <div className="room-header-info">
           <span>{room.emoji}</span>
           <span className="room-header-nom">{room.nom}</span>
-          {matrix.disponible && <span title="Messages chiffrés E2EE" style={{ fontSize: 11, color: '#57F287' }}>🔒</span>}
+          {matrix.disponible && <span title={t('room.encryptedE2EE')} style={{ fontSize: 11, color: '#57F287' }}>🔒</span>}
           <span className="room-header-building" style={{ color: building.couleur }}>
             {building.emoji} {building.nom}
           </span>
@@ -186,7 +188,7 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
           {room.est_payante && (
             <div className="room-onglets">
               <button className={onglet === 'coins' ? 'actif' : ''} onClick={() => setOnglet('coins')}
-                title="Coins des membres">🏠</button>
+                title={t('room.coinsTitle')}>🏠</button>
             </div>
           )}
           <button className="btn-quitter-room" onClick={onQuitter}>✕</button>
@@ -214,7 +216,7 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
         </div>
       )}
       {onglet !== 'coins' && onglet === 'vocal' && !token && (
-        <div className="vocal-connecting">Connexion au vocal...</div>
+        <div className="vocal-connecting">{t('room.connectingVoice')}</div>
       )}
 
       {onglet !== 'coins' && onglet !== 'vocal' && (
@@ -223,7 +225,7 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
             {messages.length === 0 && fichiers.length === 0 && (
               <div className="messages-vide">
                 <span>{room.emoji}</span>
-                <p>Début de <strong>{room.nom}</strong></p>
+                <p>{t('room.startOf')} <strong>{room.nom}</strong></p>
               </div>
             )}
 
@@ -263,10 +265,10 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
                       <button
                         className="btn-react"
                         onClick={() => setEmojiPickerId(emojiPickerId === m.id ? null : m.id)}
-                        title="Réagir"
+                        title={t('room.react')}
                       >😊</button>
                       {isMoi && (
-                        <button className="btn-suppr-msg" onClick={() => supprimerMessage(m.id)} title="Supprimer">🗑</button>
+                        <button className="btn-suppr-msg" onClick={() => supprimerMessage(m.id)} title={t('room.deleteMessage')}>🗑</button>
                       )}
                     </div>
                   </div>
@@ -299,16 +301,16 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
 
           {room.type === 'broadcast' && world?.owner_id !== moi?.id ? (
             <div className="broadcast-locked">
-              <span>📢</span> Canal en lecture seule — seul le maire peut écrire ici
+              <span>📢</span> {t('room.broadcastLocked')}
             </div>
           ) : (
             <form className="room-input" onSubmit={envoyer}>
-              <button type="button" className="btn-upload" onClick={() => fileRef.current?.click()} title="Envoyer un fichier">📎</button>
+              <button type="button" className="btn-upload" onClick={() => fileRef.current?.click()} title={t('room.uploadFile')}>📎</button>
               <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={uploaderFichier} />
               <input
                 value={texte}
                 onChange={e => setTexte(e.target.value)}
-                placeholder={`Message dans ${room.nom}`}
+                placeholder={t('room.messagePlaceholder', { roomName: room.nom })}
                 autoFocus
               />
               <button type="submit">↑</button>

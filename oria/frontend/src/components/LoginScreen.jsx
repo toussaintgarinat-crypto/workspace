@@ -1,9 +1,12 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../services/api.js'
+import LanguagePicker from './LanguagePicker.jsx'
 
 const AVATARS = ['👤','🧑','👩','🧔','👨‍💻','👩‍💻','🧑‍🎨','👩‍🎤','🧑‍🚀','🦊','🐺','🐸']
 
 export default function LoginScreen({ onConnexion }) {
+  const { t } = useTranslation()
   const [onglet, setOnglet]     = useState('connexion') // 'connexion' | 'inscription' | '2fa'
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -24,7 +27,7 @@ export default function LoginScreen({ onConnexion }) {
     setChargement(true)
     const data = await api.post('/auth/login', { email, password })
     setChargement(false)
-    if (!data) return setErreur('Erreur de connexion')
+    if (!data) return setErreur(t('login.connectionError'))
     if (data.detail) return setErreur(data.detail)
     if (data.requires_2fa) {
       setOnglet('2fa')
@@ -39,9 +42,9 @@ export default function LoginScreen({ onConnexion }) {
     setChargement(true)
     const data = await api.post('/auth/login', { email, password, totp_code: totpCode })
     setChargement(false)
-    if (!data) return setErreur('Erreur de connexion')
+    if (!data) return setErreur(t('login.connectionError'))
     if (data.detail) return setErreur(data.detail)
-    if (data.requires_2fa) return setErreur('Code incorrect')
+    if (data.requires_2fa) return setErreur(t('login.wrongCode'))
     onConnexion(data)
   }
 
@@ -57,10 +60,11 @@ export default function LoginScreen({ onConnexion }) {
 
   return (
     <div className="login-screen">
+      <LanguagePicker style={{ position: 'fixed', top: 16, right: 16, zIndex: 100 }} />
       <div className="login-card">
         <div className="login-logo">🌍</div>
         <h1 className="login-titre">Oria</h1>
-        <p className="login-sub">Ton bureau digital</p>
+        <p className="login-sub">{t('login.tagline')}</p>
 
         {onglet !== '2fa' && (
           <div className="login-onglets">
@@ -68,13 +72,13 @@ export default function LoginScreen({ onConnexion }) {
               className={`onglet-btn ${onglet === 'connexion' ? 'actif' : ''}`}
               onClick={() => changerOnglet('connexion')}
             >
-              Connexion
+              {t('login.login')}
             </button>
             <button
               className={`onglet-btn ${onglet === 'inscription' ? 'actif' : ''}`}
               onClick={() => changerOnglet('inscription')}
             >
-              Inscription
+              {t('login.register')}
             </button>
           </div>
         )}
@@ -82,12 +86,12 @@ export default function LoginScreen({ onConnexion }) {
         {onglet === '2fa' ? (
           <form onSubmit={verifier2fa}>
             <p style={{ fontSize: 13, color: '#b9bbbe', marginBottom: 12, textAlign: 'center' }}>
-              🔐 Double authentification activée.<br/>Saisir le code depuis votre application.
+              {t('login.twoFaTitle')}
             </p>
             <input
               className="input-nom"
               type="text"
-              placeholder="Code à 6 chiffres"
+              placeholder={t('login.sixDigitCode')}
               value={totpCode}
               onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               autoFocus
@@ -97,11 +101,11 @@ export default function LoginScreen({ onConnexion }) {
             />
             {erreur && <p className="login-erreur">{erreur}</p>}
             <button className="btn-entrer" type="submit" disabled={chargement || totpCode.length < 6}>
-              {chargement ? '...' : 'Vérifier →'}
+              {chargement ? '...' : t('login.verify')}
             </button>
             <button type="button" style={{ background: 'none', border: 'none', color: '#72767d', fontSize: 12, cursor: 'pointer', marginTop: 8, width: '100%' }}
               onClick={() => { setOnglet('connexion'); setTotpCode(''); setErreur('') }}>
-              ← Retour
+              {t('common.back')}
             </button>
           </form>
         ) : onglet === 'connexion' ? (
@@ -109,7 +113,7 @@ export default function LoginScreen({ onConnexion }) {
             <input
               className="input-nom"
               type="email"
-              placeholder="Email"
+              placeholder={t('login.email')}
               value={email}
               onChange={e => setEmail(e.target.value)}
               autoFocus
@@ -118,14 +122,14 @@ export default function LoginScreen({ onConnexion }) {
             <input
               className="input-nom"
               type="password"
-              placeholder="Mot de passe"
+              placeholder={t('login.password')}
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
             />
             {erreur && <p className="login-erreur">{erreur}</p>}
             <button className="btn-entrer" type="submit" disabled={chargement}>
-              {chargement ? '...' : 'Se connecter →'}
+              {chargement ? '...' : t('login.connect')}
             </button>
           </form>
         ) : (
@@ -141,7 +145,7 @@ export default function LoginScreen({ onConnexion }) {
             <input
               className="input-nom"
               type="text"
-              placeholder="Ton prénom ou pseudo"
+              placeholder={t('login.name')}
               value={nom}
               onChange={e => setNom(e.target.value)}
               autoFocus
@@ -150,7 +154,7 @@ export default function LoginScreen({ onConnexion }) {
             <input
               className="input-nom"
               type="email"
-              placeholder="Email"
+              placeholder={t('login.email')}
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -158,14 +162,14 @@ export default function LoginScreen({ onConnexion }) {
             <input
               className="input-nom"
               type="password"
-              placeholder="Mot de passe"
+              placeholder={t('login.password')}
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
             />
             {erreur && <p className="login-erreur">{erreur}</p>}
             <button className="btn-entrer" type="submit" disabled={chargement}>
-              {chargement ? '...' : 'Créer mon compte →'}
+              {chargement ? '...' : t('login.createAccount')}
             </button>
           </form>
         )}

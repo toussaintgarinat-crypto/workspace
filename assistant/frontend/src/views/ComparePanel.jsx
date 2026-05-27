@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { streamChat } from '../services/api.js';
 
@@ -129,6 +130,7 @@ const s = {
 };
 
 export default function ComparePanel({ messages, availableModels, triggerKey, userText, onUseResponse }) {
+  const { t } = useTranslation();
   const [selectedModels, setSelectedModels] = useState([]);
   const [streams, setStreams] = useState({});
   const [comparing, setComparing] = useState(false);
@@ -192,9 +194,9 @@ export default function ComparePanel({ messages, availableModels, triggerKey, us
   return (
     <div style={s.root}>
       <div style={s.modelSelector}>
-        <span style={s.selectorLabel}>Modèles</span>
+        <span style={s.selectorLabel}>{t('compare.models')}</span>
         {availableModels.length === 0 && (
-          <span style={{ fontSize: '11px', color: '#3a3a3a' }}>Chargement…</span>
+          <span style={{ fontSize: '11px', color: '#3a3a3a' }}>{t('compare.loading')}</span>
         )}
         {availableModels.map(model => {
           const selected = selectedModels.includes(model);
@@ -204,7 +206,7 @@ export default function ComparePanel({ messages, availableModels, triggerKey, us
               key={model}
               style={s.modelChip(selected, comparing || maxed)}
               onClick={() => toggleModel(model)}
-              title={maxed ? 'Maximum 4 modèles' : model}
+              title={maxed ? t('compare.maxModels') : model}
             >
               {model}
             </button>
@@ -220,8 +222,8 @@ export default function ComparePanel({ messages, availableModels, triggerKey, us
           <span style={s.hintIcon}>⚖</span>
           <span>
             {selectedModels.length < 2
-              ? 'Sélectionnez au moins 2 modèles ci-dessus'
-              : 'Envoyez un message pour lancer la comparaison'}
+              ? t('compare.selectAtLeast2')
+              : t('compare.sendMessage')}
           </span>
         </div>
       ) : (
@@ -232,14 +234,14 @@ export default function ComparePanel({ messages, availableModels, triggerKey, us
                 <span style={s.colModel} title={model}>{model}</span>
                 {!state.done && <span style={s.dot} />}
                 {state.done && state.error && (
-                  <span style={{ fontSize: '10px', color: '#ef4444' }}>Erreur</span>
+                  <span style={{ fontSize: '10px', color: '#ef4444' }}>{t('compare.error')}</span>
                 )}
                 {state.done && !state.error && (
                   <button
                     style={s.useBtn}
                     onClick={() => onUseResponse(userText, state.content)}
                   >
-                    Utiliser
+                    {t('compare.use')}
                   </button>
                 )}
               </div>

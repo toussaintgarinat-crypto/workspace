@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import Tooltip from '../Tooltip.jsx';
 import VoiceControlBar from './VoiceControlBar.jsx';
 import { s } from './styles.js';
@@ -32,6 +33,7 @@ export default function ChatInput({
   // Slash menu
   slash,
 }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef(null);
   const internalTextareaRef = useRef(null);
   const taRef = textareaRef || internalTextareaRef;
@@ -98,7 +100,7 @@ export default function ChatInput({
           accept={FILE_ACCEPT}
           onChange={onFileSelect}
         />
-        <Tooltip label="Joindre un fichier" position="top">
+        <Tooltip label={t('chat.attachFile')} position="top">
           <button
             style={s.fileBtn}
             onClick={() => fileInputRef.current?.click()}
@@ -118,11 +120,11 @@ export default function ChatInput({
           }}
           onKeyDown={handleKeyDown}
           placeholder={
-            isSpeaking ? '🔊 Réponse en cours…' :
-            isRecording && micMode === 'push_to_talk' ? '🎙️ Parlez… (relâchez pour envoyer)' :
-            isRecording ? '🎙️ Écoute… (phrase détectée → envoi auto)' :
-            compareMode ? '⚖ Comparer ce message sur tous les modèles…' :
-            'Envoyer un message… (Shift+Entrée pour nouvelle ligne)'
+            isSpeaking ? t('chat.placeholderStreaming') :
+            isRecording && micMode === 'push_to_talk' ? t('chat.placeholderPTT') :
+            isRecording ? t('chat.placeholderVAD') :
+            compareMode ? t('chat.placeholderCompare') :
+            t('chat.placeholderDefault')
           }
           disabled={isStreaming}
           rows={1}
@@ -137,7 +139,7 @@ export default function ChatInput({
           micMode={micMode}
         />
 
-        <Tooltip label={ragEnabled ? 'Mémoire RAG activée' : 'Mémoire RAG désactivée'} position="top">
+        <Tooltip label={ragEnabled ? t('chat.ragOn') : t('chat.ragOff')} position="top">
           <button
             style={s.ragBtn(ragEnabled)}
             onClick={() => {
@@ -150,7 +152,7 @@ export default function ChatInput({
           </button>
         </Tooltip>
 
-        <Tooltip label={summarizeEnabled ? 'Résumer (clic droit pour désactiver)' : 'Résumé auto désactivé'} position="top">
+        <Tooltip label={summarizeEnabled ? t('chat.summarizeOn') : t('chat.summarizeOff')} position="top">
           <button
             style={s.summarizeBtn(summarizeEnabled)}
             onClick={() => {
@@ -174,7 +176,7 @@ export default function ChatInput({
           </button>
         </Tooltip>
 
-        <Tooltip label={promptEngineerEnabled ? 'Prompt Architect actif' : 'Prompt Architect inactif'} position="top">
+        <Tooltip label={promptEngineerEnabled ? t('chat.architectOn') : t('chat.architectOff')} position="top">
           <button
             style={s.peBtn(promptEngineerEnabled)}
             onClick={() => {
@@ -187,7 +189,7 @@ export default function ChatInput({
           </button>
         </Tooltip>
 
-        <Tooltip label="Envoyer le message" position="top">
+        <Tooltip label={t('chat.sendMessage')} position="top">
           <button
             style={s.sendBtn(!input.trim() || isStreaming || isUploading)}
             onClick={() => onSend(input)}

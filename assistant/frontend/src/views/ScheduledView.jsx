@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { listScheduled, createScheduled, updateScheduled, deleteScheduled, runScheduled } from '../services/api.js';
 
 const s = {
@@ -137,6 +138,7 @@ function formatNextRun(iso) {
 }
 
 export default function ScheduledView() {
+  const { t } = useTranslation();
   const [items, setItems] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -160,8 +162,8 @@ export default function ScheduledView() {
       setForm(emptyForm);
       setShowForm(false);
       await load();
-      showToast('Prompt planifié créé');
-    } catch { showToast('Erreur lors de la création'); }
+      showToast(t('common.save'));
+    } catch { showToast(t('common.error')); }
     finally { setSaving(false); }
   };
 
@@ -169,41 +171,41 @@ export default function ScheduledView() {
     try {
       await updateScheduled(item.id, { active: !item.active });
       await load();
-    } catch { showToast('Erreur'); }
+    } catch { showToast(t('common.error')); }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Supprimer ce prompt planifié ?')) return;
+    if (!confirm(t('scheduled.deleteConfirm'))) return;
     try {
       await deleteScheduled(id);
       await load();
-      showToast('Supprimé');
-    } catch { showToast('Erreur'); }
+      showToast(t('common.delete'));
+    } catch { showToast(t('common.error')); }
   };
 
   const handleRun = async (id) => {
     try {
       const res = await runScheduled(id);
-      if (res.ok) showToast('Exécuté — résultat envoyé via notification');
-      else showToast(`Erreur: ${res.error}`);
+      if (res.ok) showToast(t('common.save'));
+      else showToast(`${t('common.error')}: ${res.error}`);
       await load();
-    } catch { showToast('Erreur lors de l\'exécution'); }
+    } catch { showToast(t('common.error')); }
   };
 
   return (
     <div style={s.root}>
       <div style={s.header}>
-        <h2 style={s.title}>Prompts planifiés</h2>
+        <h2 style={s.title}>{t('scheduled.title')}</h2>
         <button style={s.addBtn} onClick={() => setShowForm(f => !f)}>
-          {showForm ? 'Annuler' : '+ Nouveau'}
+          {showForm ? t('scheduled.cancel') : t('scheduled.new')}
         </button>
       </div>
 
       {showForm && (
         <div style={s.form}>
-          <div style={s.formTitle}>Nouveau prompt planifié</div>
+          <div style={s.formTitle}>{t('scheduled.newTitle')}</div>
 
-          <label style={s.label}>Titre</label>
+          <label style={s.label}>{t('scheduled.titleField')}</label>
           <input
             style={s.input}
             value={form.title}
@@ -211,7 +213,7 @@ export default function ScheduledView() {
             placeholder="Ex: Résumé quotidien des tâches Forge"
           />
 
-          <label style={s.label}>Prompt</label>
+          <label style={s.label}>{t('scheduled.promptField')}</label>
           <textarea
             style={s.textarea}
             value={form.prompt}
@@ -219,48 +221,46 @@ export default function ScheduledView() {
             placeholder="Ex: Donne-moi un résumé des tâches Forge ouvertes et des sprints en cours."
           />
 
-          <label style={s.label}>Planification</label>
+          <label style={s.label}>{t('scheduled.schedule')}</label>
           <input
             style={s.input}
             value={form.schedule}
             onChange={e => setForm(f => ({ ...f, schedule: e.target.value }))}
             placeholder="daily 09:00"
           />
-          <p style={s.hint}>
-            Formats : <code>hourly</code> · <code>daily HH:MM</code> · <code>weekly lun|mar|mer|jeu|ven|sam|dim HH:MM</code>
-          </p>
+          <p style={s.hint}>{t('scheduled.scheduleHint')}</p>
 
           <div style={s.formActions}>
             <button style={s.saveBtn} onClick={handleCreate} disabled={saving}>
-              {saving ? 'Création...' : 'Créer'}
+              {saving ? t('scheduled.creating') : t('scheduled.create')}
             </button>
-            <button style={s.cancelBtn} onClick={() => setShowForm(false)}>Annuler</button>
+            <button style={s.cancelBtn} onClick={() => setShowForm(false)}>{t('scheduled.cancel')}</button>
           </div>
         </div>
       )}
 
       {items.length === 0 && !showForm && (
-        <div style={s.empty}>Aucun prompt planifié. Créez-en un pour commencer.</div>
+        <div style={s.empty}>{t('scheduled.empty')}</div>
       )}
 
       {items.map(item => (
         <div key={item.id} style={s.card}>
           <div style={s.cardHeader}>
             <span style={s.cardTitle}>{item.title}</span>
-            <span style={s.badge(Boolean(item.active))}>{item.active ? 'Actif' : 'Inactif'}</span>
+            <span style={s.badge(Boolean(item.active))}>{item.active ? t('scheduled.active') : t('scheduled.inactive')}</span>
           </div>
           <p style={s.prompt}>{item.prompt}</p>
           <p style={s.meta}>
-            Planif : <strong>{item.schedule}</strong>
-            {item.next_run && <> · Prochain : <strong>{formatNextRun(item.next_run)}</strong></>}
-            {item.last_run && <> · Dernier : {formatNextRun(item.last_run)}</>}
+            {t('scheduled.scheduleLabel')} : <strong>{item.schedule}</strong>
+            {item.next_run && <> · {t('scheduled.nextLabel')} : <strong>{formatNextRun(item.next_run)}</strong></>}
+            {item.last_run && <> · {t('scheduled.lastLabel')} : {formatNextRun(item.last_run)}</>}
           </p>
           <div style={s.actions}>
-            <button style={s.actionBtn('run')} onClick={() => handleRun(item.id)}>▶ Exécuter</button>
+            <button style={s.actionBtn('run')} onClick={() => handleRun(item.id)}>{t('scheduled.run')}</button>
             <button style={s.actionBtn('toggle')} onClick={() => handleToggle(item)}>
-              {item.active ? '⏸ Désactiver' : '▶ Activer'}
+              {item.active ? t('scheduled.disable') : t('scheduled.enable')}
             </button>
-            <button style={s.actionBtn('del')} onClick={() => handleDelete(item.id)}>✕ Supprimer</button>
+            <button style={s.actionBtn('del')} onClick={() => handleDelete(item.id)}>{t('scheduled.deleteBtn')}</button>
           </div>
         </div>
       ))}
