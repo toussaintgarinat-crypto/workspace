@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
 from database import Base
+# models.project imported lazily to avoid circular imports — Room.project uses string ref
 
 class Building(Base):
     __tablename__ = "buildings"
@@ -37,7 +38,11 @@ class Room(Base):
     type_paiement           = Column(String, nullable=True)   # abonnement | unique
     stripe_price_id_acces   = Column(String, nullable=True)
     stripe_product_id_acces = Column(String, nullable=True)
-    building           = relationship("Building", back_populates="rooms")
+    project_id  = Column(String, ForeignKey("projects.id"), nullable=True)
+    status      = Column(String, default="active")   # active | closed
+    closed_at   = Column(DateTime, nullable=True)
+    building    = relationship("Building", back_populates="rooms")
+    project     = relationship("Project", back_populates="rooms")
     messages           = relationship("Message", back_populates="room", cascade="all, delete")
     files              = relationship("File", back_populates="room", cascade="all, delete")
     abonnements_requis = relationship("RoomAbonnement", back_populates="room", cascade="all, delete")

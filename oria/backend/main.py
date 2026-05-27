@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from agent_personnel_shared.fastapi_setup import setup_cors, setup_logging
 from database import engine, Base
 from sqlalchemy import text
+import models.project
 import models.world, models.building, models.user, models.quartier, models.dm, models.network
 import models.abonnement
 import models.vote
@@ -34,6 +35,10 @@ _MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN documents_partageables_par_defaut BOOLEAN DEFAULT FALSE",
     # Backfill : les comptes créés avant S72 sont considérés comme ayant déjà fait le tour
     "UPDATE users SET setup_completed_at = created_at WHERE setup_completed_at IS NULL",
+    # S115 — Projects + Room closing
+    "ALTER TABLE rooms ADD COLUMN project_id TEXT REFERENCES projects(id)",
+    "ALTER TABLE rooms ADD COLUMN status TEXT DEFAULT 'active'",
+    "ALTER TABLE rooms ADD COLUMN closed_at TIMESTAMP",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:
@@ -79,6 +84,7 @@ from routers.shared_zones_router import router as shared_zones_router
 from routers.admin import router as admin_router
 from routers.coins_router import router as coins_router
 from routers.calendar_router import router as calendar_router
+from routers.projects_router import router as projects_router
 
 # ── S99 — Versioning d'API + alias retro-compat ───────────────────────────
 # Chaque router est monte deux fois : sous /api/... (legacy, avec headers
@@ -132,6 +138,7 @@ _API_ROUTERS = [
     (coins_router,                  "",              ["Coins & Rooms payantes"]),
     (conductor_router,              "/conductor",    ["Conductor"]),
     (calendar_router,               "/calendar",     ["Calendar"]),
+    (projects_router,               "",              ["Projects"]),
 ]
 for r, suffix, tags in _API_ROUTERS:
     # Canonique

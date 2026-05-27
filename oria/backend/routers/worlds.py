@@ -76,6 +76,9 @@ def serialise_room(r, user_abonnement_ids: Optional[set] = None, is_owner: bool 
         "acces_restreint":    r.acces_restreint,
         "abonnements_requis": requis,
         "a_acces":            a_acces,
+        "status":             r.status or "active",
+        "closed_at":          r.closed_at.isoformat() if r.closed_at else None,
+        "project_id":         r.project_id,
     }
 
 

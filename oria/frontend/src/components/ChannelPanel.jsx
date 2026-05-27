@@ -167,6 +167,9 @@ export default function ChannelPanel({
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('calendar')}>
             <span>📅</span> {t('channel.calendar')}
           </button>
+          <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('projects')}>
+            <span>📁</span> Projets
+          </button>
           <button className="channel-outil-btn" onClick={() => onOuvrirOutil?.('reseau-docs')}>
             <span>🏘</span> {t('channel.network')}
           </button>

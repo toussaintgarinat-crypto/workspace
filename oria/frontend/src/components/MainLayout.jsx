@@ -30,6 +30,7 @@ import IPCRAPanel from './IPCRAPanel.jsx'
 import ActivityFeed from './ActivityFeed.jsx'
 import JardinPanel from './JardinPanel.jsx'
 import ConductorView from './ConductorView.jsx'
+import ProjectsPanel from './ProjectsPanel.jsx'
 
 export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
   const { t } = useTranslation()
@@ -290,6 +291,14 @@ export default function MainLayout({ moi, onMoiUpdate, onDeconnexion }) {
     contenuPrincipal = <SharedZonesPanel onFermer={() => setOutilActif(null)} />
   } else if (outilActif === 'llm-config') {
     contenuPrincipal = <LLMConfigPanel world={worldActif} moi={moi} onFermer={() => setOutilActif(null)} />
+  } else if (outilActif === 'projects') {
+    contenuPrincipal = (
+      <ProjectsPanel
+        world={worldActif}
+        moi={moi}
+        onWorldMisAJour={() => chargerWorldComplet(worldActif?.id)}
+      />
+    )
   } else if (voteConseil) {
     contenuPrincipal = <VotePanel conseil={voteConseil} world={worldActif} moi={moi} onFermer={() => setVoteConseil(null)} />
   } else if (dmDestinataire) {

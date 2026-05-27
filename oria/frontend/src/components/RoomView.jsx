@@ -168,7 +168,15 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
         <div className="room-header-info">
           <span>{room.emoji}</span>
           <span className="room-header-nom">{room.nom}</span>
-          {matrix.disponible && <span title={t('room.encryptedE2EE')} style={{ fontSize: 11, color: '#57F287' }}>🔒</span>}
+          {room.status === 'closed' && (
+            <span style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 10,
+              background: '#3a3a3a', color: '#aaa', fontWeight: 600,
+            }}>🔒 Terminé</span>
+          )}
+          {matrix.disponible && room.status !== 'closed' && (
+            <span title={t('room.encryptedE2EE')} style={{ fontSize: 11, color: '#57F287' }}>🔒</span>
+          )}
           <span className="room-header-building" style={{ color: building.couleur }}>
             {building.emoji} {building.nom}
           </span>
@@ -299,7 +307,11 @@ export default function RoomView({ room, building, world, moi, onQuitter }) {
             <div ref={basRef} />
           </div>
 
-          {room.type === 'broadcast' && world?.owner_id !== moi?.id ? (
+          {room.status === 'closed' ? (
+            <div className="broadcast-locked">
+              <span>🔒</span> Projet terminé — cette room est en lecture seule
+            </div>
+          ) : room.type === 'broadcast' && world?.owner_id !== moi?.id ? (
             <div className="broadcast-locked">
               <span>📢</span> {t('room.broadcastLocked')}
             </div>

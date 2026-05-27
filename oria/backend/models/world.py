@@ -25,6 +25,7 @@ class World(Base):
     quartiers    = relationship("Quartier", back_populates="world", cascade="all, delete")
     invitations  = relationship("Invitation", back_populates="world", cascade="all, delete")
     abonnements  = relationship("Abonnement", back_populates="world", cascade="all, delete")
+    projects     = relationship("Project", back_populates="world", cascade="all, delete")
 
 class Member(Base):
     __tablename__ = "members"

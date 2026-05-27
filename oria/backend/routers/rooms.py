@@ -40,6 +40,9 @@ def _serialise_room(r: Room) -> dict:
         "matrix_room_id":     r.matrix_room_id,
         "acces_restreint":    r.acces_restreint,
         "abonnements_requis": abonnements,
+        "status":             r.status or "active",
+        "closed_at":          r.closed_at.isoformat() if r.closed_at else None,
+        "project_id":         r.project_id,
     }
 
 
