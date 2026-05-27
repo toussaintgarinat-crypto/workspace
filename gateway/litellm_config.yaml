@@ -29,7 +29,7 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
 
-  # AUTO-FREE-MODELS-START — 2026-05-16 14:37 (12 modèles)
+  # AUTO-FREE-MODELS-START — 2026-05-27 21:28 (12 modèles)
   - model_name: free/openrouter/owl-alpha
     litellm_params:
       model: openrouter/openrouter/owl-alpha
@@ -66,6 +66,24 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       # context: 1000000
+  - model_name: free/poolside/laguna-xs.2
+    litellm_params:
+      model: openrouter/poolside/laguna-xs.2:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 262144
+  - model_name: free/poolside/laguna-m.1
+    litellm_params:
+      model: openrouter/poolside/laguna-m.1:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 262144
+  - model_name: free/moonshotai/kimi-k2.6
+    litellm_params:
+      model: openrouter/moonshotai/kimi-k2.6:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      # context: 262144
   - model_name: free/google/gemma-4-26b-a4b-it
     litellm_params:
       model: openrouter/google/gemma-4-26b-a4b-it:free
@@ -78,30 +96,12 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       # context: 262144
-  - model_name: free/arcee-ai/trinity-large-thinking
-    litellm_params:
-      model: openrouter/arcee-ai/trinity-large-thinking:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      api_base: https://openrouter.ai/api/v1
-      # context: 262144
   - model_name: free/qwen/qwen3-next-80b-a3b-instruct
     litellm_params:
       model: openrouter/qwen/qwen3-next-80b-a3b-instruct:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       # context: 262144
-  - model_name: free/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-    litellm_params:
-      model: openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      api_base: https://openrouter.ai/api/v1
-      # context: 256000
-  - model_name: free/nvidia/nemotron-3-nano-30b-a3b
-    litellm_params:
-      model: openrouter/nvidia/nemotron-3-nano-30b-a3b:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      api_base: https://openrouter.ai/api/v1
-      # context: 256000
   # AUTO-FREE-MODELS-END
 
   # Ollama local — OLLAMA_URL = IP du serveur Ollama (NetBird, LAN, ou localhost)

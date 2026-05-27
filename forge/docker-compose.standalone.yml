@@ -8,7 +8,7 @@ services:
 
   # ── etcd (Patroni DCS — Phase A: single node) ───────────────
   etcd:
-    image: bitnami/etcd:3.5
+    image: quay.io/coreos/etcd:v3.5.17
     environment:
       ALLOW_NONE_AUTHENTICATION: "yes"
       ETCD_NAME: forge-node1
@@ -23,7 +23,7 @@ services:
     volumes:
       - etcd_data:/bitnami/etcd
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2379/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD", "/usr/local/bin/etcdctl", "endpoint", "health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -74,7 +74,7 @@ services:
 
   # ── pgBouncer (pooler façade — prêt Phase B failover) ────────
   pgbouncer:
-    image: edoburu/pgbouncer:1.23.1-p1
+    image: edoburu/pgbouncer:latest
     environment:
       DB_USER: ${POSTGRES_USER:-forge}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-forge_secret_change_this}
@@ -83,7 +83,7 @@ services:
       POOL_MODE: session
       MAX_CLIENT_CONN: 200
       DEFAULT_POOL_SIZE: 25
-      AUTH_TYPE: md5
+      AUTH_TYPE: scram-sha-256
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,7 +104,7 @@ services:
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
       - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://pgbouncer:5432/${POSTGRES_DB:-forge}
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-forge}
       - KC_DB_USERNAME=${POSTGRES_USER:-forge}
       - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-forge_secret_change_this}
       - KC_HTTP_ENABLED=true
@@ -116,7 +116,7 @@ services:
       pgbouncer:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8080'"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -131,7 +131,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333'"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -170,7 +170,7 @@ services:
       keycloak:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/3001'"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -191,7 +191,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8001'"]
       interval: 10s
       timeout: 5s
       retries: 10

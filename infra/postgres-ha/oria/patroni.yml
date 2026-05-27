@@ -28,21 +28,18 @@ bootstrap:
         archive_timeout: 300
         log_destination: stderr
         logging_collector: "off"
+        password_encryption: scram-sha-256
 
   initdb:
     - encoding: UTF8
     - data-checksums
 
+  post_bootstrap: psql -c "CREATE ROLE \"oria\" WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}' CREATEDB;" -c "CREATE DATABASE \"oria\" OWNER \"oria\";" -d oria -c "GRANT ALL ON SCHEMA public TO oria;" -c "ALTER SCHEMA public OWNER TO oria;"
+
   pg_hba:
     - local all all trust
-    - host all all 0.0.0.0/0 md5
-    - host replication replicator 0.0.0.0/0 md5
-
-  users:
-    oria:
-      password: ${POSTGRES_PASSWORD}
-      options:
-        - createdb
+    - host all all 0.0.0.0/0 scram-sha-256
+    - host replication replicator 0.0.0.0/0 scram-sha-256
 
 postgresql:
   listen: 0.0.0.0:5432
@@ -64,11 +61,12 @@ postgresql:
 
   pg_hba:
     - local all all trust
-    - host all all 0.0.0.0/0 md5
-    - host replication replicator 0.0.0.0/0 md5
+    - host all all 0.0.0.0/0 scram-sha-256
+    - host replication replicator 0.0.0.0/0 scram-sha-256
 
   parameters:
     unix_socket_directories: /var/run/postgresql
+    password_encryption: scram-sha-256
 
 tags:
   nofailover: false
