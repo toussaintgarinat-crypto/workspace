@@ -97,9 +97,9 @@ services:
   # Démarrage sans ZIM : kiwix démarre, catalog vide, tool renvoie []
   kiwix:
     image: ghcr.io/kiwix/kiwix-serve:3.8.2
-    command: ["--library", "/data/"]
+    command: ["--library", "/data/library.xml"]
     volumes:
-      - ${ZIM_PATH:-/opt/assistant/zim}:/data
+      - ${ZIM_PATH:-./zim}:/data
     ports:
       - "127.0.0.1:8090:8080"
     healthcheck:

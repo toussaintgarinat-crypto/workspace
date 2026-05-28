@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir setuptools
 # le code service pour bénéficier du cache Docker tant que les utilitaires partagés
 # ne changent pas.
 COPY shared /shared
-RUN pip install --no-cache-dir -e /shared
+RUN pip install --no-cache-dir /shared
 
 ARG LOCAL_VOICE_ENABLED=false
 COPY assistant/backend/requirements.txt assistant/backend/requirements-voice.txt ./

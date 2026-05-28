@@ -29,7 +29,7 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
 
-  # AUTO-FREE-MODELS-START — 2026-05-27 21:28 (12 modèles)
+  # AUTO-FREE-MODELS-START — 2026-05-28 22:16 (12 modèles)
   - model_name: free/openrouter/owl-alpha
     litellm_params:
       model: openrouter/openrouter/owl-alpha
@@ -96,9 +96,9 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       # context: 262144
-  - model_name: free/qwen/qwen3-next-80b-a3b-instruct
+  - model_name: free/minimax/minimax-m2.5
     litellm_params:
-      model: openrouter/qwen/qwen3-next-80b-a3b-instruct:free
+      model: openrouter/minimax/minimax-m2.5:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       # context: 262144
