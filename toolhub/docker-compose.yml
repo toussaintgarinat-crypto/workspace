@@ -1,0 +1,41 @@
+services:
+  toolhub:
+    build:
+      context: ..
+      dockerfile: toolhub/backend/Dockerfile
+    ports:
+      - "8500:8500"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=${TOOLHUB_DATABASE_URL:-}
+      - REDIS_URL=${TOOLHUB_REDIS_URL:-}
+      - CORS_ORIGINS=${TOOLHUB_CORS_ORIGINS:-http://localhost:8300,http://localhost:3000}
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      - KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:8080}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-forge}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-toolhub-app}
+      - TOOLHUB_ENCRYPTION_KEY=${TOOLHUB_ENCRYPTION_KEY:-}
+      - TOOLHUB_SERVICE_TOKEN=${TOOLHUB_SERVICE_TOKEN:-}
+    volumes:
+      - toolhub_data:/data
+    networks:
+      - default
+      - proxy_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8500/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  toolhub_data:
+
+networks:
+  default:
+  proxy_net:
+    external: true
+    name: proxy_net

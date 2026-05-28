@@ -12,6 +12,7 @@ from tools.forge import ForgeTools
 from tools.oria import OriaTools
 from tools.kiwix import KiwixTools
 from tools.calendar import CalendarTools
+from tools.toolhub import ToolHubTools
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class ReActAgent:
         self.user_id = user_id
         self._tool_handlers: dict = {}
         self._tools: list[dict] = []
+        self._toolhub_handler: ToolHubTools | None = None
         self._build_tools()
 
     def _build_tools(self):
@@ -77,8 +79,23 @@ class ReActAgent:
                 self._tools.append(tool)
                 self._tool_handlers[tool["function"]["name"]] = cal_handler
 
+        if settings.TOOLHUB_URL and self.user_id:
+            self._toolhub_handler = ToolHubTools(
+                settings.TOOLHUB_URL, settings.TOOLHUB_SERVICE_TOKEN, self.user_id
+            )
+
     def build_tools(self) -> list[dict]:
         return self._tools
+
+    async def load_toolhub_tools(self) -> None:
+        """Charge les outils ToolHub de manière asynchrone (appeler avant stream_chat)."""
+        if self._toolhub_handler:
+            await self._toolhub_handler.load_tools()
+            # Re-register tools après chargement
+            for tool in self._toolhub_handler.get_tools():
+                if not any(t["function"]["name"] == tool["function"]["name"] for t in self._tools):
+                    self._tools.append(tool)
+                    self._tool_handlers[tool["function"]["name"]] = self._toolhub_handler
 
     def build_system_prompt(self, tool_names: list[str], persona_context: str = "") -> str:
         tools_section = "\n".join(f"- {n}" for n in tool_names) if tool_names else "Aucun outil disponible."

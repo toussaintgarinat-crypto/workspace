@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     CALENDAR_URL: str = ""  # http://calendar:8400 — vide = désactivé
     CALENDAR_SERVICE_TOKEN: str = ""
 
+    # ToolHub service (S117+)
+    TOOLHUB_URL: str = ""  # http://toolhub:8500 — vide = désactivé
+    TOOLHUB_SERVICE_TOKEN: str = ""
+
     # Daily chat quota per user (0 = unlimited)
     QUOTA_FREE_DAILY: int = 50
     QUOTA_PREMIUM_DAILY: int = 500
