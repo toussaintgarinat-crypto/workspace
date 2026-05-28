@@ -646,6 +646,8 @@ export const SLASH_COMMANDS = [
   { cmd: '/save', label: '/save <contenu>', desc: 'Sauvegarder dans MemPalace' },
   { cmd: '/task', label: '/task <titre>', desc: 'Créer une tâche Swarm' },
   { cmd: '/summarize', label: '/summarize', desc: 'Résumer la conversation' },
+  { cmd: '/forge', label: '/forge <tâche>', desc: 'Exécuter une tâche via Forge' },
+  { cmd: '/apps', label: '/apps', desc: 'Voir le statut de tous les services' },
 ];
 
 import { relativeDate as sharedRelativeDate, formatBytes } from '@workspace/shared-ui/utils';

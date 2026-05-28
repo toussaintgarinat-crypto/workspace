@@ -1,4 +1,4 @@
-import { mempalaceSearch, addMempalaceDrawer, swarmCreateTask } from '../../services/api.js';
+import { mempalaceSearch, addMempalaceDrawer, swarmCreateTask, apiFetch } from '../../services/api.js';
 
 // Exécute une slash command. Retourne true si elle a été interceptée (l'appelant doit return).
 // Retourne false si la commande est inconnue → fall-through LLM.
@@ -52,6 +52,41 @@ export async function runSlashCommand({ trimmed, setMessages, setToast, triggerS
       appendAssistant(`Tâche créée : **${arg}**`);
     } catch {
       appendAssistant('Erreur lors de la création de tâche.');
+    }
+    return true;
+  }
+  if (cmd === 'forge') {
+    if (!arg) { usage('Usage : /forge <tâche>'); return true; }
+    appendUser();
+    try {
+      const r = await apiFetch('/api/v1/hub/forge/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: arg }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const result = data?.result ?? data?.text ?? JSON.stringify(data);
+      appendAssistant(`**⚒️ Forge — résultat :**\n\n${result}`);
+    } catch {
+      appendAssistant('Forge indisponible ou non configuré (FORGE_URL manquant).');
+    }
+    return true;
+  }
+  if (cmd === 'apps') {
+    appendUser();
+    try {
+      const r = await apiFetch('/api/v1/hub/services');
+      if (!r.ok) throw new Error();
+      const services = await r.json();
+      const lines = services.map(s => {
+        const icon = s.status === 'ok' ? '🟢' : s.status === 'down' ? '🔴' : s.status === 'disabled' ? '⚫' : '🟡';
+        const link = s.frontend_url ? ` — [Ouvrir](${s.frontend_url})` : '';
+        return `${icon} **${s.emoji} ${s.label}**${link}`;
+      });
+      appendAssistant(`**🏛️ Services de la plateforme :**\n\n${lines.join('\n')}`);
+    } catch {
+      appendAssistant('Impossible de récupérer le statut des services.');
     }
     return true;
   }

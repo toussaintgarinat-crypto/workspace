@@ -16,6 +16,7 @@ import AdminView from './views/AdminView.jsx';
 import PersonaView from './views/PersonaView.jsx';
 import ScheduledView from './views/ScheduledView.jsx';
 import CalendarView from './views/CalendarView.jsx';
+import HubView from './views/HubView.jsx';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -198,6 +199,13 @@ export default function App() {
         >
           📅
         </button>
+        <button
+          style={s.navBtn(view === 'hub')}
+          onClick={() => setView('hub')}
+          title={t('nav.hub')}
+        >
+          🏛️
+        </button>
         {isAdmin() && (
           <button
             style={{ ...s.navBtn(view === 'admin'), marginTop: isEnabled() ? undefined : 'auto' }}
@@ -238,6 +246,7 @@ export default function App() {
         {view === 'persona' && <PersonaView />}
         {view === 'scheduled' && <ScheduledView />}
         {view === 'calendar' && <CalendarView />}
+        {view === 'hub' && <HubView onNavigate={setView} />}
       </main>
       <InstallBanner />
     </div>

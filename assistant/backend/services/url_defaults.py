@@ -3,7 +3,7 @@
 
 def default_url(app_type: str) -> str:
     defaults = {
-        "forge":     "http://localhost:8000",
+        "forge":     "http://localhost:3001",
         "oria":      "http://localhost:8000",
         "mempalace": "http://localhost:8100",
         "calendar":  "http://localhost:8400",

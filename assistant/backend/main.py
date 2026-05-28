@@ -43,6 +43,7 @@ from routers.swarm_router import router as swarm_router
 from routers.uploads import router as uploads_router
 from routers.vault_router import router as vault_router
 from routers.voice_router import router as voice_router
+from routers.hub_router import router as hub_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ _ROUTERS = (
     mempalace_router, conversations_router, swarm_router, voice_router,
     uploads_router, proactive_router, push_router, summarizer_router,
     admin_router, chat_router, persona_router, scheduled_router,
+    hub_router,
 )
 for r in _ROUTERS:
     # Nouveau : /v1/<path>

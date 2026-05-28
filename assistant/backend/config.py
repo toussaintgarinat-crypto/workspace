@@ -48,6 +48,17 @@ class Settings(BaseSettings):
     TOOLHUB_URL: str = ""  # http://toolhub:8500 — vide = désactivé
     TOOLHUB_SERVICE_TOKEN: str = ""
 
+    # MemPalace health check URL (S120+) — utilisé uniquement pour le ping Hub
+    MEMPALACE_HEALTH_URL: str = ""  # http://mempalace:8100 — vide = ping désactivé
+
+    # Forge service (S120+)
+    FORGE_URL: str = ""  # http://forge-core:3001 — vide = désactivé
+    FORGE_SERVICE_TOKEN: str = ""
+    FORGE_FRONTEND_URL: str = ""  # http://localhost:3000 — URL frontend Forge pour "Ouvrir"
+
+    # Oria frontend URL (S120+)
+    ORIA_FRONTEND_URL: str = ""  # http://localhost:3002
+
     # Daily chat quota per user (0 = unlimited)
     QUOTA_FREE_DAILY: int = 50
     QUOTA_PREMIUM_DAILY: int = 500
