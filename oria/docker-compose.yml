@@ -220,7 +220,9 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ../
+      dockerfile: oria/frontend/Dockerfile
     ports:
       - "3002:3000"
     environment:
@@ -232,8 +234,9 @@ services:
       VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-oria}
       VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-oria-app}
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - ./frontend:/workspace/oria/frontend
+      - ../shared-ui:/workspace/shared-ui
+      - /workspace/oria/frontend/node_modules
     command: npm run dev -- --host
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
