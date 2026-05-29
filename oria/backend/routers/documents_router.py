@@ -2,7 +2,7 @@
 Gestion des documents utilisateur.
 Upload → conversion Markitdown (Python API) → indexation MemPalace (via mempalace_client).
 """
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional
 import os, uuid
@@ -11,6 +11,7 @@ from config import config as oria_config
 from models.document import Document
 from routers.auth import get_current_user
 from services.documents_service import DocumentsService, get_documents_service
+from jobs_worker import enqueue_docparse
 import mempalace_client as mp
 
 router = APIRouter()
@@ -56,15 +57,10 @@ def _doc_dict(d: Document) -> dict:
         "type_mime": d.type_mime, "taille": d.taille,
         "world_id": d.world_id,
         "indexe_memory": d.indexe_memory,
+        "index_status": getattr(d, "index_status", None) or "idle",
         "has_content": bool(d.content_md and d.content_md.strip()),
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
-
-
-def _do_index(doc_id: str, doc_name: str, content: str, owner_id: str,
-              session_id: str = None, session_titre: str = None):
-    """Tâche d'indexation exécutée en arrière-plan."""
-    return mp.sync_document(content, doc_id, doc_name, owner_id, session_id, session_titre)
 
 
 # ── Routes ───────────────────────────────────────────────────────
@@ -81,7 +77,6 @@ def list_documents(
 
 @router.post("/upload")
 async def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     world_id: Optional[str] = Form(None),
     index_memory: bool = Form(True),   # True par défaut
@@ -120,12 +115,9 @@ async def upload_document(
     )
     doc = svc.create_document(doc)
 
-    # Indexation MemPalace en arrière-plan
+    # Indexation MemPalace via job durable (S125) — survit au restart, retry + DLQ.
     if index_memory and md_content.strip():
-        svc.mark_indexed(doc, True)
-        background_tasks.add_task(
-            _do_index, doc.id, doc.nom, md_content, user["id"], session_id, session_titre
-        )
+        await enqueue_docparse(doc.id, session_id, session_titre)
 
     return _doc_dict(doc)
 
@@ -143,25 +135,21 @@ def get_document_content(
 
 
 @router.post("/{doc_id}/index-memory")
-def index_document_memory(
+async def index_document_memory(
     doc_id: str,
-    background_tasks: BackgroundTasks,
     session_id: Optional[str] = None,
     session_titre: Optional[str] = None,
     svc: DocumentsService = Depends(get_documents_service),
     user=Depends(get_current_user),
 ):
-    """Indexe (ou réindexe) un document existant dans MemPalace."""
+    """Indexe (ou réindexe) un document existant dans MemPalace (job durable S125)."""
     doc = svc.get_user_document(doc_id, user["id"])
     if not doc:
         raise HTTPException(404)
     if not doc.content_md or not doc.content_md.strip():
         raise HTTPException(400, "Document sans contenu Markdown")
 
-    svc.mark_indexed(doc, True)
-    background_tasks.add_task(
-        _do_index, doc.id, doc.nom, doc.content_md, user["id"], session_id, session_titre
-    )
+    await enqueue_docparse(doc_id, session_id, session_titre)
     return {"ok": True, "doc_id": doc_id}
 
 

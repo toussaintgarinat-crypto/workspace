@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     KEYCLOAK_AUDIENCE: str = ""  # Multi-tenant: valeur = client_id Keycloak (ex: assistant-app). Vide = verify_aud désactivé.
     AUTH_ENABLED: bool = False
     VAULT_SECRET: str = ""  # Required — set a random 32+ char secret; empty default forces explicit config
-    SWARM_MAX_WORKERS: int = 3
+    SWARM_MAX_WORKERS: int = 3  # concurrence GLOBALE swarm (tous réplicas) via Redis Streams (S125)
+    SWARM_MAX_RETRIES: int = 3  # nb de tentatives d'un job swarm avant dead-letter queue (S125)
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
     DISCORD_WEBHOOK_URL: str = ""

@@ -31,6 +31,8 @@ Base.metadata.create_all(bind=engine)
 # Migrations manuelles pour colonnes ajoutées après création initiale
 _MIGRATIONS = [
     "ALTER TABLE documents ADD COLUMN partage_reseau BOOLEAN DEFAULT FALSE",
+    # S125 — statut d'indexation du document (jobs durables Redis Streams)
+    "ALTER TABLE documents ADD COLUMN index_status TEXT DEFAULT 'idle'",
     "ALTER TABLE users ADD COLUMN setup_completed_at TIMESTAMP",
     "ALTER TABLE users ADD COLUMN documents_partageables_par_defaut BOOLEAN DEFAULT FALSE",
     # Backfill : les comptes créés avant S72 sont considérés comme ayant déjà fait le tour
@@ -214,7 +216,10 @@ _seed_resident_agents()
 @asynccontextmanager
 async def lifespan(app):
     await init_redis()
+    from jobs_worker import start_worker, stop_worker
+    await start_worker()
     yield
+    await stop_worker()
     await close_redis()
 
 app.router.lifespan_context = lifespan

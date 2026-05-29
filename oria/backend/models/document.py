@@ -16,6 +16,7 @@ class Document(Base):
     file_path       = Column(String, nullable=False)      # chemin stockage brut
     content_md      = Column(Text, default="")            # contenu converti Markitdown
     indexe_memory    = Column(Boolean, default=False)      # indexé dans MemPalace
+    index_status     = Column(String, default="idle")      # idle|pending|processing|done|error (S125)
     memory_chunk_ids = Column(Text, default="")            # JSON list des IDs MemPalace
     partage_reseau   = Column(Boolean, default=False)      # visible par les worlds liés
     created_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -121,3 +121,34 @@ groups:
         annotations:
           summary: "Certificat TLS expire dans < 14j"
           description: "Certificat {{ $labels.instance }} expire dans {{ printf \"%.0f\" $value }}s. Vérifier renouvellement ACME (make acme-sync si Node 2 actif)."
+
+  # ── Jobs durables Redis Streams (S125) ────────────────────────────────
+  - name: jobs
+    interval: 1m
+    rules:
+      - alert: JobQueueBacklog
+        expr: job_queue_depth > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "File de jobs {{ $labels.namespace }}:{{ $labels.stream }} en backlog"
+          description: "Profondeur {{ $value }} (> 100) depuis 10min — les consumers ne suivent pas. Scaler les workers ou vérifier qu'ils tournent."
+
+      - alert: JobQueuePendingStuck
+        expr: job_queue_pending > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Messages en attente d'ack sur {{ $labels.namespace }}:{{ $labels.stream }}"
+          description: "{{ $value }} messages livrés mais non acquittés depuis 10min — workers bloqués/lents ou jobs qui échouent en boucle (vérifier la DLQ)."
+
+      - alert: JobDLQNotEmpty
+        expr: job_dlq_size > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead-letter queue non vide : {{ $labels.namespace }}:{{ $labels.stream }}"
+          description: "{{ $value }} job(s) en DLQ (échec après retries). Inspecter le stream {{ $labels.namespace }}:jobs:{{ $labels.stream }}:dlq."
