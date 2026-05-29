@@ -30,10 +30,7 @@ receivers:
 
   - name: degraded-webhook
     webhook_configs:
-      - url: "http://assistant:8000/admin/degraded/auto"
-        http_config:
-          headers:
-            X-Degraded-Token: "${DEGRADED_WEBHOOK_TOKEN}"
+      - url: "http://assistant:8000/admin/degraded/auto?token=${DEGRADED_WEBHOOK_TOKEN}"
         send_resolved: true
 
 inhibit_rules:
