@@ -24,7 +24,12 @@ export default function Sidebar({ sessions, activeId, onNew, onNewInContext, onS
     if (!user) return
     orgsApi.list().then(data => {
       setOrgs(data)
-      if (!currentOrgId && data.length) {
+      if (!data.length) return
+      // Réconcilie l'org active : si aucune n'est sélectionnée OU si la valeur
+      // stockée ne correspond plus à une org réelle (ex. reseed DB → forge_org_id
+      // périmé → X-Org-ID fantôme → 500 FK à la création), on retombe sur une org valide.
+      const stillValid = currentOrgId && data.some(o => o.id === currentOrgId)
+      if (!stillValid) {
         const personal = data.find(o => o.plan === 'personal') ?? data[0]
         activeOrg.set(personal.id)
         setCurrentOrgId(personal.id)

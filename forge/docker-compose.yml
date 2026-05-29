@@ -156,7 +156,8 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/health >/dev/null 2>&1 || exit 1"]
+      # L'image oven/bun n'a ni wget ni curl → on utilise le runtime bun (toujours présent).
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -290,8 +291,9 @@ services:
   # ── Frontend (React / Vite) ─────────────────────────────────
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      # Contexte = racine workspace : nécessaire pour shared-ui (file:../../shared-ui)
+      context: ..
+      dockerfile: forge/frontend/Dockerfile
     ports:
       - "${FORGE_FRONTEND_PORT:-3000}:80"
     depends_on:

@@ -2,12 +2,23 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { db } from '../../db'
-import { ventures, ventureMembers, ventureDeleteTokens, poles, poleMembers, llmPresets, users } from '../../db/schema'
+import { ventures, ventureMembers, ventureDeleteTokens, poles, poleMembers, llmPresets, users, organizationMembers } from '../../db/schema'
 import { eq, and, desc, sql, or, isNull, gt } from 'drizzle-orm'
 import type { JWTPayload } from '../middleware/auth'
 import { sendVentureDeletionCode } from '../../email'
 
 const app = new Hono<{ Variables: { user: JWTPayload } }>()
+
+// Résout l'org depuis l'en-tête X-Org-ID uniquement si l'utilisateur en est
+// membre. Un en-tête périmé/fantôme (ex. reseed DB côté client) est ignoré
+// plutôt que de provoquer une violation de FK (500) à l'insertion.
+async function resolveOrgId(orgId: string | undefined, userId: string): Promise<string | undefined> {
+  if (!orgId) return undefined
+  const [m] = await db.select().from(organizationMembers)
+    .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
+    .limit(1)
+  return m ? orgId : undefined
+}
 
 // Pôles créés par défaut pour chaque nouvelle venture
 const DEFAULT_POLES = [
@@ -39,7 +50,7 @@ app.post('/ventures', zValidator('json', z.object({
   type:        z.enum(['own', 'audit']).optional(),
 })), async (c) => {
   const user  = c.get('user')
-  const orgId = c.req.header('X-Org-ID')
+  const orgId = await resolveOrgId(c.req.header('X-Org-ID'), user.sub)
   const body  = c.req.valid('json')
 
   const [venture] = await db.insert(ventures).values({
@@ -181,9 +192,10 @@ app.post('/ventures/:id/poles', zValidator('json', z.object({
   const { id: ventureId } = c.req.param()
   const user = c.get('user') as JWTPayload & { nom?: string; avatarEmoji?: string; orgId?: string }
   const body = c.req.valid('json')
+  const orgId = await resolveOrgId(c.req.header('X-Org-ID') ?? user.orgId, user.sub)
 
   const [pole] = await db.insert(poles).values({
-    ...body, ventureId, ownerId: user.sub, orgId: user.orgId ?? undefined,
+    ...body, ventureId, ownerId: user.sub, orgId: orgId ?? undefined,
   }).returning()
 
   await db.insert(poleMembers).values({
