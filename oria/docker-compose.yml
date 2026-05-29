@@ -178,8 +178,8 @@ services:
     ports:
       - "8081:8080"
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-oria}
       KC_DB_USERNAME: ${POSTGRES_USER:-oria}
@@ -229,7 +229,7 @@ services:
       VITE_API_URL: http://localhost:8000
       VITE_WS_URL: ws://localhost:8000
       VITE_LIVEKIT_URL: ws://localhost:7880
-      VITE_MATRIX_URL: http://localhost:8008
+      VITE_MATRIX_URL: http://localhost:8010
       VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8081}
       VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-oria}
       VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-oria-app}

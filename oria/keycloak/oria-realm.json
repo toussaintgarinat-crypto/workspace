@@ -64,6 +64,18 @@
             "claim.name": "avatarEmoji",
             "jsonType.label": "String"
           }
+        },
+        {
+          "name": "audience-oria-app",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "oria-app",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
         }
       ]
     }
