@@ -77,8 +77,8 @@ services:
   frontend:
     image: ghcr.io/toussaintgarinat-crypto/workspace/assistant-frontend:${ASSISTANT_IMAGE_TAG:-latest}
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: assistant/frontend/Dockerfile
     ports:
       - "8300:80"
     depends_on:
