@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import uuid as _uuid
 from datetime import datetime, timezone, timedelta
 
 import httpx
@@ -9,6 +8,7 @@ from db import (
     get_connections, get_proactive_config,
     add_alert, count_unread_alerts,
 )
+from leader import REPLICA_ID as _replica_id, is_leader as _is_leader  # noqa: F401  (S123)
 from notifiers import inapp as inapp_notifier
 from notifiers import telegram as telegram_notifier
 from notifiers import discord as discord_notifier
@@ -20,45 +20,6 @@ logger = logging.getLogger(__name__)
 _scheduler_task: asyncio.Task | None = None
 _last_check: str | None = None
 _enabled_since: datetime | None = None
-
-# Unique ID for this process — used for Redis leader election
-_replica_id = str(_uuid.uuid4())[:8]
-_LEADER_KEY = "assistant:scheduler:leader"
-_LEADER_TTL = 90  # seconds
-
-
-# ── Leader election ──────────────────────────────────────────────────────────
-
-_RENEW_SCRIPT = """
-if redis.call('get', KEYS[1]) == ARGV[1] then
-    return redis.call('expire', KEYS[1], ARGV[2])
-else
-    return 0
-end
-"""
-
-
-async def _is_leader() -> bool:
-    """Returns True if this replica should run the scheduler.
-    Without Redis: always True (single-instance mode).
-    With Redis: uses SET NX to elect exactly one leader."""
-    from redis_client import redis_client
-    if not redis_client:
-        return True
-    acquired = await redis_client.set(_LEADER_KEY, _replica_id, nx=True, ex=_LEADER_TTL)
-    if acquired:
-        return True
-    renewed = await redis_client.eval(_RENEW_SCRIPT, 1, _LEADER_KEY, _replica_id, str(_LEADER_TTL))
-    return bool(renewed)
-
-
-async def _release_leader():
-    from redis_client import redis_client
-    if not redis_client:
-        return
-    current = await redis_client.get(_LEADER_KEY)
-    if current == _replica_id:
-        await redis_client.delete(_LEADER_KEY)
 
 
 # ── Dispatcher ───────────────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ _DEGRADED_SERVICE = "assistant"
 @router.get("/status")
 async def admin_status(_: dict = Depends(require_admin)):
     from redis_client import redis_client
-    from proactive import _replica_id, _LEADER_KEY
+    from leader import REPLICA_ID as _replica_id, DEFAULT_KEY as _LEADER_KEY
     from metrics import sse_clients_active
 
     redis_info = None

@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 from db import database, get_connections
 from config import settings
+from leader import is_leader
 from notifiers import inapp as inapp_notifier
 
 logger = logging.getLogger(__name__)
@@ -110,10 +111,13 @@ async def run_now(prompt_id: str) -> dict:
 
     result = "".join(collected)
     now = datetime.now(timezone.utc).isoformat()
-    next_run = _compute_next_run(row["schedule"])
+    # S123 : on ne touche plus `next_run` ici. Il est avancé *avant* le dispatch
+    # par `_claim_due` (le scheduler) ou par create/update_scheduled. Le faire
+    # ici (après un stream qui peut dépasser 60 s) rouvrait une fenêtre de
+    # double exécution au tick suivant.
     await database.execute(
-        "UPDATE scheduled_prompts SET last_run = :now, next_run = :next_run WHERE id = :id",
-        {"now": now, "next_run": next_run, "id": prompt_id},
+        "UPDATE scheduled_prompts SET last_run = :now WHERE id = :id",
+        {"now": now, "id": prompt_id},
     )
 
     await inapp_notifier.broadcast({
@@ -158,17 +162,44 @@ def _compute_next_run(schedule: str) -> str:
     return (now + timedelta(hours=1)).isoformat()
 
 
+async def _claim_due(now: str) -> list[str]:
+    """Sélectionne les prompts dus et avance leur `next_run` de façon atomique
+    *avant* tout dispatch (S123).
+
+    Le claim ferme la course : un tick suivant (ou un autre réplica pendant un
+    transfert de leadership) re-SELECT ne retombera plus sur la même ligne,
+    puisque `next_run` est déjà repoussé dans le futur. L'``UPDATE ... WHERE
+    next_run <= :now`` garantit qu'on ne réclame que ce qui était réellement dû.
+
+    Retourne les ids réclamés, à dispatcher ensuite via ``run_now``.
+    """
+    rows = await database.fetch_all(
+        "SELECT id, schedule FROM scheduled_prompts WHERE active = 1 AND next_run <= :now",
+        {"now": now},
+    )
+    claimed: list[str] = []
+    for row in rows:
+        new_next = _compute_next_run(row["schedule"])
+        await database.execute(
+            "UPDATE scheduled_prompts SET next_run = :next_run "
+            "WHERE id = :id AND next_run <= :now",
+            {"next_run": new_next, "id": row["id"], "now": now},
+        )
+        claimed.append(row["id"])
+    return claimed
+
+
 async def _scheduler_loop():
     while True:
         try:
             await asyncio.sleep(60)
+            # S123 : ne tourner que sur le réplica leader (clé partagée avec
+            # proactive). Sans ça, chaque réplica déclencherait chaque prompt.
+            if not await is_leader():
+                continue
             now = datetime.now(timezone.utc).isoformat()
-            rows = await database.fetch_all(
-                "SELECT * FROM scheduled_prompts WHERE active = 1 AND next_run <= :now",
-                {"now": now},
-            )
-            for row in rows:
-                asyncio.create_task(run_now(row["id"]))
+            for prompt_id in await _claim_due(now):
+                asyncio.create_task(run_now(prompt_id))
         except asyncio.CancelledError:
             break
         except Exception as e:
