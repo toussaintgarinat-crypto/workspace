@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   gateway:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:main-v1.86.2
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     ports:
       - "4000:4000"
