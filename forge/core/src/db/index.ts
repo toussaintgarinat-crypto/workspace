@@ -109,6 +109,12 @@ async function runMigrations() {
       deployed_at          timestamp,
       created_at           timestamp DEFAULT now() NOT NULL
     );
+
+    -- S124: progression persistée du déploiement (découplé de la connexion SSE)
+    ALTER TABLE deployed_instances ADD COLUMN IF NOT EXISTS progress_step       integer   DEFAULT 0;
+    ALTER TABLE deployed_instances ADD COLUMN IF NOT EXISTS progress_total      integer   DEFAULT 6;
+    ALTER TABLE deployed_instances ADD COLUMN IF NOT EXISTS progress_msg        text      DEFAULT '';
+    ALTER TABLE deployed_instances ADD COLUMN IF NOT EXISTS progress_updated_at timestamp;
   `)
   console.log('[forge:db] migrations OK')
 }

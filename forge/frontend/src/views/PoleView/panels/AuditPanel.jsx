@@ -172,6 +172,46 @@ export default function AuditPanel({ poleId }) {
     setShowDeploy(true)
   }
 
+  // S124 — Lit le flux SSE de progression d'un déploiement (endpoint séparé,
+  // reconnectable). Utilisé au lancement ET pour ré-attacher un déploiement
+  // déjà en cours (modal rouvert). Le job tourne côté serveur indépendamment.
+  async function consumeDeployStream(instanceId, onDone) {
+    const t = token.get()
+    const res = await fetch(`/api/audit/instances/${instanceId}/stream`, {
+      headers: { ...(t ? { Authorization: `Bearer ${t}` } : {}) },
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Suivi du déploiement impossible')
+    }
+
+    const reader = res.body.getReader()
+    const dec    = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop()
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = JSON.parse(line.slice(6))
+        if (data.error) throw new Error(data.error)
+        if (data.done) {
+          setDeployDone({ instanceId: data.instanceId, domain: data.domain })
+          onDone?.(data)
+        } else if (data.msg) {
+          setDeployStep(data.step)
+          setDeployLog(prev => [...prev, data.msg])
+        }
+      }
+    }
+  }
+
+  const markReady = (data) => setDeployments(prev => prev.map(d =>
+    d.id === data.instanceId ? { ...d, status: 'ready', domain: data.domain } : d))
+
   async function startDeploy(e) {
     e.preventDefault()
     setDeploying(true)
@@ -194,6 +234,8 @@ export default function AuditPanel({ poleId }) {
     }
 
     try {
+      // Le POST lance le job de fond et répond immédiatement avec l'instanceId.
+      // Le déploiement continue côté serveur même si on ferme l'onglet.
       const res = await fetch(`/api/audit/${selected}/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) },
@@ -203,33 +245,33 @@ export default function AuditPanel({ poleId }) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Erreur serveur')
       }
+      const { instanceId } = await res.json()
 
-      const reader = res.body.getReader()
-      const dec    = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop()
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6))
-          if (data.error) throw new Error(data.error)
-          if (data.done) {
-            setDeployDone({ instanceId: data.instanceId, domain: data.domain })
-            setDeployments(prev => [...prev, {
-              id: data.instanceId, domain: data.domain, serverIp: body.serverIp || '',
-              domainMode: deployForm.domainMode, status: 'ready',
-              adminEmail: deployForm.adminEmail, createdAt: new Date().toISOString(),
-            }])
-          } else if (data.msg) {
-            setDeployStep(data.step)
-            setDeployLog(prev => [...prev, data.msg])
-          }
-        }
-      }
+      // Affiche l'instance « en cours » tout de suite.
+      setDeployments(prev => [...prev, {
+        id: instanceId, domain: body.domain || '', serverIp: body.serverIp || '',
+        domainMode: deployForm.domainMode, status: 'deploying',
+        adminEmail: deployForm.adminEmail, createdAt: new Date().toISOString(),
+      }])
+
+      await consumeDeployStream(instanceId, markReady)
+    } catch (err) {
+      setDeployErr(err.message)
+    } finally {
+      setDeploying(false)
+    }
+  }
+
+  // Ré-attache le suivi d'un déploiement déjà en cours (clic depuis la liste).
+  async function reattachDeploy(instanceId) {
+    setShowDeploy(true)
+    setDeploying(true)
+    setDeployErr('')
+    setDeployLog([])
+    setDeployStep(0)
+    setDeployDone(null)
+    try {
+      await consumeDeployStream(instanceId, markReady)
     } catch (err) {
       setDeployErr(err.message)
     } finally {

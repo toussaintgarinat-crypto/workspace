@@ -1103,6 +1103,11 @@ export const deployedInstances = pgTable('deployed_instances', {
   adminEmail:        text('admin_email').notNull(),
   adminPasswordHash: text('admin_password_hash').notNull(),
   notes:             text('notes').default(''),
+  // S124 — progression persistée (le job tourne hors connexion SSE)
+  progressStep:      integer('progress_step').default(0),
+  progressTotal:     integer('progress_total').default(6),
+  progressMsg:       text('progress_msg').default(''),
+  progressUpdatedAt: timestamp('progress_updated_at'),
   deployedAt:        timestamp('deployed_at'),
   createdAt:         timestamp('created_at').defaultNow().notNull(),
 })
